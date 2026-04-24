@@ -1,7 +1,7 @@
 
-  # Color Generation Toolv2.5
+  # Color Generation Tool
 
-  This is a code bundle for Color Generation Toolv2.5. The original project is available at https://www.figma.com/design/jGuf8eCUhTKBJDkFGUPHzQ/Color-Generation-Toolv2.5.
+  This is a code bundle for Color Generation Tool. The original project is available at https://www.figma.com/design/jGuf8eCUhTKBJDkFGUPHzQ/Color-Generation-Toolv2.5.
 
   ## Running the code
 
