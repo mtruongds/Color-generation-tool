@@ -54,7 +54,7 @@ export function PaletteDisplay({ palette, colorFormat = 'hex' }: { palette: Pale
             <CardTitle className="text-[1.125rem]">{palette.name}</CardTitle>
           </div>
           <div className="flex items-center gap-[0.5rem]">
-            <Tabs value={view} onValueChange={(v) => setView(v as 'scale' | 'alpha' | 'contrast')} className="flex-col-0 gap-0">
+            <Tabs value={view} onValueChange={(v: string) => setView(v as 'scale' | 'alpha' | 'contrast')} className="flex-col-0 gap-0">
               <TabsList className="h-[2rem] rounded-lg bg-muted p-[0.25rem]">
                 <TabsTrigger value="scale" className="h-[1.5rem] text-[0.75rem] px-[0.625rem] rounded-md">
                   Solid
@@ -82,100 +82,99 @@ export function PaletteDisplay({ palette, colorFormat = 'hex' }: { palette: Pale
               {palette.scale.colors.map((color, i) => {
                 const textColor = getTextColor(color);
                 return (
-                <div
-                  key={i}
-                  className="flex-1 flex md:flex-col items-center justify-between p-[0.5rem] md:p-[1rem] relative group cursor-pointer transition-all hover:brightness-110"
-                  style={{ backgroundColor: color }}
-                  onClick={() => copyToClipboard(formatColor(color, colorFormat))}
-                  title={`Click to copy ${formatColor(color, colorFormat)}`}
-                >
-                  {/* Lock/auto indicator – step 9 */}
-                  {i === 8 && (
-                    <div className="absolute top-[0.25rem] right-[0.25rem] md:top-[0.5rem] md:right-[0.5rem]">
+                  <div
+                    key={i}
+                    className="flex-1 flex md:flex-col items-center justify-between p-[0.5rem] md:p-[1rem] relative group cursor-pointer transition-all hover:brightness-110"
+                    style={{ backgroundColor: color }}
+                    onClick={() => copyToClipboard(formatColor(color, colorFormat))}
+                    title={`Click to copy ${formatColor(color, colorFormat)}`}
+                  >
+                    {/* Lock/auto indicator – step 9 */}
+                    {i === 8 && (
+                      <div className="absolute top-[0.25rem] right-[0.25rem] md:top-[0.5rem] md:right-[0.5rem]">
+                        <div
+                          className={`h-[1rem] w-[1rem] rounded-full backdrop-blur-sm flex items-center justify-center ${palette.lockStep9 ? 'bg-black/20 dark:bg-white/20' : 'bg-emerald-500/30'
+                            }`}
+                        >
+                          <svg
+                            width="10"
+                            height="10"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2.5"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            className={textColor}
+                          >
+                            {palette.lockStep9 ? (
+                              <>
+                                <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                                <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                              </>
+                            ) : (
+                              <>
+                                <path d="M12 2a6 6 0 0 0-6 6v4" />
+                                <rect x="3" y="12" width="18" height="10" rx="2" />
+                                <circle cx="12" cy="17" r="1" />
+                              </>
+                            )}
+                          </svg>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Hover indicator – step 10 */}
+                    {i === 9 && (
+                      <div className="absolute top-[0.25rem] right-[0.25rem] md:top-[0.5rem] md:right-[0.5rem]">
+                        <div className="h-[1rem] w-[1rem] rounded-full bg-black/20 dark:bg-white/20 backdrop-blur-sm flex items-center justify-center">
+                          <svg
+                            width="10"
+                            height="10"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2.5"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            className={textColor}
+                          >
+                            <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
+                          </svg>
+                        </div>
+                      </div>
+                    )}
+
+                    <span className={`text-[0.75rem] font-mono opacity-50 font-bold ${textColor}`}>
+                      {i + 1}
+                    </span>
+                    <span className={`text-[0.6875rem] font-mono ${colorFormat === 'oklch' ? '' : 'uppercase'} ${textColor}`}>
+                      {colorFormat === 'oklch'
+                        ? (() => { const [l, c, h] = chroma(color).oklch(); return `${(l * 100).toFixed(1)} ${c.toFixed(3)}`; })()
+                        : color.replace('#', '')}
+                    </span>
+
+                    {/* Copy indicator */}
+                    <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
                       <div
-                        className={`h-[1rem] w-[1rem] rounded-full backdrop-blur-sm flex items-center justify-center ${
-                          palette.lockStep9 ? 'bg-black/20 dark:bg-white/20' : 'bg-emerald-500/30'
-                        }`}
+                        className={`px-[0.5rem] py-[0.25rem] rounded text-[0.625rem] font-medium backdrop-blur-sm ${palette.isDark
+                            ? 'bg-white/20 text-white'
+                            : i < 6
+                              ? 'bg-black/20 text-white'
+                              : 'bg-white/20 text-white'
+                          }`}
                       >
-                        <svg
-                          width="10"
-                          height="10"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2.5"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          className={textColor}
-                        >
-                          {palette.lockStep9 ? (
-                            <>
-                              <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                              <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-                            </>
-                          ) : (
-                            <>
-                              <path d="M12 2a6 6 0 0 0-6 6v4" />
-                              <rect x="3" y="12" width="18" height="10" rx="2" />
-                              <circle cx="12" cy="17" r="1" />
-                            </>
-                          )}
-                        </svg>
+                        <Copy className="h-[0.75rem] w-[0.75rem] inline mr-[0.25rem]" />
+                        Copy
                       </div>
-                    </div>
-                  )}
-
-                  {/* Hover indicator – step 10 */}
-                  {i === 9 && (
-                    <div className="absolute top-[0.25rem] right-[0.25rem] md:top-[0.5rem] md:right-[0.5rem]">
-                      <div className="h-[1rem] w-[1rem] rounded-full bg-black/20 dark:bg-white/20 backdrop-blur-sm flex items-center justify-center">
-                        <svg
-                          width="10"
-                          height="10"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2.5"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          className={textColor}
-                        >
-                          <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
-                        </svg>
-                      </div>
-                    </div>
-                  )}
-
-                  <span className={`text-[0.75rem] font-mono opacity-50 font-bold ${textColor}`}>
-                    {i + 1}
-                  </span>
-                  <span className={`text-[0.6875rem] font-mono ${colorFormat === 'oklch' ? '' : 'uppercase'} ${textColor}`}>
-                    {colorFormat === 'oklch'
-                      ? (() => { const [l, c, h] = chroma(color).oklch(); return `${(l*100).toFixed(1)} ${c.toFixed(3)}`; })()
-                      : color.replace('#', '')}
-                  </span>
-
-                  {/* Copy indicator */}
-                  <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-                    <div
-                      className={`px-[0.5rem] py-[0.25rem] rounded text-[0.625rem] font-medium backdrop-blur-sm ${
-                        palette.isDark
-                          ? 'bg-white/20 text-white'
-                          : i < 6
-                            ? 'bg-black/20 text-white'
-                            : 'bg-white/20 text-white'
-                      }`}
-                    >
-                      <Copy className="h-[0.75rem] w-[0.75rem] inline mr-[0.25rem]" />
-                      Copy
                     </div>
                   </div>
-                </div>
-              )})}
+                )
+              })}
             </div>
 
             {/* Usage hints */}
-            
+
           </>
         ) : view === 'alpha' ? (
           <AlphaScaleView
@@ -253,41 +252,41 @@ function AlphaScaleView({
           {alphaScale.colors.map((alphaColor, i) => {
             const textColor = getTextColor(solidColors[i]);
             return (
-            <div
-              key={i}
-              className="flex-1 flex md:flex-col items-center justify-between p-[0.5rem] md:p-[0.75rem] relative group cursor-pointer transition-all hover:brightness-110"
-              style={{ backgroundColor: alphaColor.rgba }}
-              onClick={() => copyToClipboard(formatAlphaColor(alphaColor, alphaFormat))}
-              title={`Click to copy ${formatAlphaColor(alphaColor, alphaFormat)}`}
-            >
-              <span className={`text-[0.75rem] font-mono opacity-50 font-bold ${textColor}`}>
-                {i + 1}A
-              </span>
-              <div className="flex flex-col items-center gap-[0.25rem]">
-                <span
-                  className={`text-[0.625rem] font-mono px-[0.375rem] py-[0.125rem] rounded ${
-                    isDark ? 'bg-white/10 text-white/80' : 'bg-black/10 text-black/70'
-                  }`}
-                >
-                  {Math.round(alphaColor.alpha * 100)}%
+              <div
+                key={i}
+                className="flex-1 flex md:flex-col items-center justify-between p-[0.5rem] md:p-[0.75rem] relative group cursor-pointer transition-all hover:brightness-110"
+                style={{ backgroundColor: alphaColor.rgba }}
+                onClick={() => copyToClipboard(formatAlphaColor(alphaColor, alphaFormat))}
+                title={`Click to copy ${formatAlphaColor(alphaColor, alphaFormat)}`}
+              >
+                <span className={`text-[0.75rem] font-mono opacity-50 font-bold ${textColor}`}>
+                  {i + 1}A
                 </span>
-                <span
-                  className={`text-[0.5625rem] font-mono truncate max-w-full opacity-0 group-hover:opacity-100 transition-opacity ${textColor}`}
-                >
-                  {alphaFormat === 'hex8'
-                    ? alphaColor.hex8.replace('#', '')
-                    : alphaFormat === 'rgba'
-                      ? `${alphaColor.r},${alphaColor.g},${alphaColor.b}`
-                      : `${Math.round(chroma(alphaColor.r, alphaColor.g, alphaColor.b).get('hsl.h') || 0)}deg`}
-                </span>
-              </div>
-              <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-                <div className={`px-[0.5rem] py-[0.25rem] rounded text-[0.625rem] font-medium backdrop-blur-sm ${isDark ? 'bg-white/20 text-white' : 'bg-black/20 text-white'}`}>
-                  <Copy className="h-[0.75rem] w-[0.75rem] inline mr-[0.25rem]" />Copy
+                <div className="flex flex-col items-center gap-[0.25rem]">
+                  <span
+                    className={`text-[0.625rem] font-mono px-[0.375rem] py-[0.125rem] rounded ${isDark ? 'bg-white/10 text-white/80' : 'bg-black/10 text-black/70'
+                      }`}
+                  >
+                    {Math.round(alphaColor.alpha * 100)}%
+                  </span>
+                  <span
+                    className={`text-[0.5625rem] font-mono truncate max-w-full opacity-0 group-hover:opacity-100 transition-opacity ${textColor}`}
+                  >
+                    {alphaFormat === 'hex8'
+                      ? alphaColor.hex8.replace('#', '')
+                      : alphaFormat === 'rgba'
+                        ? `${alphaColor.r},${alphaColor.g},${alphaColor.b}`
+                        : `${Math.round(chroma(alphaColor.r, alphaColor.g, alphaColor.b).get('hsl.h') || 0)}deg`}
+                  </span>
+                </div>
+                <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                  <div className={`px-[0.5rem] py-[0.25rem] rounded text-[0.625rem] font-medium backdrop-blur-sm ${isDark ? 'bg-white/20 text-white' : 'bg-black/20 text-white'}`}>
+                    <Copy className="h-[0.75rem] w-[0.75rem] inline mr-[0.25rem]" />Copy
+                  </div>
                 </div>
               </div>
-            </div>
-          )})}
+            )
+          })}
         </div>
       </div>
 
@@ -345,15 +344,14 @@ function AlphaScaleView({
                   </td>
                   <td className="p-[0.5rem]">
                     <span
-                      className={`inline-block px-[0.375rem] py-[0.125rem] rounded text-[0.625rem] font-medium ${
-                        alpha.alpha <= 0.1
+                      className={`inline-block px-[0.375rem] py-[0.125rem] rounded text-[0.625rem] font-medium ${alpha.alpha <= 0.1
                           ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300'
                           : alpha.alpha <= 0.3
                             ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-300'
                             : alpha.alpha <= 0.6
                               ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300'
                               : 'bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-300'
-                      }`}
+                        }`}
                     >
                       {Math.round(alpha.alpha * 100)}%
                     </span>
