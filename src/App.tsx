@@ -1,6 +1,6 @@
 import { PaletteGenerator } from './components/palette-generator/PaletteGenerator';
-import { Toaster } from 'sonner@2.0.3';
-import { useState, useEffect } from 'react';
+import { Toaster } from 'sonner';
+import { useState, useEffect, useCallback } from 'react';
 
 export default function App() {
   const [themeSource, setThemeSource] = useState<'system' | 'manual'>(() => {
@@ -30,10 +30,10 @@ export default function App() {
     }
   }, [isDarkMode, themeSource]);
 
-  const toggleDarkMode = () => {
+  const toggleDarkMode = useCallback(() => {
     setThemeSource('manual');
     setIsDarkMode(prev => !prev);
-  };
+  }, []);
 
   return (
     <div className={isDarkMode ? 'dark' : ''}>

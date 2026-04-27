@@ -68,7 +68,7 @@ import {
   formatColor,
   ColorFormat,
 } from "../../lib/color-utils";
-import { toast } from "sonner@2.0.3";
+import { toast } from "sonner";
 import { copyToClipboard } from "../../lib/clipboard";
 import { PaletteDisplay } from "./PaletteDisplay";
 import { PaletteDocumentation } from "./PaletteDocumentation";
@@ -81,6 +81,13 @@ export type { PaletteConfig } from "./types";
 // ============================================================
 // Main Component
 // ============================================================
+
+const hexToComponents = (hex: string) => {
+  const r = parseInt(hex.slice(1, 3), 16) / 255;
+  const g = parseInt(hex.slice(3, 5), 16) / 255;
+  const b = parseInt(hex.slice(5, 7), 16) / 255;
+  return [r, g, b];
+};
 
 export function PaletteGenerator({
   isDarkMode,
@@ -179,7 +186,7 @@ export function PaletteGenerator({
   }, []);
 
   // --- Actions ---
-  const savePreset = () => {
+  const savePreset = useCallback(() => {
     if (!newPresetName.trim()) return;
     const newPreset: SavedPreset = {
       id: Math.random().toString(36).substr(2, 9),
@@ -196,9 +203,9 @@ export function PaletteGenerator({
     setNewPresetName("");
     setIsSaveDialogOpen(false);
     toast.success("Preset saved successfully!");
-  };
+  }, [newPresetName, palettes, savedPresets]);
 
-  const loadPreset = (preset: SavedPreset) => {
+  const loadPreset = useCallback((preset: SavedPreset) => {
     const migrated = preset.palettes.map((p) => ({
       ...p,
       lockStep9: p.lockStep9 ?? false,
@@ -208,9 +215,9 @@ export function PaletteGenerator({
       setActivePaletteId(preset.palettes[0].id);
     setIsManageDialogOpen(false);
     toast.success(`Loaded "${preset.name}"`);
-  };
+  }, []);
 
-  const deletePreset = (id: string) => {
+  const deletePreset = useCallback((id: string) => {
     const updated = savedPresets.filter((p) => p.id !== id);
     setSavedPresets(updated);
     localStorage.setItem(
@@ -218,9 +225,9 @@ export function PaletteGenerator({
       JSON.stringify(updated),
     );
     toast.success("Preset deleted");
-  };
+  }, [savedPresets]);
 
-  const exportPresets = () => {
+  const exportPresets = useCallback(() => {
     const data = {
       _meta: {
         app: "Lumina",
@@ -241,23 +248,10 @@ export function PaletteGenerator({
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
     toast.success(`Exported ${savedPresets.length} preset(s)`);
-  };
+  }, [savedPresets]);
 
-  const exportFigmaTokens = () => {
-    const jsonStr = generateFigmaJson();
-    const blob = new Blob([jsonStr], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `Color.tokens.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    toast.success("Figma tokens downloaded");
-  };
 
-  const importPresets = () => {
+  const importPresets = useCallback(() => {
     const input = document.createElement("input");
     input.type = "file";
     input.accept = ".json";
@@ -302,7 +296,7 @@ export function PaletteGenerator({
       reader.readAsText(file);
     };
     input.click();
-  };
+  }, [savedPresets]);
 
   const generatedPalettes = useMemo(() => {
     return palettes.map((p) => ({
@@ -335,16 +329,16 @@ export function PaletteGenerator({
     return () => clearTimeout(timer);
   }, [activePaletteId]);
 
-  const updatePalette = (
+  const updatePalette = useCallback((
     id: string,
     updates: Partial<PaletteConfig>,
   ) => {
     setPalettes((prev) =>
       prev.map((p) => (p.id === id ? { ...p, ...updates } : p)),
     );
-  };
+  }, []);
 
-  const addPalette = () => {
+  const addPalette = useCallback(() => {
     const newId = Math.random().toString(36).substr(2, 9);
     setPalettes((prev) => [
       ...prev,
@@ -359,9 +353,9 @@ export function PaletteGenerator({
       },
     ]);
     setActivePaletteId(newId);
-  };
+  }, []);
 
-  const removePalette = (id: string) => {
+  const removePalette = useCallback((id: string) => {
     if (palettes.length <= 1) {
       toast.error("You must have at least one palette.");
       return;
@@ -369,10 +363,10 @@ export function PaletteGenerator({
     setPalettes((prev) => prev.filter((p) => p.id !== id));
     if (activePaletteId === id)
       setActivePaletteId(palettes[0].id);
-  };
+  }, [palettes, activePaletteId]);
 
   // --- CSS / JSON generators ---
-  const generateCssVariables = () => {
+  const generateCssVariables = useCallback(() => {
     let css = ":root {\n  /* Solid Colors */\n";
     generatedPalettes.forEach((p) => {
       p.scale.colors.forEach((color, i) => {
@@ -389,9 +383,9 @@ export function PaletteGenerator({
     });
     css += "}";
     return css;
-  };
+  }, [generatedPalettes, colorFormat]);
 
-  const generateJson = () => {
+  const generateJson = useCallback(() => {
     const obj: Record<
       string,
       Record<
@@ -423,16 +417,10 @@ export function PaletteGenerator({
       obj[name] = tokens;
     });
     return JSON.stringify(obj, null, 2);
-  };
+  }, [generatedPalettes, colorFormat]);
 
-  const generateFigmaJson = () => {
+  const generateFigmaJson = useCallback(() => {
     const obj: any = {};
-    const hexToComponents = (hex: string) => {
-      const r = parseInt(hex.slice(1, 3), 16) / 255;
-      const g = parseInt(hex.slice(3, 5), 16) / 255;
-      const b = parseInt(hex.slice(5, 7), 16) / 255;
-      return [r, g, b];
-    };
 
     generatedPalettes.forEach((p) => {
       const name = p.name.toLowerCase().replace(/\s+/g, "-");
@@ -485,7 +473,21 @@ export function PaletteGenerator({
         }
       }
     }, null, 2);
-  };
+  }, [generatedPalettes]);
+
+  const exportFigmaTokens = useCallback(() => {
+    const jsonStr = generateFigmaJson();
+    const blob = new Blob([jsonStr], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `Color.tokens.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast.success("Figma tokens downloaded");
+  }, [generateFigmaJson]);
 
   const activePalette = palettes.find(
     (p) => p.id === activePaletteId,
@@ -657,7 +659,7 @@ export function PaletteGenerator({
                     variant="ghost"
                     size="icon"
                     className="opacity-0 group-hover:opacity-100 h-[1.75rem] w-[1.75rem] text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                    onClick={(e) => {
+                    onClick={(e: React.MouseEvent) => {
                       e.stopPropagation();
                       removePalette(palette.id);
                     }}
@@ -763,7 +765,7 @@ export function PaletteGenerator({
                 </Label>
                 <Switch
                   checked={activePalette.lockStep9}
-                  onCheckedChange={(checked) =>
+                  onCheckedChange={(checked: boolean) =>
                     updatePalette(activePaletteId, {
                       lockStep9: checked,
                     })
@@ -921,7 +923,7 @@ export function PaletteGenerator({
                     max={180}
                     step={1}
                     value={[activePalette.hueShift]}
-                    onValueChange={(v) =>
+                    onValueChange={(v: number[]) =>
                       updatePalette(activePaletteId, {
                         hueShift: v[0],
                       })
@@ -942,7 +944,7 @@ export function PaletteGenerator({
                     max={2}
                     step={0.05}
                     value={[activePalette.saturationScale]}
-                    onValueChange={(v) =>
+                    onValueChange={(v: number[]) =>
                       updatePalette(activePaletteId, {
                         saturationScale: v[0],
                       })
@@ -1008,7 +1010,7 @@ export function PaletteGenerator({
           {/* Editor / Docs toggle */}
           <Tabs
             value={activeView}
-            onValueChange={(v) =>
+            onValueChange={(v: string) =>
               setActiveView(v as "editor" | "docs")
             }
             className="flex-col-0 gap-0"
@@ -1036,7 +1038,7 @@ export function PaletteGenerator({
           {/* Color format toggle */}
           <Tabs
             value={colorFormat}
-            onValueChange={(v) =>
+            onValueChange={(v: string) =>
               setColorFormat(v as "hex" | "oklch")
             }
             className="mr-[0.25rem]"

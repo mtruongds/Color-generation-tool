@@ -79,7 +79,9 @@ export function PaletteDisplay({ palette, colorFormat = 'hex' }: { palette: Pale
           <>
             {/* Color strip */}
             <div className="flex flex-col md:flex-row h-auto md:h-[8rem] divide-y md:divide-y-0 md:divide-x divide-black/5 dark:divide-white/5">
-              {palette.scale.colors.map((color, i) => (
+              {palette.scale.colors.map((color, i) => {
+                const textColor = getTextColor(color);
+                return (
                 <div
                   key={i}
                   className="flex-1 flex md:flex-col items-center justify-between p-[0.5rem] md:p-[1rem] relative group cursor-pointer transition-all hover:brightness-110"
@@ -104,7 +106,7 @@ export function PaletteDisplay({ palette, colorFormat = 'hex' }: { palette: Pale
                           strokeWidth="2.5"
                           strokeLinecap="round"
                           strokeLinejoin="round"
-                          className={getTextColor(color)}
+                          className={textColor}
                         >
                           {palette.lockStep9 ? (
                             <>
@@ -136,7 +138,7 @@ export function PaletteDisplay({ palette, colorFormat = 'hex' }: { palette: Pale
                           strokeWidth="2.5"
                           strokeLinecap="round"
                           strokeLinejoin="round"
-                          className={getTextColor(color)}
+                          className={textColor}
                         >
                           <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
                         </svg>
@@ -144,10 +146,10 @@ export function PaletteDisplay({ palette, colorFormat = 'hex' }: { palette: Pale
                     </div>
                   )}
 
-                  <span className={`text-[0.75rem] font-mono opacity-50 font-bold ${getTextColor(color)}`}>
+                  <span className={`text-[0.75rem] font-mono opacity-50 font-bold ${textColor}`}>
                     {i + 1}
                   </span>
-                  <span className={`text-[0.6875rem] font-mono ${colorFormat === 'oklch' ? '' : 'uppercase'} ${getTextColor(color)}`}>
+                  <span className={`text-[0.6875rem] font-mono ${colorFormat === 'oklch' ? '' : 'uppercase'} ${textColor}`}>
                     {colorFormat === 'oklch'
                       ? (() => { const [l, c, h] = chroma(color).oklch(); return `${(l*100).toFixed(1)} ${c.toFixed(3)}`; })()
                       : color.replace('#', '')}
@@ -169,7 +171,7 @@ export function PaletteDisplay({ palette, colorFormat = 'hex' }: { palette: Pale
                     </div>
                   </div>
                 </div>
-              ))}
+              )})}
             </div>
 
             {/* Usage hints */}
@@ -248,7 +250,9 @@ function AlphaScaleView({
       {/* Alpha strip with checkerboard */}
       <div className="relative">
         <div className="flex flex-col md:flex-row h-auto md:h-[9rem]" style={{ background: checkerBg }}>
-          {alphaScale.colors.map((alphaColor, i) => (
+          {alphaScale.colors.map((alphaColor, i) => {
+            const textColor = getTextColor(solidColors[i]);
+            return (
             <div
               key={i}
               className="flex-1 flex md:flex-col items-center justify-between p-[0.5rem] md:p-[0.75rem] relative group cursor-pointer transition-all hover:brightness-110"
@@ -256,7 +260,7 @@ function AlphaScaleView({
               onClick={() => copyToClipboard(formatAlphaColor(alphaColor, alphaFormat))}
               title={`Click to copy ${formatAlphaColor(alphaColor, alphaFormat)}`}
             >
-              <span className={`text-[0.75rem] font-mono opacity-50 font-bold ${getTextColor(solidColors[i])}`}>
+              <span className={`text-[0.75rem] font-mono opacity-50 font-bold ${textColor}`}>
                 {i + 1}A
               </span>
               <div className="flex flex-col items-center gap-[0.25rem]">
@@ -268,7 +272,7 @@ function AlphaScaleView({
                   {Math.round(alphaColor.alpha * 100)}%
                 </span>
                 <span
-                  className={`text-[0.5625rem] font-mono truncate max-w-full opacity-0 group-hover:opacity-100 transition-opacity ${getTextColor(solidColors[i])}`}
+                  className={`text-[0.5625rem] font-mono truncate max-w-full opacity-0 group-hover:opacity-100 transition-opacity ${textColor}`}
                 >
                   {alphaFormat === 'hex8'
                     ? alphaColor.hex8.replace('#', '')
@@ -283,7 +287,7 @@ function AlphaScaleView({
                 </div>
               </div>
             </div>
-          ))}
+          )})}
         </div>
       </div>
 

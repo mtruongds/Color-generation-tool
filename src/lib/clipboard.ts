@@ -1,4 +1,4 @@
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 
 /**
  * Fallback copy method using document.execCommand for sandboxed iframe environments.
