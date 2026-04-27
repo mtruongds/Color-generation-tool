@@ -318,7 +318,7 @@ export function PaletteGenerator({
       );
       const container = mainContentRef.current;
       if (el && container) {
-        const offset = 32;
+        const offset = -40;
         const elTop = el.offsetTop - container.offsetTop;
         container.scrollTo({
           top: Math.max(0, elTop - offset),
@@ -498,7 +498,7 @@ export function PaletteGenerator({
     <div className="flex flex-col h-full">
       {/* Logo row */}
       <div
-        className={`flex items-center ${collapsed ? "justify-center" : "justify-between"} px-[1rem] py-[0.875rem] border-b border-border`}
+        className={`flex items-center ${collapsed ? "justify-center px-[0.5rem]" : "justify-between px-[1rem]"} py-[0.875rem] border-b border-border`}
       >
         {collapsed ? (
           <Tooltip>
@@ -528,10 +528,10 @@ export function PaletteGenerator({
 
       {/* Palette list */}
       <div
-        className={`flex-1 overflow-hidden flex flex-col ${collapsed ? "px-[0.5rem]" : "px-[1rem]"} pt-[1rem]`}
+        className={`flex-1 min-h-0 overflow-y-auto flex flex-col ${collapsed ? "px-[0.5rem]" : "px-[1rem]"} pt-[1rem]`}
       >
         <div
-          className={`flex items-center ${collapsed ? "justify-center" : "justify-between"} mb-[0.75rem]`}
+          className={`flex items-center ${collapsed ? "justify-center" : "justify-between"} mb-[0.25rem]`}
         >
           {!collapsed && (
             <h3 className="text-[0.75rem] font-semibold text-muted-foreground uppercase tracking-wider">
@@ -539,7 +539,7 @@ export function PaletteGenerator({
             </h3>
           )}
           {collapsed ? (
-            <div className="flex items-center gap-[0.25rem]">
+            <div className="flex items-center gap-[0.25rem] flex-wrap justify-center">
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
@@ -602,18 +602,17 @@ export function PaletteGenerator({
           )}
         </div>
 
-        <ScrollArea className="flex-1">
-          <div className="flex flex-col gap-[0.375rem] pb-[0.5rem]">
+        <ScrollArea className="flex-1 min-h-0">
+          <div className="flex flex-col over gap-[0.375rem] py-[0.5rem]">
             {palettes.map((palette) =>
               collapsed ? (
                 <Tooltip key={palette.id}>
                   <TooltipTrigger asChild>
                     <button
-                      className={`h-[2.25rem] w-[2.25rem] mx-auto rounded-lg border-2 transition-all cursor-pointer hover:scale-110 ${
-                        activePaletteId === palette.id
-                          ? "border-primary ring-2 ring-primary/20"
-                          : "border-transparent hover:border-border"
-                      }`}
+                      className={`h-[1.5rem] w-[1.5rem] mx-auto rounded-md border-2 transition-all cursor-pointer hover:scale-110 ${activePaletteId === palette.id
+                        ? "border-primary ring-2 ring-primary/20"
+                        : "border-transparent hover:border-border"
+                        }`}
                       style={{
                         backgroundColor: palette.baseColor,
                       }}
@@ -634,11 +633,10 @@ export function PaletteGenerator({
               ) : (
                 <div
                   key={palette.id}
-                  className={`group flex items-center gap-[0.75rem] p-[0.625rem] rounded-lg border transition-all cursor-pointer hover:bg-accent/50 ${
-                    activePaletteId === palette.id
-                      ? "border-primary/50 bg-primary/5"
-                      : "border-transparent hover:border-border"
-                  }`}
+                  className={`group flex items-center gap-[0.75rem] p-[0.625rem] rounded-lg border transition-all cursor-pointer hover:bg-accent/50 ${activePaletteId === palette.id
+                    ? "border-primary/50 bg-primary/5"
+                    : "border-transparent hover:border-border"
+                    }`}
                   onClick={() => setActivePaletteId(palette.id)}
                 >
                   <div
@@ -675,7 +673,7 @@ export function PaletteGenerator({
 
       {/* Active palette config (expanded only) */}
       {!collapsed && activePalette && (
-        <div className="border-t border-border px-[1rem] py-[1rem] overflow-y-auto max-h-[50vh]">
+        <div className="flex-1 min-h-0 overflow-y-auto border-t border-border px-[1rem] py-[1rem]">
           <div className="space-y-[1rem]">
             <h3 className="text-[0.75rem] font-semibold text-muted-foreground uppercase tracking-wider">
               Configuration
@@ -867,11 +865,10 @@ export function PaletteGenerator({
               const isDarkScale = activePalette.isDark;
               return (
                 <div
-                  className={`rounded-lg p-[0.75rem] border ${
-                    isDarkScale
-                      ? "bg-violet-50 dark:bg-violet-950 border-violet-200 dark:border-violet-800"
-                      : "bg-blue-50 dark:bg-blue-950 border-blue-200 dark:border-blue-800"
-                  }`}
+                  className={`rounded-lg p-[0.75rem] border ${isDarkScale
+                    ? "bg-violet-50 dark:bg-violet-950 border-violet-200 dark:border-violet-800"
+                    : "bg-blue-50 dark:bg-blue-950 border-blue-200 dark:border-blue-800"
+                    }`}
                 >
                   <div className="flex items-start gap-[0.5rem]">
                     <div
@@ -959,7 +956,7 @@ export function PaletteGenerator({
 
       {/* Collapse toggle (desktop only, not in mobile sheet) */}
       {!isMobile && (
-        <div className="border-t border-border p-[0.5rem] flex justify-center">
+        <div className="border-t border-border py-[0.5rem] px-[0.75rem] flex justify-start">
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
@@ -1287,9 +1284,8 @@ export function PaletteGenerator({
         {/* Desktop sidebar */}
         {!isMobile && (
           <aside
-            className={`flex flex-col border-r border-border bg-card flex-shrink-0 transition-all duration-300 ease-in-out ${
-              sidebarCollapsed ? "w-[3.5rem]" : "w-[20rem]"
-            }`}
+            className={`flex flex-col border-r border-border bg-card flex-shrink-0 overflow-hidden transition-all duration-300 ease-in-out ${sidebarCollapsed ? "w-[3.5rem]" : "w-[20rem]"
+              }`}
           >
             {sidebarContent(sidebarCollapsed)}
           </aside>
