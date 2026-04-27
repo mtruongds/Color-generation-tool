@@ -243,6 +243,20 @@ export function PaletteGenerator({
     toast.success(`Exported ${savedPresets.length} preset(s)`);
   };
 
+  const exportFigmaTokens = () => {
+    const jsonStr = generateFigmaJson();
+    const blob = new Blob([jsonStr], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `Color.tokens.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast.success("Figma tokens downloaded");
+  };
+
   const importPresets = () => {
     const input = document.createElement("input");
     input.type = "file";
@@ -409,6 +423,68 @@ export function PaletteGenerator({
       obj[name] = tokens;
     });
     return JSON.stringify(obj, null, 2);
+  };
+
+  const generateFigmaJson = () => {
+    const obj: any = {};
+    const hexToComponents = (hex: string) => {
+      const r = parseInt(hex.slice(1, 3), 16) / 255;
+      const g = parseInt(hex.slice(3, 5), 16) / 255;
+      const b = parseInt(hex.slice(5, 7), 16) / 255;
+      return [r, g, b];
+    };
+
+    generatedPalettes.forEach((p) => {
+      const name = p.name.toLowerCase().replace(/\s+/g, "-");
+      const alphaScale = generateAlphaScale(p.scale, p.isDark);
+      const tokens: any = {};
+
+      p.scale.colors.forEach((color, i) => {
+        tokens[`${i + 1}`] = {
+          "$type": "color",
+          "$value": {
+            "colorSpace": "srgb",
+            "components": hexToComponents(color),
+            "alpha": 1,
+            "hex": color
+          },
+          "$description": getStepDescription(i + 1, p.name, false),
+          "$extensions": {
+            "com.figma.scopes": ["ALL_SCOPES"],
+            "com.figma.isOverride": true
+          }
+        };
+      });
+
+      alphaScale.colors.forEach((alpha, i) => {
+        tokens[`a${i + 1}`] = {
+          "$type": "color",
+          "$value": {
+            "colorSpace": "srgb",
+            "components": [alpha.r / 255, alpha.g / 255, alpha.b / 255],
+            "alpha": alpha.alpha,
+            "hex": alpha.hex8
+          },
+          "$description": getStepDescription(i + 1, p.name, true),
+          "$extensions": {
+            "com.figma.scopes": ["ALL_SCOPES"],
+            "com.figma.isOverride": true
+          }
+        };
+      });
+
+      obj[name] = tokens;
+    });
+
+    return JSON.stringify({
+      Color: {
+        ...obj,
+        "$extensions": {
+          "com.figma.collectionName": "Color",
+          "com.figma.modeName": "Mode 1"
+        }
+      }
+    }, null, 2);
   };
 
   const activePalette = palettes.find(
@@ -1050,6 +1126,16 @@ export function PaletteGenerator({
               </pre>
             </PopoverContent>
           </Popover>
+
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-[0.375rem] h-[1.75rem] text-[0.8125rem]"
+            onClick={exportFigmaTokens}
+          >
+            <Download className="h-[0.875rem] w-[0.875rem]" />{" "}
+            Export Figma
+          </Button>
 
           <Dialog
             open={isSaveDialogOpen}
