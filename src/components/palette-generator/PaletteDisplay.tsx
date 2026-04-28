@@ -158,10 +158,10 @@ export function PaletteDisplay({ palette, colorFormat = 'hex' }: { palette: Pale
                     <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
                       <div
                         className={`px-[0.5rem] py-[0.25rem] rounded text-[0.625rem] font-medium backdrop-blur-sm ${palette.isDark
-                            ? 'bg-white/20 text-white'
-                            : i < 6
-                              ? 'bg-black/20 text-white'
-                              : 'bg-white/20 text-white'
+                          ? 'bg-white/20 text-white'
+                          : i < 6
+                            ? 'bg-black/20 text-white'
+                            : 'bg-white/20 text-white'
                           }`}
                       >
                         <Copy className="h-[0.75rem] w-[0.75rem] inline mr-[0.25rem]" />
@@ -345,12 +345,12 @@ function AlphaScaleView({
                   <td className="p-[0.5rem]">
                     <span
                       className={`inline-block px-[0.375rem] py-[0.125rem] rounded text-[0.625rem] font-medium ${alpha.alpha <= 0.1
-                          ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300'
-                          : alpha.alpha <= 0.3
-                            ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-300'
-                            : alpha.alpha <= 0.6
-                              ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300'
-                              : 'bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-300'
+                        ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300'
+                        : alpha.alpha <= 0.3
+                          ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-300'
+                          : alpha.alpha <= 0.6
+                            ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300'
+                            : 'bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-300'
                         }`}
                     >
                       {Math.round(alpha.alpha * 100)}%
@@ -408,7 +408,7 @@ function PaletteContrast({ colors, isDark }: { colors: string[]; isDark: boolean
   };
 
   return (
-    <div className="p-[1.5rem] space-y-[1.5rem]">
+    <div className="px-[1rem] space-y-[1.5rem]">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-[1rem]">
           <div className="flex bg-muted rounded-lg p-[0.25rem] gap-[0.25rem]">
