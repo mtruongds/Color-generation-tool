@@ -304,15 +304,14 @@ export function PaletteDocumentation({
                               </td>
                               <td className="px-3 py-2">
                                 <span
-                                  className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium ${
-                                    alpha.alpha <= 0.1
-                                      ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300"
-                                      : alpha.alpha <= 0.3
-                                        ? "bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-300"
-                                        : alpha.alpha <= 0.6
-                                          ? "bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300"
-                                          : "bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-300"
-                                  }`}
+                                  className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium ${alpha.alpha <= 0.1
+                                    ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300"
+                                    : alpha.alpha <= 0.3
+                                      ? "bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-300"
+                                      : alpha.alpha <= 0.6
+                                        ? "bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300"
+                                        : "bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-300"
+                                    }`}
                                 >
                                   {Math.round(
                                     alpha.alpha * 100,
@@ -334,13 +333,13 @@ export function PaletteDocumentation({
                                       </span>
                                       {whiteRating.label !==
                                         "Fail" && (
-                                        <Badge
-                                          variant="secondary"
-                                          className={`text-[9px] h-4 px-1 ${whiteRating.label === "AAA" ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100" : ""}`}
-                                        >
-                                          {whiteRating.label}
-                                        </Badge>
-                                      )}
+                                          <Badge
+                                            variant="secondary"
+                                            className={`text-[9px] h-4 px-1 ${whiteRating.label === "AAA" ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100" : ""}`}
+                                          >
+                                            {whiteRating.label}
+                                          </Badge>
+                                        )}
                                     </div>
                                     <div className="flex items-center gap-1">
                                       <span className="text-[10px] text-muted-foreground/70">
@@ -353,13 +352,13 @@ export function PaletteDocumentation({
                                       </span>
                                       {blackRating.label !==
                                         "Fail" && (
-                                        <Badge
-                                          variant="secondary"
-                                          className={`text-[9px] h-4 px-1 ${blackRating.label === "AAA" ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100" : ""}`}
-                                        >
-                                          {blackRating.label}
-                                        </Badge>
-                                      )}
+                                          <Badge
+                                            variant="secondary"
+                                            className={`text-[9px] h-4 px-1 ${blackRating.label === "AAA" ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100" : ""}`}
+                                          >
+                                            {blackRating.label}
+                                          </Badge>
+                                        )}
                                     </div>
                                   </div>
                                 </div>
@@ -565,30 +564,34 @@ export function PaletteDocumentation({
               </CardHeader>
               <CardContent className="p-4 space-y-1.5">
                 <h3
-                  className="text-2xl font-bold"
+                  className="text-2xl font-semibold"
                   style={{ color: palette.scale.colors[11] }}
                 >
                   The quick brown fox
                 </h3>
                 <p
-                  className="text-lg"
+                  className="text-lg font-medium"
                   style={{ color: palette.scale.colors[10] }}
                 >
                   Jumps over the lazy dog.
                 </p>
                 <p
-                  className="text-md"
+                  className="text-md font-normal"
                   style={{
-                    color: palette.scale.colors[9],
+                    color: palette.scale.colors[10],
                   }}
                 >
                   Design systems allow for scalable UI
                   development.
                 </p>
                 <p
-                  className="text-sm font-medium"
+                  className="text-sm font-normal"
                   style={{
-                    color: palette.scale.colors[8],
+                    color: palette.scale.colors[10],
+                    textDecoration: "underline",
+                    textDecorationColor: palette.scale.colors[10],
+                    textUnderlineOffset: "0.1em",
+                    textDecorationThickness: "1px",
                   }}
                 >
                   Micro-copy and metadata often use lower

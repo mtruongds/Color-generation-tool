@@ -3,14 +3,22 @@
 :root {
   --font-size: 16px;
   /* 1.125 Major Second type scale */
-  --ts-xs: 0.790rem;    /* 12.64px — 1 / 1.125^2 */
-  --ts-sm: 0.889rem;    /* 14.22px — 1 / 1.125   */
-  --ts-base: 1rem;      /* 16px    — base         */
-  --ts-lg: 1.125rem;    /* 18px    — 1.125^1      */
-  --ts-xl: 1.266rem;    /* 20.25px — 1.125^2      */
-  --ts-2xl: 1.424rem;   /* 22.78px — 1.125^3      */
-  --ts-3xl: 1.602rem;   /* 25.63px — 1.125^4      */
-  --ts-4xl: 1.802rem;   /* 28.83px — 1.125^5      */
+  --ts-xs: 0.790rem;
+  /* 12.64px — 1 / 1.125^2 */
+  --ts-sm: 0.889rem;
+  /* 14.22px — 1 / 1.125   */
+  --ts-base: 1rem;
+  /* 16px    — base         */
+  --ts-lg: 1.125rem;
+  /* 18px    — 1.125^1      */
+  --ts-xl: 1.266rem;
+  /* 20.25px — 1.125^2      */
+  --ts-2xl: 1.424rem;
+  /* 22.78px — 1.125^3      */
+  --ts-3xl: 1.602rem;
+  /* 25.63px — 1.125^4      */
+  --ts-4xl: 1.802rem;
+  /* 28.83px — 1.125^5      */
   --background: #ffffff;
   --foreground: oklch(0.145 0 0);
   --card: #ffffff;
@@ -131,6 +139,9 @@
 @layer base {
   * {
     @apply border-border outline-ring/50;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
   }
 
   body {

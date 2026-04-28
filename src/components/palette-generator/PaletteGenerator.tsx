@@ -673,7 +673,7 @@ export function PaletteGenerator({
 
       {/* Active palette config (expanded only) */}
       {!collapsed && activePalette && (
-        <div className="min-h-0 overflow-y-auto border-t border-border px-[1rem] py-[1rem]">
+        <div className="min-h-0 overflow-y-auto border-t border-border px-[1rem] py-[1rem]" style={{ height: "27rem" }}>
           <div className="space-y-[1rem]">
             <h3 className="text-[0.75rem] font-semibold text-muted-foreground uppercase tracking-wider">
               Configuration
