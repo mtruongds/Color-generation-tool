@@ -427,7 +427,7 @@ export function PaletteDocumentation({
                   <span
                     className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium"
                     style={{
-                      backgroundColor: palette.scale.colors[1],
+                      backgroundColor: palette.scale.colors[2],
                       color: palette.scale.colors[11],
                     }}
                   >

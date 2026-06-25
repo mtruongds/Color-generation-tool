@@ -66,42 +66,43 @@ const DARK_LIGHTNESS_SCAFFOLD = [
 const LIGHT_SATURATION_CURVE = [
   0.20,  // Step 1
   0.35,  // Step 2
-  0.70,  // Step 3
-  0.78,  // Step 4
-  0.85,  // Step 5
+  0.50,  // Step 3 — smoothed ramp (was 0.70)
+  0.65,  // Step 4 — smoothed ramp (was 0.78)
+  0.78,  // Step 5 — smoothed ramp (was 0.85)
   0.85,  // Step 6
   0.90,  // Step 7
   0.95,  // Step 8
   1.00,  // Step 9 (base anchor)
   0.95,  // Step 10
   0.80,  // Step 11
-  0.60,  // Step 12
+  0.90,  // Step 12 — retain brand hue vibe at high-contrast text
 ];
 
 // Dark mode: very low saturation for clean dark surfaces, ramps up to step 9
 const DARK_SATURATION_CURVE = [
   0.10,  // Step 1
   0.15,  // Step 2
-  0.35,  // Step 3
+  0.40,  // Step 3 — raised from 0.35 for better surface color visibility
   0.45,  // Step 4
-  0.55,  // Step 5
-  0.55,  // Step 6
+  0.52,  // Step 5 — differentiated from step 6 (was 0.55)
+  0.62,  // Step 6 — differentiated from step 5 (was 0.55)
   0.65,  // Step 7
   0.75,  // Step 8
   1.00,  // Step 9 (base anchor)
   0.95,  // Step 10
   0.80,  // Step 11
-  0.60,  // Step 12
+  0.90,  // Step 12 — retain brand hue vibe at high-contrast text
 ];
 
 // ===== HUE-SPECIFIC ADJUSTMENTS =====
 // Some hues need tweaks to the base scaffolds for perceptual uniformity.
 
-type HueCategory = 'yellow' | 'lime' | 'cyan' | 'default';
+type HueCategory = 'yellow' | 'orange' | 'lime' | 'cyan' | 'default';
 
 function getHueCategory(hue: number): HueCategory {
   const h = ((hue % 360) + 360) % 360;
   if (h >= 45 && h < 65) return 'yellow';
+  if (h >= 20 && h < 45)  return 'orange';
   if (h >= 65 && h <= 100) return 'lime';
   if (h >= 170 && h <= 200) return 'cyan';
   return 'default';
@@ -111,14 +112,16 @@ function getHueCategory(hue: number): HueCategory {
 const LIGHT_SCAFFOLD_OFFSETS: Record<HueCategory, number[]> = {
   default: [0, 0, 0, 0, 0, 0, 0, 0],
   yellow:  [-0.005, -0.020, -0.025, -0.020, -0.015, -0.000, 0.020, 0.060],
-  lime:    [-0.002, -0.015, -0.020, -0.010, -0.005, 0.010, 0.035, 0.070],
-  cyan:    [0.000, -0.010, -0.015, -0.005, 0.005, 0.025, 0.050, 0.080],
+  orange:  [-0.003, -0.010, -0.012, -0.010, -0.008,  0.000, 0.010, 0.030],
+  lime:    [-0.002, -0.015, -0.020, -0.010, -0.005,  0.010, 0.035, 0.070],
+  cyan:    [ 0.000, -0.010, -0.015, -0.005,  0.005,  0.025, 0.050, 0.080],
 };
 
 // Dark scaffold offsets per hue category
 const DARK_SCAFFOLD_OFFSETS: Record<HueCategory, number[]> = {
-  default: [0, 0, 0, 0, 0, 0, 0, 0],
+  default: [ 0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000],
   yellow:  [-0.010, -0.012, -0.010, -0.015, -0.020, -0.017, -0.016, -0.012],
+  orange:  [-0.005, -0.006, -0.005, -0.008, -0.010, -0.009, -0.008, -0.006],
   lime:    [-0.007, -0.010, -0.008, -0.010, -0.014, -0.012, -0.012, -0.008],
   cyan:    [-0.003, -0.005, -0.008, -0.005, -0.010, -0.008, -0.008, -0.004],
 };
@@ -132,6 +135,10 @@ const SAT_CURVE_ADJUSTMENTS: Record<HueCategory, { light: number[]; dark: number
   yellow: {
     light: [1, 1, 1, 1, 1.15, 1.15, 1.15, 1.15, 1, 1, 1, 1],
     dark:  [0.83, 0.86, 0.88, 0.89, 0.90, 0.94, 0.97, 0.97, 1, 1, 0.92, 0.92],
+  },
+  orange: {
+    light: [1, 1, 1, 1, 1.07, 1.07, 1.07, 1.07, 1, 1, 1, 1],
+    dark:  [0.90, 0.92, 0.93, 0.94, 0.95, 0.97, 0.98, 0.98, 1, 1, 0.96, 0.96],
   },
   lime: {
     light: [1, 1, 1, 1.12, 1.12, 1.12, 1.12, 1.12, 1, 1, 1, 1],
@@ -162,8 +169,8 @@ function buildLightnessScale(baseL: number, hue: number, isDark: boolean): numbe
       ...scaffold,
       baseL,                                          // Step 9
       Math.min(baseL + 0.05, 0.95),                  // Step 10: lighter hover
-      Math.min(Math.max(baseL + 0.25, 0.75), 0.90),  // Step 11: low-contrast text
-      0.98,                                           // Step 12: high-contrast text
+      Math.min(Math.max(baseL + 0.25, 0.70), 0.75),  // Step 11: low-contrast text (capped at 0.75, always ≥0.12 below step 12)
+      0.87,                                           // Step 12: high-contrast text (~12.5:1 against dark bg)
     ];
   }
 
@@ -173,8 +180,8 @@ function buildLightnessScale(baseL: number, hue: number, isDark: boolean): numbe
     ...scaffold,
     baseL,                                          // Step 9
     Math.max(baseL - 0.05, 0),                      // Step 10: darker hover
-    Math.max(baseL - 0.13, 0.25),                   // Step 11: low-contrast text
-    0.11,                                           // Step 12: high-contrast text
+    Math.max(baseL - 0.13, 0.33),                   // Step 11: low-contrast text (floored at 0.33, always ≥0.13 above step 12)
+    0.20,                                           // Step 12: high-contrast text (~12.5:1 against light bg)
   ];
 }
 
@@ -193,7 +200,9 @@ function buildSaturationScale(baseS: number, hue: number, isDark: boolean): numb
 }
 
 // ===== LEGACY EXPORTS (kept for backward compatibility) =====
-// These are no longer used internally but may be referenced externally.
+// @deprecated These constants reflect the original fixed-scale approach and
+// may diverge from current generator output. The live scale uses
+// buildLightnessScale() which is anchor-based. Do not rely on these for new code.
 
 export const DEFAULT_LIGHTNESS_SCALE = [
   0.990, 0.975, 0.940, 0.890, 0.830, 0.750, 0.650, 0.520, 0.50, 0.44, 0.35, 0.12,
@@ -266,7 +275,7 @@ function getOptimalStep9Lightness(hue: number): number {
   if (h > 310 || h < 20) return 0.55;
 
   // Orange (20-45)
-  if (h >= 20 && h < 45) return 0.52;
+  if (h >= 20 && h < 45) return 0.54;
 
   // Fallback
   return 0.50;
@@ -353,7 +362,8 @@ export function generateScale(
           return chroma.hsl(baseH, hoverS, hoverL).hex().toUpperCase();
         } else {
           const hoverL = Math.max(0, anchorL - 0.07);
-          return chroma.hsl(baseH, baseS, hoverL).hex().toUpperCase();
+          const hoverS = Math.min(1, baseS * 1.05); // slight saturation boost mirrors dark mode behavior
+          return chroma.hsl(baseH, hoverS, hoverL).hex().toUpperCase();
         }
       }
 
@@ -361,11 +371,13 @@ export function generateScale(
       const userHueAdj = (hueShift / 12) * (index - 6);
 
       // Subtle blue-tinting for dark mode backgrounds (Radix characteristic)
+      // Extends through step 3 (index 2) with proportionally decreasing strength
       let darkHueAdj = 0;
-      if (isDark && index <= 1) {
+      if (isDark && index <= 2) {
         const blueTarget = 220;
         const hueDiff = blueTarget - baseH;
-        darkHueAdj = hueDiff * 0.06 * (2 - index);
+        const strengths = [0.12, 0.06, 0.03];
+        darkHueAdj = hueDiff * strengths[index];
       }
 
       const stepH = baseH + userHueAdj + darkHueAdj;
@@ -373,9 +385,10 @@ export function generateScale(
       // Saturation: curve value × user scale
       let stepS = saturationCurve[index] * saturationScale;
 
-      // Extra dampening for step 12 in dark mode to prevent neon high-contrast text
-      if (isDark && index === 11) {
-        stepS *= 0.80;
+      // Step 12: soft cap to prevent overly vivid output on high-saturation inputs
+      // while still letting the brand hue come through clearly
+      if (index === 11) {
+        stepS = Math.min(stepS, 0.85);
       }
 
       stepS = Math.max(0, Math.min(1, stepS));
@@ -524,7 +537,7 @@ export function solidToAlpha(solidColor: string, backgroundColor: string): Alpha
     const sr = solid[0], sg = solid[1], sb = solid[2];
     const br = bg[0], bg_ = bg[1], bb = bg[2];
 
-    let minAlpha = 0.001;
+    let minAlpha = 0.01; // 1% floor avoids precision issues with near-matching solid+bg pairs
 
     const channels = [
       { s: sr, b: br },
