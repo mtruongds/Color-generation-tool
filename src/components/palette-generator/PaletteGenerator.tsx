@@ -713,14 +713,7 @@ export function PaletteGenerator({
             </div>
 
             {/* Lock Step 9 */}
-            <div
-              className="space-y-[0.375rem] p-[1rem] rounded-lg"
-              style={{
-                backgroundColor: generatedPalettes.find(
-                  (p) => p.name.toLowerCase() === "neutral",
-                )?.scale.colors[1],
-              }}
-            >
+            <div className="space-y-[0.375rem] rounded-lg border border-border bg-muted/50 p-[1rem] transition-colors dark:bg-muted/30">
               <div className="flex items-center justify-between py-[0.25rem]">
                 <Label className="flex items-center gap-[0.5rem] text-[0.75rem] text-muted-foreground">
                   <svg
@@ -810,7 +803,7 @@ export function PaletteGenerator({
                   );
                   if (opt.delta === 0) return null;
                   return (
-                    <div className="rounded-lg p-[0.625rem] border bg-muted/50 dark:bg-muted/30 border-border">
+                    <div className="rounded-lg border border-border bg-background/60 p-[0.625rem] transition-colors dark:bg-background/40">
                       <div className="flex items-start gap-[0.5rem]">
                         <div className="flex items-center gap-[0.375rem] flex-shrink-0 mt-[0.125rem]">
                           <div

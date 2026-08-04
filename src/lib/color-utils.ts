@@ -199,6 +199,104 @@ function buildSaturationScale(baseS: number, hue: number, isDark: boolean): numb
   });
 }
 
+function clamp01(value: number): number {
+  return Math.max(0, Math.min(1, value));
+}
+
+function getAPCAScore(text: string, background: string): number {
+  return Math.abs(getAPCA(text, background));
+}
+
+function findLightnessForAPCAScore(
+  background: string,
+  hue: number,
+  saturation: number,
+  preferredLightness: number,
+  targetScore: number,
+): number {
+  let bestLightness = clamp01(preferredLightness);
+  let bestScoreDelta = Number.POSITIVE_INFINITY;
+  let bestDistanceFromPreferred = Number.POSITIVE_INFINITY;
+
+  const consider = (lightness: number) => {
+    const candidateLightness = clamp01(lightness);
+    const score = getAPCAScore(chroma.hsl(hue, saturation, candidateLightness).hex(), background);
+    const scoreDelta = Math.abs(score - targetScore);
+    const distanceFromPreferred = Math.abs(candidateLightness - preferredLightness);
+
+    if (
+      scoreDelta < bestScoreDelta ||
+      (Math.abs(scoreDelta - bestScoreDelta) < 0.001 && distanceFromPreferred < bestDistanceFromPreferred)
+    ) {
+      bestLightness = candidateLightness;
+      bestScoreDelta = scoreDelta;
+      bestDistanceFromPreferred = distanceFromPreferred;
+    }
+  };
+
+  const sampleCount = 96;
+  let prevLightness = 0;
+  let prevScoreDelta = getAPCAScore(chroma.hsl(hue, saturation, prevLightness).hex(), background) - targetScore;
+  consider(prevLightness);
+
+  for (let i = 1; i <= sampleCount; i++) {
+    const currentLightness = i / sampleCount;
+    const currentScoreDelta = getAPCAScore(chroma.hsl(hue, saturation, currentLightness).hex(), background) - targetScore;
+    consider(currentLightness);
+
+    if (prevScoreDelta === 0 || currentScoreDelta === 0 || prevScoreDelta * currentScoreDelta < 0) {
+      let low = prevLightness;
+      let high = currentLightness;
+
+      for (let j = 0; j < 20; j++) {
+        const mid = (low + high) / 2;
+        const midScoreDelta = getAPCAScore(chroma.hsl(hue, saturation, mid).hex(), background) - targetScore;
+        consider(mid);
+
+        if (prevScoreDelta * midScoreDelta <= 0) {
+          high = mid;
+        } else {
+          low = mid;
+          prevScoreDelta = midScoreDelta;
+        }
+      }
+    }
+
+    prevLightness = currentLightness;
+    prevScoreDelta = currentScoreDelta;
+  }
+
+  return bestLightness;
+}
+
+function adjustStep8ToAPCAMidpoint(
+  colors: string[],
+  lightnessScale: number[],
+  hue: number,
+  saturation: number,
+): string[] {
+  const background = colors[0];
+  const step7Score = getAPCAScore(colors[6], background);
+  const step9Score = getAPCAScore(colors[8], background);
+
+  if (!Number.isFinite(step7Score) || !Number.isFinite(step9Score) || step9Score <= step7Score) {
+    return colors;
+  }
+
+  const targetScore = (step7Score + step9Score) / 2;
+  const step8Lightness = findLightnessForAPCAScore(
+    background,
+    hue,
+    saturation,
+    lightnessScale[7],
+    targetScore,
+  );
+
+  const adjusted = [...colors];
+  adjusted[7] = chroma.hsl(hue, saturation, step8Lightness).hex().toUpperCase();
+  return adjusted;
+}
+
 // ===== LEGACY EXPORTS (kept for backward compatibility) =====
 // @deprecated These constants reflect the original fixed-scale approach and
 // may diverge from current generator output. The live scale uses
@@ -396,7 +494,11 @@ export function generateScale(
       return chroma.hsl(stepH, stepS, targetL).hex().toUpperCase();
     });
 
-    return { name, colors };
+    const step8Hue = baseH + (hueShift / 12);
+    const step8Saturation = Math.max(0, Math.min(1, saturationCurve[7] * saturationScale));
+    const adjustedColors = adjustStep8ToAPCAMidpoint(colors, lightnessScale, step8Hue, step8Saturation);
+
+    return { name, colors: adjustedColors };
   } catch (e) {
     console.error('Error generating scale', e);
     return { name, colors: Array(12).fill('#000000') };

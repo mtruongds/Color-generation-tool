@@ -409,7 +409,7 @@ function PaletteContrast({ colors, isDark }: { colors: string[]; isDark: boolean
 
   return (
     <div className="px-[1rem] space-y-[1.5rem]">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between" style={{ paddingTop: '1.2rem' }}>
         <div className="flex items-center gap-[1rem]">
           <div className="flex bg-muted rounded-lg p-[0.25rem] gap-[0.25rem]">
             <Button variant={view === 'cards' ? 'secondary' : 'ghost'} size="sm" className="h-[1.75rem] text-[0.75rem] px-[0.75rem]" onClick={() => setView('cards')}>

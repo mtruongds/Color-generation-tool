@@ -5,9 +5,13 @@ import {
   getContrast,
   getAPCA,
   getWCAGRating,
+  generateScale,
   generateAlphaScale,
   formatColor,
+  hexToOklch,
   ColorFormat,
+  getStepDescription,
+  AlphaColor,
 } from "../../lib/color-utils";
 import { Badge } from "../ui/badge";
 import {
@@ -26,6 +30,18 @@ function accessibleTextColor(bgColor: string): string {
   return apcaWhite > apcaBlack ? "#fff" : "#000";
 }
 
+function alphaToOklch(alpha: AlphaColor): string {
+  const oklch = hexToOklch(
+    `#${alpha.r.toString(16).padStart(2, "0")}${alpha.g.toString(16).padStart(2, "0")}${alpha.b.toString(16).padStart(2, "0")}`,
+  );
+  const alphaValue =
+    alpha.alpha === 1
+      ? "1"
+      : alpha.alpha.toFixed(3).replace(/0+$/, "").replace(/\.$/, "");
+
+  return oklch.replace(")", ` / ${alphaValue})`);
+}
+
 interface PaletteDocumentationProps {
   palettes: (PaletteConfig & { scale: ColorScale })[];
   colorFormat?: ColorFormat;
@@ -38,13 +54,14 @@ export function PaletteDocumentation({
   const downloadGoogleSheetCsv = () => {
     const headers = [
       "Token Name",
-      "Hex Value",
-      "Alpha (RGBA)",
-      "Alpha (Hex8)",
-      "Alpha %",
-      "Mode",
+      "Light Mode Color",
+      "Light Mode OKLCH",
+      "Dark Mode Color",
+      "Dark Mode OKLCH",
       "Palette Name",
       "Step",
+      "Type",
+      "Usage",
     ];
 
     const escapeCsv = (field: string) => {
@@ -61,20 +78,57 @@ export function PaletteDocumentation({
     let csvContent = headers.join(",") + "\n";
 
     palettes.forEach((p) => {
-      const alphaScale = generateAlphaScale(p.scale, p.isDark);
-      p.scale.colors.forEach((color, i) => {
-        const alpha = alphaScale.colors[i];
-        const row = [
-          `${p.name}/${i + 1}`,
-          color,
-          alpha.rgba,
-          alpha.hex8,
-          `${Math.round(alpha.alpha * 100)}%`,
-          p.isDark ? "Dark" : "Light",
+      const scaleOptions = {
+        hueShift: p.hueShift,
+        saturationScale: p.saturationScale,
+        lockStep9: p.lockStep9,
+      };
+      const lightScale = generateScale(
+        p.baseColor,
+        p.name,
+        false,
+        scaleOptions,
+      );
+      const darkScale = generateScale(
+        p.baseColor,
+        p.name,
+        true,
+        scaleOptions,
+      );
+      const lightAlphaScale = generateAlphaScale(lightScale, false);
+      const darkAlphaScale = generateAlphaScale(darkScale, true);
+      const tokenBase = p.name.toLowerCase().replace(/\s+/g, "-");
+
+      p.scale.colors.forEach((_, i) => {
+        const step = i + 1;
+        const solidRow = [
+          `${tokenBase}/${step}`,
+          lightScale.colors[i],
+          hexToOklch(lightScale.colors[i]),
+          darkScale.colors[i],
+          hexToOklch(darkScale.colors[i]),
           p.name,
-          (i + 1).toString(),
+          step.toString(),
+          "Solid",
+          getStepDescription(step, p.name, false),
         ];
-        csvContent += row.map(escapeCsv).join(",") + "\n";
+        csvContent += solidRow.map(escapeCsv).join(",") + "\n";
+      });
+
+      p.scale.colors.forEach((_, i) => {
+        const step = i + 1;
+        const alphaRow = [
+          `${tokenBase}/a${step}`,
+          lightAlphaScale.colors[i].rgba,
+          alphaToOklch(lightAlphaScale.colors[i]),
+          darkAlphaScale.colors[i].rgba,
+          alphaToOklch(darkAlphaScale.colors[i]),
+          p.name,
+          `a${step}`,
+          "Alpha",
+          getStepDescription(step, p.name, true),
+        ];
+        csvContent += alphaRow.map(escapeCsv).join(",") + "\n";
       });
     });
 
@@ -418,7 +472,7 @@ export function PaletteDocumentation({
                     className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border"
                     style={{
                       backgroundColor: "transparent",
-                      borderColor: palette.scale.colors[8],
+                      borderColor: palette.scale.colors[5],
                       color: palette.scale.colors[10],
                     }}
                   >
@@ -475,7 +529,7 @@ export function PaletteDocumentation({
                     className="flex items-center h-9 w-full rounded-md border-1 px-3 text-sm"
                     style={{
                       backgroundColor: palette.scale.colors[0],
-                      borderColor: palette.scale.colors[8],
+                      borderColor: palette.scale.colors[6],
                       color: palette.scale.colors[11],
                       boxShadow: `0 0 0 3px ${palette.scale.colors[2]}`,
                     }}
@@ -541,7 +595,7 @@ export function PaletteDocumentation({
                       className="px-4 py-2 rounded text-sm font-medium border transition-colors"
                       style={{
                         backgroundColor: "transparent",
-                        borderColor: palette.scale.colors[8],
+                        borderColor: palette.scale.colors[6],
                         color: palette.scale.colors[10],
                       }}
                     >
