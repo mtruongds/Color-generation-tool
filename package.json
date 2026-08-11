@@ -3,6 +3,7 @@
       "version": "0.1.0",
       "private": true,
       "dependencies": {
+            "@radix-ui/colors": "^3.0.0",
             "@radix-ui/react-accordion": "^1.2.3",
             "@radix-ui/react-alert-dialog": "^1.1.6",
             "@radix-ui/react-aspect-ratio": "^1.1.2",
@@ -49,10 +50,12 @@
       },
       "devDependencies": {
             "@types/chroma-js": "^3.1.2",
-            "@types/node": "^20.10.0",
+            "@types/node": "^20.19.43",
             "@types/react": "^18.3.28",
             "@types/react-dom": "^18.3.7",
             "@vitejs/plugin-react-swc": "^3.10.2",
+            "ts-node": "^10.9.2",
+            "typescript": "^7.0.2",
             "vite": "6.3.5"
       },
       "scripts": {

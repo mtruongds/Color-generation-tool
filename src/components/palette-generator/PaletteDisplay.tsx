@@ -89,12 +89,13 @@ export function PaletteDisplay({ palette, colorFormat = 'hex' }: { palette: Pale
                     onClick={() => copyToClipboard(formatColor(color, colorFormat))}
                     title={`Click to copy ${formatColor(color, colorFormat)}`}
                   >
-                    {/* Lock/auto indicator – step 9 */}
+                    {/* Step 9 mode indicator */}
                     {i === 8 && (
                       <div className="absolute top-[0.25rem] right-[0.25rem] md:top-[0.5rem] md:right-[0.5rem]">
                         <div
                           className={`h-[1rem] w-[1rem] rounded-full backdrop-blur-sm flex items-center justify-center ${palette.lockStep9 ? 'bg-black/20 dark:bg-white/20' : 'bg-emerald-500/30'
                             }`}
+                          title={palette.lockStep9 ? 'Exact step 9 forced' : 'Radix step 9 safeguard enabled'}
                         >
                           <svg
                             width="10"

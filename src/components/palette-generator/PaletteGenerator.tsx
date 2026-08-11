@@ -712,7 +712,7 @@ export function PaletteGenerator({
               />
             </div>
 
-            {/* Lock Step 9 */}
+            {/* Step 9 safeguard */}
             <div className="space-y-[0.375rem] rounded-lg border border-border bg-muted/50 p-[1rem] transition-colors dark:bg-muted/30">
               <div className="flex items-center justify-between py-[0.25rem]">
                 <Label className="flex items-center gap-[0.5rem] text-[0.75rem] text-muted-foreground">
@@ -752,7 +752,7 @@ export function PaletteGenerator({
                       </>
                     )}
                   </svg>
-                  Lock Key Color (Step 9)
+                  Force Exact Step 9
                 </Label>
                 <Switch
                   checked={activePalette.lockStep9}
@@ -794,7 +794,7 @@ export function PaletteGenerator({
 
               {/* Dark Mode */}
 
-              {/* Optimization delta */}
+              {/* Step 9 safeguard delta */}
               {!activePalette.lockStep9 &&
                 (() => {
                   const opt = getOptimizedStep9(
@@ -833,7 +833,7 @@ export function PaletteGenerator({
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="text-[0.6875rem] font-medium text-foreground">
-                            Auto-optimized
+                            Step 9 safeguard
                           </div>
                           <div className="text-[0.625rem] text-muted-foreground font-mono">
                             L: {opt.originalL}% →{" "}
