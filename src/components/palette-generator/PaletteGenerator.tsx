@@ -19,6 +19,7 @@ import {
   Download,
   Upload,
   ArrowUp,
+  ArrowDown,
   Check,
   PanelLeftClose,
   PanelLeft,
@@ -102,7 +103,7 @@ export function PaletteGenerator({
       id: "1",
       name: "Primary",
       baseColor: "#3e63dd",
-      isDark: false,
+      isDark: isDarkMode,
       hueShift: 0,
       saturationScale: 1,
       lockStep9: false,
@@ -111,7 +112,7 @@ export function PaletteGenerator({
       id: "2",
       name: "Neutral",
       baseColor: "#71717a",
-      isDark: false,
+      isDark: isDarkMode,
       hueShift: 0,
       saturationScale: 1,
       lockStep9: false,
@@ -208,6 +209,7 @@ export function PaletteGenerator({
   const loadPreset = useCallback((preset: SavedPreset) => {
     const migrated = preset.palettes.map((p) => ({
       ...p,
+      isDark: isDarkMode,
       lockStep9: p.lockStep9 ?? false,
     }));
     setPalettes(migrated);
@@ -215,7 +217,7 @@ export function PaletteGenerator({
       setActivePaletteId(preset.palettes[0].id);
     setIsManageDialogOpen(false);
     toast.success(`Loaded "${preset.name}"`);
-  }, []);
+  }, [isDarkMode]);
 
   const deletePreset = useCallback((id: string) => {
     const updated = savedPresets.filter((p) => p.id !== id);
@@ -346,14 +348,14 @@ export function PaletteGenerator({
         id: newId,
         name: "New Color",
         baseColor: "#10b981",
-        isDark: false,
+        isDark: isDarkMode,
         hueShift: 0,
         saturationScale: 1,
         lockStep9: false,
       },
     ]);
     setActivePaletteId(newId);
-  }, []);
+  }, [isDarkMode]);
 
   const removePalette = useCallback((id: string) => {
     if (palettes.length <= 1) {
@@ -364,6 +366,21 @@ export function PaletteGenerator({
     if (activePaletteId === id)
       setActivePaletteId(palettes[0].id);
   }, [palettes, activePaletteId]);
+
+  const movePalette = useCallback((id: string, direction: -1 | 1) => {
+    setPalettes((prev) => {
+      const index = prev.findIndex((p) => p.id === id);
+      const nextIndex = index + direction;
+      if (index === -1 || nextIndex < 0 || nextIndex >= prev.length) {
+        return prev;
+      }
+
+      const reordered = [...prev];
+      const [palette] = reordered.splice(index, 1);
+      reordered.splice(nextIndex, 0, palette);
+      return reordered;
+    });
+  }, []);
 
   // --- CSS / JSON generators ---
   const generateCssVariables = useCallback(() => {
@@ -604,7 +621,7 @@ export function PaletteGenerator({
 
         <ScrollArea className="flex-1 min-h-0">
           <div className="flex flex-col over gap-[0.375rem] py-[0.5rem]">
-            {palettes.map((palette) =>
+            {palettes.map((palette, index) =>
               collapsed ? (
                 <Tooltip key={palette.id}>
                   <TooltipTrigger asChild>
@@ -656,7 +673,34 @@ export function PaletteGenerator({
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="opacity-0 group-hover:opacity-100 h-[1.75rem] w-[1.75rem] text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                    className="h-[1.75rem] w-[1.75rem] opacity-100 text-muted-foreground transition-opacity hover:text-foreground md:opacity-0 md:focus-visible:opacity-100 md:group-hover:opacity-100"
+                    disabled={index === 0}
+                    aria-label={`Move ${palette.name} up`}
+                    onClick={(e: React.MouseEvent) => {
+                      e.stopPropagation();
+                      movePalette(palette.id, -1);
+                    }}
+                  >
+                    <ArrowUp className="h-[0.875rem] w-[0.875rem]" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-[1.75rem] w-[1.75rem] opacity-100 text-muted-foreground transition-opacity hover:text-foreground md:opacity-0 md:focus-visible:opacity-100 md:group-hover:opacity-100"
+                    disabled={index === palettes.length - 1}
+                    aria-label={`Move ${palette.name} down`}
+                    onClick={(e: React.MouseEvent) => {
+                      e.stopPropagation();
+                      movePalette(palette.id, 1);
+                    }}
+                  >
+                    <ArrowDown className="h-[0.875rem] w-[0.875rem]" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-[1.75rem] w-[1.75rem] opacity-100 text-muted-foreground transition-opacity hover:text-destructive hover:bg-destructive/10 md:opacity-0 md:focus-visible:opacity-100 md:group-hover:opacity-100"
+                    aria-label={`Delete ${palette.name}`}
                     onClick={(e: React.MouseEvent) => {
                       e.stopPropagation();
                       removePalette(palette.id);
