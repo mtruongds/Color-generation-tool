@@ -125,7 +125,7 @@
     color-scheme: light;
   }
 
-  html:has(.dark) {
+  html.dark {
     color-scheme: dark;
   }
 

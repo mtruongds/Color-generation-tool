@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ChevronDown, Download, FolderOpen, Library, Save, Trash2, Upload } from 'lucide-react';
+import { ChevronDown, Download, FolderOpen, Library, Merge, Save, Trash2, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -38,9 +38,12 @@ const newId = () => Math.random().toString(36).slice(2, 11);
 export function PresetsMenu({
   palettes,
   onLoad,
+  onMerge,
 }: {
   palettes: PaletteConfig[];
   onLoad: (palettes: PaletteConfig[]) => void;
+  /** Adds the preset's palettes to the current ones and reports how many were added or skipped. */
+  onMerge: (palettes: PaletteConfig[]) => { added: number; skipped: number };
 }) {
   const [presets, setPresets] = useState<SavedPreset[]>([]);
   const [saveOpen, setSaveOpen] = useState(false);
@@ -76,22 +79,40 @@ export function PresetsMenu({
     toast.success(`Loaded “${preset.name}”`);
   };
 
+  const merge = (preset: SavedPreset) => {
+    const { added, skipped } = onMerge(preset.palettes);
+    if (added === 0) {
+      toast.info(`All palettes in “${preset.name}” are already in your list`);
+      return;
+    }
+    setManageOpen(false);
+    toast.success(
+      `Merged ${added} palette${added === 1 ? '' : 's'} from “${preset.name}”${skipped > 0 ? `, ${skipped} duplicate(s) skipped` : ''}`,
+    );
+  };
+
   const remove = (preset: SavedPreset) => {
     update(presets.filter((p) => p.id !== preset.id));
     toast.success(`Deleted “${preset.name}”`);
   };
 
-  const exportAll = () => {
+  const exportPresets = (items: SavedPreset[], filename: string) => {
     const data = {
       _meta: { app: 'Lumina', version: 1, exportedAt: new Date().toISOString() },
-      presets,
+      presets: items,
     };
-    downloadFile(
-      JSON.stringify(data, null, 2),
-      `lumina-presets-${new Date().toISOString().slice(0, 10)}.json`,
-      'application/json',
-    );
+    downloadFile(JSON.stringify(data, null, 2), filename, 'application/json');
+  };
+
+  const exportAll = () => {
+    exportPresets(presets, `lumina-presets-${new Date().toISOString().slice(0, 10)}.json`);
     toast.success(`Exported ${presets.length} preset(s)`);
+  };
+
+  const exportOne = (preset: SavedPreset) => {
+    const slug = preset.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'preset';
+    exportPresets([preset], `lumina-preset-${slug}.json`);
+    toast.success(`Exported “${preset.name}”`);
   };
 
   const importFile = () => {
@@ -200,7 +221,7 @@ export function PresetsMenu({
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Presets</DialogTitle>
-            <DialogDescription>Pick a preset to replace the current palettes.</DialogDescription>
+            <DialogDescription>Pick a preset to replace the current palettes, or merge one to add its palettes to them.</DialogDescription>
           </DialogHeader>
           {presets.length === 0 ? (
             <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed py-10 text-center">
@@ -211,7 +232,7 @@ export function PresetsMenu({
               </p>
             </div>
           ) : (
-            <ScrollArea className="max-h-[20rem] -mx-2 px-2">
+            <ScrollArea className="-mr-4 -ml-2" viewportClassName="max-h-[20rem] pr-4 pl-2">
               <ul className="flex flex-col gap-1.5">
                 {presets.map((preset) => (
                   <li key={preset.id} className="group flex items-center gap-3 rounded-lg border bg-card p-2.5 transition-colors hover:bg-accent/60">
@@ -220,7 +241,7 @@ export function PresetsMenu({
                       className="flex min-w-0 flex-1 items-center gap-3 text-left"
                       onClick={() => load(preset)}
                     >
-                      <div className="flex -space-x-1.5">
+                      <div className="flex w-[3.875rem] shrink-0 -space-x-1.5">
                         {preset.palettes.slice(0, 4).map((p) => (
                           <span
                             key={p.id}
@@ -233,15 +254,36 @@ export function PresetsMenu({
                         <div className="truncate text-sm font-medium">{preset.name}</div>
                         <div className="text-xs text-muted-foreground">
                           {new Date(preset.createdAt).toLocaleDateString()} ·{' '}
-                          {preset.palettes.length} scales
+                          {preset.palettes.length} {preset.palettes.length === 1 ? 'scale' : 'scales'}
                         </div>
                       </div>
                     </button>
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="size-8 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                      className="size-8 text-muted-foreground hover:text-foreground"
+                      aria-label={`Merge ${preset.name} into current palettes`}
+                      title="Merge into current"
+                      onClick={() => merge(preset)}
+                    >
+                      <Merge />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="-ml-2 size-8 text-muted-foreground hover:text-foreground"
+                      aria-label={`Export ${preset.name}`}
+                      title="Export"
+                      onClick={() => exportOne(preset)}
+                    >
+                      <Download />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="-ml-2 size-8 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
                       aria-label={`Delete ${preset.name}`}
+                      title="Delete"
                       onClick={() => remove(preset)}
                     >
                       <Trash2 />

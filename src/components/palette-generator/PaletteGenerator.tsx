@@ -32,7 +32,7 @@ import { PaletteInspector } from './PaletteInspector';
 import { ExportDialog } from './ExportDialog';
 import { PresetsMenu } from './PresetsMenu';
 import { BackgroundControl } from './BackgroundControl';
-import type { MoveDirection, PaletteConfig } from './types';
+import type { PaletteConfig } from './types';
 
 // Re-export for backward compat
 export type { PaletteConfig } from './types';
@@ -245,14 +245,13 @@ export function PaletteGenerator({
     [palettes, activePaletteId],
   );
 
-  const movePalette = useCallback((id: string, direction: MoveDirection) => {
+  const movePalette = useCallback((id: string, toIndex: number) => {
     setPalettes((prev) => {
       const index = prev.findIndex((p) => p.id === id);
-      const next = direction === 'top' ? 0 : direction === 'last' ? prev.length - 1 : index + direction;
-      if (index === -1 || next < 0 || next >= prev.length) return prev;
+      if (index === -1 || toIndex < 0 || toIndex >= prev.length || toIndex === index) return prev;
       const reordered = [...prev];
       const [palette] = reordered.splice(index, 1);
-      reordered.splice(next, 0, palette);
+      reordered.splice(toIndex, 0, palette);
       return reordered;
     });
   }, []);
@@ -264,6 +263,33 @@ export function PaletteGenerator({
     setActivePaletteId(next[0].id);
     mainRef.current?.scrollTo({ top: 0 });
   }, []);
+
+  /** Appends a preset's palettes to the current ones, skipping exact duplicates. */
+  const mergePreset = useCallback(
+    (incoming: PaletteConfig[]) => {
+      const key = (p: PaletteConfig) => `${p.name.trim().toLowerCase()}|${p.baseColor.toLowerCase()}`;
+      const existingKeys = new Set(palettes.map(key));
+      const usedNames = new Set(palettes.map((p) => p.name.trim().toLowerCase()));
+      const added: PaletteConfig[] = [];
+      for (const p of incoming) {
+        if (existingKeys.has(key(p))) continue;
+        existingKeys.add(key(p));
+        // Same name but a different color gets a numbered suffix so exported token names stay unique.
+        let name = p.name.trim() || 'Untitled';
+        for (let n = 2; usedNames.has(name.toLowerCase()); n++) name = `${p.name.trim()} ${n}`;
+        usedNames.add(name.toLowerCase());
+        // The current list already has its defaults, so merged palettes are never locked.
+        added.push({ ...p, id: newId(), name, locked: false, lockStep9: p.lockStep9 ?? false });
+      }
+      if (added.length > 0) {
+        setPalettes((prev) => [...prev, ...added]);
+        setActivePaletteId(added[0].id);
+        scrollToPalette(added[0].id);
+      }
+      return { added: added.length, skipped: incoming.length - added.length };
+    },
+    [palettes, scrollToPalette],
+  );
 
   const editPalette = useCallback((id: string) => {
     setActivePaletteId(id);
@@ -358,7 +384,7 @@ export function PaletteGenerator({
             </TabsList>
           </Tabs>
 
-          <PresetsMenu palettes={palettes} onLoad={loadPreset} />
+          <PresetsMenu palettes={palettes} onLoad={loadPreset} onMerge={mergePreset} />
 
           <BackgroundControl
             isDark={isDarkMode}

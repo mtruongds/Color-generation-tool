@@ -15,9 +15,6 @@ export interface PaletteConfig {
   description?: string;
 }
 
-/** One step up or down, or straight to the top or end of the list. */
-export type MoveDirection = -1 | 1 | 'top' | 'last';
-
 export interface SavedPreset {
   id: string;
   name: string;

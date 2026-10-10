@@ -1,4 +1,16 @@
-import { ArrowDown, ArrowDownToLine, ArrowUp, ArrowUpToLine, CopyPlus, Lock, MoreHorizontal, Plus, Trash2 } from 'lucide-react';
+import {
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type Modifier,
+} from '@dnd-kit/core';
+import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import { ArrowDownToLine, ArrowUpToLine, CopyPlus, GripVertical, Lock, MoreHorizontal, Plus, Trash2 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
 import {
@@ -10,7 +22,6 @@ import {
 } from '../ui/dropdown-menu';
 import { cn } from '../ui/utils';
 import type { GeneratedPalette } from '../../lib/export-utils';
-import type { MoveDirection } from './types';
 
 interface PaletteSidebarProps {
   palettes: GeneratedPalette[];
@@ -18,7 +29,8 @@ interface PaletteSidebarProps {
   collapsed?: boolean;
   onSelect: (id: string) => void;
   onAdd: () => void;
-  onMove: (id: string, direction: MoveDirection) => void;
+  /** Moves a palette to the given index in the list. */
+  onMove: (id: string, toIndex: number) => void;
   onDuplicate: (id: string) => void;
   onRemove: (id: string) => void;
 }
@@ -33,6 +45,18 @@ export function PaletteSidebar({
   onDuplicate,
   onRemove,
 }: PaletteSidebarProps) {
+  const sensors = useSensors(
+    // A small distance keeps a click on the handle from starting a drag.
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  const handleDragEnd = ({ active, over }: DragEndEvent) => {
+    if (!over || active.id === over.id) return;
+    const toIndex = palettes.findIndex((p) => p.id === over.id);
+    if (toIndex !== -1) onMove(String(active.id), toIndex);
+  };
+
   if (collapsed) {
     return (
       <nav aria-label="Palettes" className="flex h-full flex-col items-center gap-2 py-3">
@@ -89,90 +113,29 @@ export function PaletteSidebar({
       </div>
 
       <ul className="scrollbar-thin flex flex-1 flex-col gap-1 overflow-y-auto px-2 pb-3">
-        {palettes.map((p, index) => {
-          const active = p.id === activeId;
-          return (
-            <li key={p.id}>
-              <div
-                className={cn(
-                  'group relative flex items-center gap-3 rounded-xl px-2 py-2 transition-colors',
-                  active ? 'bg-sidebar-accent' : 'hover:bg-sidebar-accent/60',
-                )}
-              >
-                <button
-                  type="button"
-                  onClick={() => onSelect(p.id)}
-                  aria-current={active}
-                  className="flex min-w-0 flex-1 items-center gap-3 rounded-md text-left after:absolute after:inset-0 after:rounded-xl focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-ring"
-                >
-                  <span
-                    className="swatch-outline size-8 shrink-0 rounded-sm"
-                    style={{ backgroundColor: p.baseColor }}
-                  />
-                  <span className="min-w-0 flex-1">
-                    <span className="flex items-baseline justify-between gap-2">
-                      <span className="truncate text-sm font-medium">{p.name || 'Untitled'}</span>
-                      <span className="font-mono text-[0.6875rem] text-muted-foreground uppercase">
-                        {p.baseColor.replace('#', '')}
-                      </span>
-                    </span>
-                    <span className="mt-1.5 flex h-1.5 overflow-hidden rounded-full">
-                      {p.scale.colors.map((c, i) => (
-                        <span key={i} className="flex-1" style={{ backgroundColor: c }} />
-                      ))}
-                    </span>
-                  </span>
-                </button>
-
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label={`${p.name} options`}
-                      className="relative z-10 size-7 shrink-0 text-muted-foreground after:absolute after:-inset-1.5 opacity-100 hover:text-foreground data-[state=open]:opacity-100 md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
-                    >
-                      <MoreHorizontal />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start" side="right" className="w-44">
-                    <DropdownMenuItem onSelect={() => onMove(p.id, 'top')} disabled={index === 0}>
-                      <ArrowUpToLine /> Move to top
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onSelect={() => onMove(p.id, -1)} disabled={index === 0}>
-                      <ArrowUp /> Move up
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onSelect={() => onMove(p.id, 1)} disabled={index === palettes.length - 1}>
-                      <ArrowDown /> Move down
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onSelect={() => onMove(p.id, 'last')} disabled={index === palettes.length - 1}>
-                      <ArrowDownToLine /> Move to last
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onSelect={() => onDuplicate(p.id)}>
-                      <CopyPlus /> Duplicate
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      variant="destructive"
-                      onSelect={() => onRemove(p.id)}
-                      disabled={p.locked}
-                    >
-                      {p.locked ? (
-                        <>
-                          <Lock /> Default palette
-                        </>
-                      ) : (
-                        <>
-                          <Trash2 /> Delete
-                        </>
-                      )}
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-            </li>
-          );
-        })}
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          modifiers={[restrictToVerticalAxis]}
+          onDragEnd={handleDragEnd}
+        >
+          <SortableContext items={palettes.map((p) => p.id)} strategy={verticalListSortingStrategy}>
+            {palettes.map((p, index) => (
+              <SortablePaletteItem
+                key={p.id}
+                palette={p}
+                active={p.id === activeId}
+                isFirst={index === 0}
+                isLast={index === palettes.length - 1}
+                onSelect={() => onSelect(p.id)}
+                onMoveToTop={() => onMove(p.id, 0)}
+                onMoveToLast={() => onMove(p.id, palettes.length - 1)}
+                onDuplicate={() => onDuplicate(p.id)}
+                onRemove={() => onRemove(p.id)}
+              />
+            ))}
+          </SortableContext>
+        </DndContext>
 
         <li className="mt-1">
           <button
@@ -185,5 +148,124 @@ export function PaletteSidebar({
         </li>
       </ul>
     </nav>
+  );
+}
+
+const restrictToVerticalAxis: Modifier = ({ transform }) => ({ ...transform, x: 0 });
+
+interface SortablePaletteItemProps {
+  palette: GeneratedPalette;
+  active: boolean;
+  isFirst: boolean;
+  isLast: boolean;
+  onSelect: () => void;
+  onMoveToTop: () => void;
+  onMoveToLast: () => void;
+  onDuplicate: () => void;
+  onRemove: () => void;
+}
+
+function SortablePaletteItem({
+  palette: p,
+  active,
+  isFirst,
+  isLast,
+  onSelect,
+  onMoveToTop,
+  onMoveToLast,
+  onDuplicate,
+  onRemove,
+}: SortablePaletteItemProps) {
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({
+    id: p.id,
+  });
+
+  return (
+    <li
+      ref={setNodeRef}
+      style={{ transform: CSS.Translate.toString(transform), transition }}
+      className={cn('relative', isDragging && 'z-20')}
+    >
+      <div
+        className={cn(
+          'group relative flex items-center gap-1 rounded-xl py-2 pr-2 pl-0.5 transition-[background-color,box-shadow]',
+          active ? 'bg-sidebar-accent' : 'hover:bg-sidebar-accent/60',
+          isDragging && 'bg-sidebar-accent shadow-lg',
+        )}
+      >
+        <button
+          type="button"
+          ref={setActivatorNodeRef}
+          {...attributes}
+          {...listeners}
+          aria-label={`Reorder ${p.name}`}
+          className={cn(
+            'relative z-10 flex h-8 w-4 shrink-0 cursor-grab touch-none items-center justify-center rounded-sm text-muted-foreground/70 transition-opacity hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:cursor-grabbing',
+            'opacity-100 md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100',
+            isDragging && 'opacity-100 md:opacity-100',
+          )}
+        >
+          <GripVertical className="size-3.5" />
+        </button>
+
+        <button
+          type="button"
+          onClick={onSelect}
+          aria-current={active}
+          className="flex min-w-0 flex-1 items-center gap-3 rounded-md text-left after:absolute after:inset-0 after:rounded-xl focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-ring"
+        >
+          <span className="swatch-outline size-8 shrink-0 rounded-sm" style={{ backgroundColor: p.baseColor }} />
+          <span className="min-w-0 flex-1">
+            <span className="flex items-baseline justify-between gap-2">
+              <span className="truncate text-sm font-medium">{p.name || 'Untitled'}</span>
+              <span className="font-mono text-[0.6875rem] text-muted-foreground uppercase">
+                {p.baseColor.replace('#', '')}
+              </span>
+            </span>
+            <span className="mt-1.5 flex h-1.5 overflow-hidden rounded-full">
+              {p.scale.colors.map((c, i) => (
+                <span key={i} className="flex-1" style={{ backgroundColor: c }} />
+              ))}
+            </span>
+          </span>
+        </button>
+
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label={`${p.name} options`}
+              className="relative z-10 size-7 shrink-0 text-muted-foreground after:absolute after:-inset-1.5 hover:text-foreground"
+            >
+              <MoreHorizontal />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" side="right" className="w-44">
+            <DropdownMenuItem onSelect={onMoveToTop} disabled={isFirst}>
+              <ArrowUpToLine /> Move to top
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={onMoveToLast} disabled={isLast}>
+              <ArrowDownToLine /> Move to last
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={onDuplicate}>
+              <CopyPlus /> Duplicate
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem variant="destructive" onSelect={onRemove} disabled={p.locked}>
+              {p.locked ? (
+                <>
+                  <Lock /> Default palette
+                </>
+              ) : (
+                <>
+                  <Trash2 /> Delete
+                </>
+              )}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    </li>
   );
 }
