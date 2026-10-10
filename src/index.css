@@ -146,6 +146,12 @@
 }
 
 @layer utilities {
+  /* Step-tooltip hover ring. Inset offset keeps it visible inside overflow-hidden parents. */
+  [data-token-hover] {
+    outline: 2px dashed color-mix(in oklab, var(--foreground) 60%, transparent);
+    outline-offset: -2px;
+  }
+
   .checkerboard {
     background: repeating-conic-gradient(var(--checker-a, #e5e5e5) 0% 25%, var(--checker-b, #ffffff) 0% 50%) 0 0 / 0.75rem 0.75rem;
   }

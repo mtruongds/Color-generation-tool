@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type React from 'react';
+import { createPortal } from 'react-dom';
 import {
   Bell,
   Check,
@@ -167,6 +168,15 @@ function MoodCanvas({
     if (!showTokens) setHover(null);
   }, [showTokens]);
 
+  // Outline the hovered element itself (see [data-token-hover] in index.css) so the dashed
+  // ring always tracks the element, instead of a fixed overlay sized from a stale rect
+  const hoveredEl = hover?.el;
+  useEffect(() => {
+    if (!hoveredEl) return;
+    hoveredEl.setAttribute('data-token-hover', '');
+    return () => hoveredEl.removeAttribute('data-token-hover');
+  }, [hoveredEl]);
+
   // The tooltip is fixed-positioned, so drop it once the page scrolls under it
   useEffect(() => {
     if (!hover) return;
@@ -179,7 +189,7 @@ function MoodCanvas({
     if (!showTokens) return;
     const el = (e.target as HTMLElement).closest<HTMLElement>('[data-tokens]');
     if (!el || !e.currentTarget.contains(el)) return setHover(null);
-    setHover({ tokens: el.dataset.tokens ?? '', rect: el.getBoundingClientRect(), x: e.clientX, y: e.clientY });
+    setHover({ el, tokens: el.dataset.tokens ?? '', x: e.clientX, y: e.clientY });
   };
 
   return (
@@ -208,8 +218,8 @@ function MoodCanvas({
 // ---------- Step tooltip ----------
 
 interface HoverState {
+  el: HTMLElement;
   tokens: string;
-  rect: DOMRect;
   x: number;
   y: number;
 }
@@ -233,7 +243,8 @@ function StepTooltip({ hover, accent, gray }: { hover: HoverState; accent: Color
   const ref = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
 
-  useEffect(() => {
+  // Measure before paint so the first frame isn't placed with a 0×0 size and then jump
+  useLayoutEffect(() => {
     if (ref.current) setSize({ width: ref.current.offsetWidth, height: ref.current.offsetHeight });
   }, [hover.tokens]);
 
@@ -242,38 +253,33 @@ function StepTooltip({ hover, accent, gray }: { hover: HoverState; accent: Color
   const left = hover.x + gap + size.width > window.innerWidth - 8 ? hover.x - gap - size.width : hover.x + gap;
   const top = hover.y + gap + size.height > window.innerHeight - 8 ? hover.y - gap - size.height : hover.y + gap;
 
-  return (
-    <>
-      <div
-        aria-hidden
-        className="pointer-events-none fixed z-40 rounded-[3px] outline-2 outline-offset-2 outline-dashed outline-foreground/60"
-        style={{ left: hover.rect.left, top: hover.rect.top, width: hover.rect.width, height: hover.rect.height }}
-      />
-      <div
-        ref={ref}
-        role="tooltip"
-        className="pointer-events-none fixed z-50 max-w-[24rem] space-y-1.5 rounded-lg border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-lg"
-        style={{ left: Math.max(8, left), top: Math.max(8, top) }}
-      >
-        {hover.tokens.split(' · ').map((row, i) => (
-          <div key={i} className="flex flex-wrap items-center gap-1">
-            {row.split(TOKEN_RE).map((part, j) => {
-              if (j % 2 === 0) return part ? <span key={j} className="text-muted-foreground">{part}</span> : null;
-              const { label, color } = resolveToken(part, accent, gray);
-              return (
-                <span key={j} className="inline-flex items-center gap-1 rounded bg-muted px-1 py-0.5">
-                  <span className="checkerboard size-3 overflow-hidden rounded-sm">
-                    <span className="block size-full shadow-[inset_0_0_0_1px_rgb(0_0_0/0.15)]" style={{ backgroundColor: color }} />
-                  </span>
-                  <span className="font-medium">{label}</span>
-                  <span className="font-mono text-[0.625rem] text-muted-foreground uppercase">{color}</span>
+  // Portal to <body> so `fixed` is always relative to the viewport, whatever the ancestors' CSS
+  return createPortal(
+    <div
+      ref={ref}
+      role="tooltip"
+      className="pointer-events-none fixed z-50 max-w-[24rem] space-y-1.5 rounded-lg border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-lg"
+      style={{ left: Math.max(8, left), top: Math.max(8, top) }}
+    >
+      {hover.tokens.split(' · ').map((row, i) => (
+        <div key={i} className="flex flex-wrap items-center gap-1">
+          {row.split(TOKEN_RE).map((part, j) => {
+            if (j % 2 === 0) return part ? <span key={j} className="text-muted-foreground">{part}</span> : null;
+            const { label, color } = resolveToken(part, accent, gray);
+            return (
+              <span key={j} className="inline-flex items-center gap-1 rounded bg-muted px-1 py-0.5">
+                <span className="checkerboard size-3 overflow-hidden rounded-sm">
+                  <span className="block size-full shadow-[inset_0_0_0_1px_rgb(0_0_0/0.15)]" style={{ backgroundColor: color }} />
                 </span>
-              );
-            })}
-          </div>
-        ))}
-      </div>
-    </>
+                <span className="font-medium">{label}</span>
+                <span className="font-mono text-[0.625rem] text-muted-foreground uppercase">{color}</span>
+              </span>
+            );
+          })}
+        </div>
+      ))}
+    </div>,
+    document.body,
   );
 }
 
