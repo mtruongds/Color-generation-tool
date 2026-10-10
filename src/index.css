@@ -143,6 +143,16 @@
   .tabular {
     font-variant-numeric: tabular-nums;
   }
+
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
 }
 
 @layer utilities {
@@ -159,6 +169,15 @@
   .dark .checkerboard {
     --checker-a: #1c1c1f;
     --checker-b: #2a2a2e;
+  }
+
+  /* 1px edge on color swatches: pure black in light, pure white in dark, never a tinted neutral. */
+  .swatch-outline {
+    box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.1);
+  }
+
+  .dark .swatch-outline {
+    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.1);
   }
 
   .scrollbar-thin {

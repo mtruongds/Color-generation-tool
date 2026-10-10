@@ -53,6 +53,18 @@ export default defineConfig({
   build: {
     target: 'esnext',
     outDir: 'dist',
+    rollupOptions: {
+      output: {
+        // Split third-party code into cacheable vendor chunks
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return;
+          if (/[\\/]node_modules[\\/](react|react-dom|scheduler)[\\/]/.test(id)) return 'react';
+          if (/[\\/]node_modules[\\/](chroma-js|colorjs\.io|bezier-easing|@radix-ui[\\/]colors)[\\/]/.test(id)) return 'color';
+          if (id.includes('@radix-ui') || id.includes('@floating-ui')) return 'radix';
+          return 'vendor';
+        },
+      },
+    },
   },
   server: {
     port: 3000,

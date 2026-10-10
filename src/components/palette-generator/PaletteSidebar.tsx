@@ -56,7 +56,7 @@ export function PaletteSidebar({
                   aria-current={p.id === activeId}
                   onClick={() => onSelect(p.id)}
                   className={cn(
-                    'size-7 rounded-md ring-offset-2 ring-offset-sidebar transition-[transform,box-shadow] hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                    'relative size-7 rounded-md ring-offset-2 ring-offset-sidebar transition-[scale,box-shadow] after:absolute after:-inset-x-1.5 after:-inset-y-[5px] hover:scale-105 active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                     p.id === activeId && 'ring-2 ring-foreground/70',
                   )}
                   style={{ backgroundColor: p.baseColor }}
@@ -80,7 +80,7 @@ export function PaletteSidebar({
         </h2>
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button variant="ghost" size="icon" className="size-7" onClick={onAdd} aria-label="Add palette">
+            <Button variant="ghost" size="icon" className="relative size-7 after:absolute after:-inset-1.5" onClick={onAdd} aria-label="Add palette">
               <Plus />
             </Button>
           </TooltipTrigger>
@@ -95,7 +95,7 @@ export function PaletteSidebar({
             <li key={p.id}>
               <div
                 className={cn(
-                  'group relative flex items-center gap-3 rounded-lg px-2 py-2 transition-colors',
+                  'group relative flex items-center gap-3 rounded-xl px-2 py-2 transition-colors',
                   active ? 'bg-sidebar-accent' : 'hover:bg-sidebar-accent/60',
                 )}
               >
@@ -103,10 +103,10 @@ export function PaletteSidebar({
                   type="button"
                   onClick={() => onSelect(p.id)}
                   aria-current={active}
-                  className="flex min-w-0 flex-1 items-center gap-3 rounded-md text-left after:absolute after:inset-0 after:rounded-lg focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-ring"
+                  className="flex min-w-0 flex-1 items-center gap-3 rounded-md text-left after:absolute after:inset-0 after:rounded-xl focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-ring"
                 >
                   <span
-                    className="size-8 shrink-0 rounded-md shadow-[inset_0_0_0_1px_rgb(0_0_0/0.08)] dark:shadow-[inset_0_0_0_1px_rgb(255_255_255/0.08)]"
+                    className="swatch-outline size-8 shrink-0 rounded-sm"
                     style={{ backgroundColor: p.baseColor }}
                   />
                   <span className="min-w-0 flex-1">
@@ -130,7 +130,7 @@ export function PaletteSidebar({
                       variant="ghost"
                       size="icon"
                       aria-label={`${p.name} options`}
-                      className="relative z-10 size-7 shrink-0 text-muted-foreground opacity-100 hover:text-foreground data-[state=open]:opacity-100 md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
+                      className="relative z-10 size-7 shrink-0 text-muted-foreground after:absolute after:-inset-1.5 opacity-100 hover:text-foreground data-[state=open]:opacity-100 md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
                     >
                       <MoreHorizontal />
                     </Button>

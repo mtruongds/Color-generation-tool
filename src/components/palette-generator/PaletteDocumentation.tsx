@@ -79,7 +79,7 @@ export function PaletteDocumentation({ palettes, colorFormat = 'hex' }: PaletteD
           <section key={palette.id} id={`palette-${palette.id}`} className="scroll-mt-6 space-y-4">
             <div className="space-y-1.5">
               <div className="flex items-center gap-2.5">
-                <span className="size-5 rounded-md shadow-[inset_0_0_0_1px_rgb(0_0_0/0.1)]" style={{ backgroundColor: palette.baseColor }} />
+                <span className="swatch-outline size-5 rounded-md" style={{ backgroundColor: palette.baseColor }} />
                 <h2 className="text-xl font-semibold tracking-tight">{palette.name}</h2>
                 <span className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[0.6875rem] text-muted-foreground">
                   {palette.isDark ? <Moon className="size-3" /> : <Sun className="size-3" />}
@@ -131,7 +131,7 @@ export function PaletteDocumentation({ palettes, colorFormat = 'hex' }: PaletteD
                           </td>
                           <td className="px-4 py-2">
                             <div className="flex items-center gap-1">
-                              <span className="size-7 rounded-md shadow-[inset_0_0_0_1px_rgb(0_0_0/0.08)]" style={{ backgroundColor: color }} title={`Solid: ${color}`} />
+                              <span className="swatch-outline size-7 rounded-md" style={{ backgroundColor: color }} title={`Solid: ${color}`} />
                               <span className="checkerboard size-7 overflow-hidden rounded-md" title={`Alpha: ${alpha.rgba}`}>
                                 <span className="block size-full" style={{ backgroundColor: alpha.rgba }} />
                               </span>

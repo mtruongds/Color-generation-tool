@@ -14,6 +14,7 @@ import { toast } from 'sonner';
 import { Button } from '../ui/button';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '../ui/sheet';
 import { Tabs, TabsList, TabsTrigger } from '../ui/tabs';
+import { IconSwap } from '../ui/icon-swap';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
 import { cn } from '../ui/utils';
 import { ColorFormat, DEFAULT_BACKGROUNDS } from '../../lib/color-utils';
@@ -305,7 +306,7 @@ export function PaletteGenerator({
               aria-label={isDesktop ? (sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar') : 'Open palettes'}
               onClick={() => (isDesktop ? setSidebarCollapsed((c) => !c) : setMobileNavOpen(true))}
             >
-              {isDesktop && !sidebarCollapsed ? <PanelLeftClose /> : <PanelLeft />}
+              <IconSwap active={isDesktop && !sidebarCollapsed} on={<PanelLeftClose />} off={<PanelLeft />} />
             </Button>
           </TooltipTrigger>
           <TooltipContent>{isDesktop ? 'Toggle sidebar' : 'Palettes'}</TooltipContent>
@@ -374,7 +375,7 @@ export function PaletteGenerator({
                 onClick={toggleDarkMode}
                 aria-label={isDarkMode ? 'Switch to light mode' : 'Switch to dark mode'}
               >
-                {isDarkMode ? <Sun /> : <Moon />}
+                <IconSwap active={isDarkMode} on={<Sun />} off={<Moon />} />
               </Button>
             </TooltipTrigger>
             <TooltipContent>{isDarkMode ? 'Light scales' : 'Dark scales'}</TooltipContent>
@@ -456,7 +457,7 @@ export function PaletteGenerator({
             onClick={() => mainRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}
             aria-label="Back to top"
             className={cn(
-              'fixed right-6 bottom-6 z-40 size-10 rounded-full bg-card shadow-card-hover transition-[opacity,transform] duration-200',
+              'fixed right-6 bottom-6 z-40 size-10 rounded-full bg-card shadow-card-hover transition-[opacity,translate,scale] duration-200',
               showDockedInspector && 'right-[21.5rem]',
               showGoToTop ? 'translate-y-0 opacity-100' : 'pointer-events-none translate-y-2 opacity-0',
             )}

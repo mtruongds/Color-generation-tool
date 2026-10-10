@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Check, Copy, Download } from 'lucide-react';
 import { Button } from '../ui/button';
+import { IconSwap } from '../ui/icon-swap';
 import {
   Dialog,
   DialogContent,
@@ -133,7 +134,7 @@ export function ExportDialog({
 
         <div className="mt-4 flex items-center justify-end gap-2 border-t bg-muted/40 px-6 py-3">
           <Button variant="outline" size="sm" onClick={handleCopy}>
-            {copied ? <Check /> : <Copy />}
+            <IconSwap active={copied} on={<Check />} off={<Copy />} />
             {copied ? 'Copied' : 'Copy'}
           </Button>
           <Button

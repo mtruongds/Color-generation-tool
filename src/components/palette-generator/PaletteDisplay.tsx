@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Check, Copy, Lock, SlidersHorizontal } from 'lucide-react';
 import { Button } from '../ui/button';
+import { IconSwap } from '../ui/icon-swap';
 import { Tabs, TabsList, TabsTrigger } from '../ui/tabs';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
 import { cn } from '../ui/utils';
@@ -109,7 +110,7 @@ export function PaletteDisplay({
       <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 px-5 py-4 md:px-8">
         <div className="flex min-w-0 items-center gap-3">
           <span
-            className="size-8 shrink-0 rounded-lg shadow-[inset_0_0_0_1px_rgb(0_0_0/0.08)]"
+            className="swatch-outline size-8 shrink-0 rounded-lg"
             style={{ backgroundColor: palette.baseColor }}
           />
           <div className="min-w-0">
@@ -395,11 +396,11 @@ function AlphaScaleView({
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="size-6 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+                      className="relative size-6 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 after:absolute after:-inset-x-2 after:-inset-y-1.5"
                       aria-label={`Copy ${i + 1}A`}
                       onClick={() => flash(i, value)}
                     >
-                      {copied === i ? <Check className="size-3" /> : <Copy className="size-3" />}
+                      <IconSwap active={copied === i} on={<Check className="size-3" />} off={<Copy className="size-3" />} />
                     </Button>
                   </td>
                 </tr>
@@ -479,7 +480,7 @@ function PaletteContrast({ colors }: { colors: string[] }) {
                   aria-label={`Step ${i + 1}`}
                   onClick={() => setSelected(i)}
                   className={cn(
-                    'size-6 rounded-md text-[0.625rem] font-mono font-medium ring-offset-2 ring-offset-card transition-transform hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                    'relative size-6 rounded-md text-[0.625rem] font-mono font-medium ring-offset-2 ring-offset-card transition-transform after:absolute after:-inset-x-0.5 after:-inset-y-2 hover:scale-110 active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                     i === selected && 'ring-2 ring-foreground',
                   )}
                   style={{ backgroundColor: c, color: readableOn(c) }}

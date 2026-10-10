@@ -58,7 +58,7 @@ function SliderField({
             <Button
               variant="ghost"
               size="icon"
-              className="size-6 text-muted-foreground"
+              className="relative size-6 text-muted-foreground after:absolute after:-inset-2"
               aria-label={`Reset ${label}`}
               onClick={() => onChange(defaultValue)}
             >

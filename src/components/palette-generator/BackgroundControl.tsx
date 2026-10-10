@@ -49,7 +49,7 @@ export function BackgroundControl({
         </div>
         <div className="flex gap-2">
           <label
-            className="relative size-9 shrink-0 cursor-pointer overflow-hidden rounded-md shadow-[inset_0_0_0_1px_rgb(0_0_0/0.1)] focus-within:ring-[3px] focus-within:ring-ring/50"
+            className="swatch-outline relative size-9 shrink-0 cursor-pointer overflow-hidden rounded-md focus-within:ring-[3px] focus-within:ring-ring/50"
             style={{ backgroundColor: value }}
           >
             <span className="sr-only">Pick background color</span>
