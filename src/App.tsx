@@ -38,7 +38,11 @@ export default function App() {
   return (
     <div className={isDarkMode ? 'dark' : ''}>
       <PaletteGenerator isDarkMode={isDarkMode} toggleDarkMode={toggleDarkMode} />
-      <Toaster />
+      <Toaster
+        theme={isDarkMode ? 'dark' : 'light'}
+        position="bottom-center"
+        toastOptions={{ duration: 1800 }}
+      />
     </div>
   );
 }
