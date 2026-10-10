@@ -83,7 +83,6 @@ function Segmented<T extends string>({
 export function PaletteDisplay({
   palette,
   colorFormat = 'hex',
-  active = false,
   onSelect,
   onEdit,
 }: {
@@ -105,12 +104,9 @@ export function PaletteDisplay({
     <article
       id={`palette-${palette.id}`}
       onClick={onSelect}
-      className={cn(
-        'scroll-mt-6 overflow-hidden rounded-xl border bg-card shadow-card transition-[box-shadow,border-color] duration-200',
-        active ? 'border-foreground/25 shadow-card-hover' : 'hover:shadow-card-hover',
-      )}
+      className="scroll-mt-6 py-3 md:py-5"
     >
-      <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 px-5 py-4">
+      <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 px-5 py-4 md:px-8">
         <div className="flex min-w-0 items-center gap-3">
           <span
             className="size-8 shrink-0 rounded-lg shadow-[inset_0_0_0_1px_rgb(0_0_0/0.08)]"
@@ -164,7 +160,7 @@ function SolidScale({ palette, colorFormat }: { palette: GeneratedPalette; color
   const [copied, flash] = useCopyFlash();
 
   return (
-    <div className="px-5 pb-5">
+    <div className="px-5 pb-5 md:px-8">
       <div className="grid grid-cols-4 gap-1 overflow-hidden rounded-lg sm:grid-cols-6 md:grid-cols-12 md:gap-0">
         {palette.scale.colors.map((color, i) => {
           const fg = i === 8 ? palette.scale.contrast : readableOn(color);
@@ -305,7 +301,7 @@ function AlphaScaleView({
   const [copied, flash] = useCopyFlash();
 
   return (
-    <div className="px-5 pb-5" onClick={(e) => e.stopPropagation()}>
+    <div className="px-5 pb-5 md:px-8" onClick={(e) => e.stopPropagation()}>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
         <span className="flex items-center gap-2">
           <span className="size-3 rounded-sm border" style={{ backgroundColor: alphaScale.background }} />
@@ -437,7 +433,7 @@ function PaletteContrast({ colors }: { colors: string[] }) {
   const selectedColor = colors[selected];
 
   return (
-    <div className="space-y-4 px-5 pb-5" onClick={(e) => e.stopPropagation()}>
+    <div className="space-y-4 px-5 pb-5 md:px-8" onClick={(e) => e.stopPropagation()}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
           <Segmented

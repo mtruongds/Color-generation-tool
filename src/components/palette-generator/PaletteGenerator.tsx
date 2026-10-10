@@ -430,7 +430,7 @@ export function PaletteGenerator({
                     {isDarkMode ? 'Dark' : 'Light'} mode
                   </span>
                 </div>
-                <div className="space-y-4">
+                <div className="divide-y overflow-hidden rounded-2xl border bg-card shadow-card">
                   {generatedPalettes.map((palette) => (
                     <PaletteDisplay
                       key={palette.id}
