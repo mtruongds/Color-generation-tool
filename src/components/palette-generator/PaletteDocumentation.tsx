@@ -1,4 +1,4 @@
-import { FileSpreadsheet, Moon, Sun } from 'lucide-react';
+import { Moon, Sun } from 'lucide-react';
 import {
   ColorFormat,
   formatScaleColor,
@@ -9,11 +9,8 @@ import {
 import {
   GeneratedPalette,
   STEP_USAGE,
-  downloadFile,
-  generateSheetCsv,
-  toTokenName,
+  modeTokenName,
 } from '../../lib/export-utils';
-import { Button } from '../ui/button';
 import { cn } from '../ui/utils';
 
 function alphaBadgeClass(alpha: number) {
@@ -61,19 +58,12 @@ export function PaletteDocumentation({ palettes, colorFormat = 'hex' }: PaletteD
             palette.
           </p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => downloadFile(generateSheetCsv(palettes), 'design-system-colors.csv', 'text/csv;charset=utf-8')}
-        >
-          <FileSpreadsheet /> Google Sheets CSV
-        </Button>
       </div>
 
       {palettes.map((palette) => {
         const s = palette.scale.colors;
         const alphaScale = generateAlphaScale(palette.scale, palette.isDark);
-        const token = toTokenName(palette.name);
+        const token = modeTokenName(palette.name, palette.isDark);
 
         return (
           <section key={palette.id} id={`palette-${palette.id}`} className="scroll-mt-6 space-y-4">

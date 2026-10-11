@@ -51,6 +51,10 @@ export function generatePaletteScale(p: PaletteConfig, isDark: boolean, context:
 export const toTokenName = (name: string) =>
   name.trim().toLowerCase().replace(/\s+/g, '-') || 'color';
 
+/** Light tokens read `tomato-1`, dark tokens `tomato-dark-1`. */
+export const modeTokenName = (name: string, isDark: boolean) =>
+  `${toTokenName(name)}${isDark ? '-dark' : ''}`;
+
 const hexToComponents = (hex: string) => [
   parseInt(hex.slice(1, 3), 16) / 255,
   parseInt(hex.slice(3, 5), 16) / 255,
@@ -73,26 +77,26 @@ export function generateCssVariables(palettes: GeneratedPalette[], format: Color
   let css = ':root {\n  /* Solid Colors */\n';
   palettes.forEach((p) => {
     p.scale.colors.forEach((_, i) => {
-      css += `  --${toTokenName(p.name)}-${i + 1}: ${formatScaleColor(p.scale, i, format)};\n`;
+      css += `  --${modeTokenName(p.name, p.isDark)}-${i + 1}: ${formatScaleColor(p.scale, i, format)};\n`;
     });
   });
   css += '\n  /* Alpha Colors */\n';
   palettes.forEach((p) => {
     generateAlphaScale(p.scale, p.isDark).colors.forEach((alpha, i) => {
-      css += `  --${toTokenName(p.name)}-a${i + 1}: ${alpha.rgba};\n`;
+      css += `  --${modeTokenName(p.name, p.isDark)}-a${i + 1}: ${alpha.rgba};\n`;
     });
   });
   css += '\n  /* Contrast and Surface */\n';
   palettes.forEach((p) => {
-    css += `  --${toTokenName(p.name)}-contrast: ${p.scale.contrast};\n`;
-    css += `  --${toTokenName(p.name)}-surface: ${p.scale.surface};\n`;
+    css += `  --${modeTokenName(p.name, p.isDark)}-contrast: ${p.scale.contrast};\n`;
+    css += `  --${modeTokenName(p.name, p.isDark)}-surface: ${p.scale.surface};\n`;
   });
   css += '}\n';
 
   // Wide-gamut values for P3 displays, as in Radix custom's CSS output
   css += '\n@supports (color: color(display-p3 1 1 1)) {\n  @media (color-gamut: p3) {\n    :root {\n';
   palettes.forEach((p) => {
-    const token = toTokenName(p.name);
+    const token = modeTokenName(p.name, p.isDark);
     p.scale.wideGamut.forEach((value, i) => (css += `      --${token}-${i + 1}: ${value};\n`));
     p.scale.alphaWideGamut.forEach((value, i) => (css += `      --${token}-a${i + 1}: ${value};\n`));
     css += `      --${token}-surface: ${p.scale.surfaceWideGamut};\n`;
@@ -124,7 +128,7 @@ export function generateJsonTokens(palettes: GeneratedPalette[], format: ColorFo
       type: 'color',
       description: SURFACE_USAGE,
     };
-    obj[toTokenName(p.name)] = tokens;
+    obj[modeTokenName(p.name, p.isDark)] = tokens;
   });
   return JSON.stringify(obj, null, 2);
 }
@@ -164,7 +168,7 @@ export function generateFigmaTokens(palettes: GeneratedPalette[]) {
       $extensions: figmaExtensions,
     };
     tokens.surface = alphaToken(getSurfaceColor(p.scale), SURFACE_USAGE);
-    obj[toTokenName(p.name)] = tokens;
+    obj[modeTokenName(p.name, p.isDark)] = tokens;
   });
 
   return JSON.stringify(
@@ -189,67 +193,43 @@ function alphaToOklch(alpha: AlphaColor): string {
 const escapeCsv = (field: string) =>
   /[",\n]/.test(field) ? `"${field.replace(/"/g, '""')}"` : field;
 
-/** Light + dark values side by side, ready to paste into Google Sheets. */
+/** Light rows, then `-dark` rows, one value per row — ready to paste into Google Sheets. */
 export function generateSheetCsv(palettes: GeneratedPalette[]) {
-  const headers = [
-    'Token Name',
-    'Light Mode Color',
-    'Light Mode OKLCH',
-    'Dark Mode Color',
-    'Dark Mode OKLCH',
-    'Palette Name',
-    'Step',
-    'Type',
-    'Usage',
-  ];
+  const headers = ['Name', 'Mode: Base', 'OKLCH', 'Palette Name', 'Step', 'Type', 'Description', 'Collection Name'];
   let csv = headers.join(',') + '\n';
+  const row = (fields: string[]) => [...fields, 'Color'].map(escapeCsv).join(',') + '\n';
 
   palettes.forEach((p) => {
     const context = p.context ?? DEFAULT_SCALE_CONTEXT;
-    const light = generatePaletteScale(p, false, context);
-    const dark = generatePaletteScale(p, true, context);
-    const lightAlpha = generateAlphaScale(light, false);
-    const darkAlpha = generateAlphaScale(dark, true);
-    const tokenBase = toTokenName(p.name);
+    [false, true].forEach((isDark) => {
+      const scale = generatePaletteScale(p, isDark, context);
+      const alpha = generateAlphaScale(scale, isDark);
+      const surface = getSurfaceColor(scale);
+      const tokenBase = modeTokenName(p.name, isDark);
 
-    light.colors.forEach((_, i) => {
-      const step = i + 1;
-      csv += [
-        `${tokenBase}/${step}`,
-        light.colors[i],
-        light.wideGamut[i],
-        dark.colors[i],
-        dark.wideGamut[i],
-        p.name,
-        `${step}`,
-        'Solid',
-        getStepDescription(step, p.name, false),
-      ].map(escapeCsv).join(',') + '\n';
+      scale.colors.forEach((color, i) => {
+        const step = i + 1;
+        csv += row([
+          `${tokenBase}/${step}`, color, scale.wideGamut[i],
+          p.name, `${step}`, 'Color', getStepDescription(step, p.name, false),
+        ]);
+      });
+      alpha.colors.forEach((a, i) => {
+        const step = i + 1;
+        csv += row([
+          `${tokenBase}/a${step}`, a.rgba, alphaToOklch(a),
+          p.name, `a${step}`, 'Color', getStepDescription(step, p.name, true),
+        ]);
+      });
+      csv += row([
+        `${tokenBase}/contrast`, scale.contrast, hexToOklch(scale.contrast),
+        p.name, 'contrast', 'Color', CONTRAST_USAGE,
+      ]);
+      csv += row([
+        `${tokenBase}/surface`, surface.rgba, alphaToOklch(surface),
+        p.name, 'surface', 'Color', SURFACE_USAGE,
+      ]);
     });
-    light.colors.forEach((_, i) => {
-      const step = i + 1;
-      csv += [
-        `${tokenBase}/a${step}`,
-        lightAlpha.colors[i].rgba,
-        alphaToOklch(lightAlpha.colors[i]),
-        darkAlpha.colors[i].rgba,
-        alphaToOklch(darkAlpha.colors[i]),
-        p.name,
-        `a${step}`,
-        'Alpha',
-        getStepDescription(step, p.name, true),
-      ].map(escapeCsv).join(',') + '\n';
-    });
-    const lightSurface = getSurfaceColor(light);
-    const darkSurface = getSurfaceColor(dark);
-    csv += [
-      `${tokenBase}/contrast`, light.contrast, hexToOklch(light.contrast), dark.contrast, hexToOklch(dark.contrast),
-      p.name, 'contrast', 'Solid', CONTRAST_USAGE,
-    ].map(escapeCsv).join(',') + '\n';
-    csv += [
-      `${tokenBase}/surface`, lightSurface.rgba, alphaToOklch(lightSurface), darkSurface.rgba, alphaToOklch(darkSurface),
-      p.name, 'surface', 'Alpha', SURFACE_USAGE,
-    ].map(escapeCsv).join(',') + '\n';
   });
 
   return csv;

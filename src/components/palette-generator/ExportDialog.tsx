@@ -50,8 +50,8 @@ const EXPORTS: Record<
   },
   csv: {
     label: 'Sheets CSV',
-    hint: 'Light and dark values side by side for Google Sheets.',
-    filename: 'design-system-colors.csv',
+    hint: 'Light rows, then dark rows, for Google Sheets.',
+    filename: 'color.csv',
     mime: 'text/csv;charset=utf-8',
     usesFormat: false,
   },
@@ -96,7 +96,7 @@ export function ExportDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl gap-0 p-0 overflow-hidden">
+      <DialogContent className="sm:max-w-2xl grid-cols-[minmax(0,1fr)] gap-0 p-0 overflow-hidden">
         <DialogHeader className="px-6 pt-6 pb-4 text-left">
           <DialogTitle>Export tokens</DialogTitle>
           <DialogDescription>
