@@ -1,6 +1,6 @@
 import { PaletteGenerator } from './components/palette-generator/PaletteGenerator';
 import { Toaster } from 'sonner';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useLayoutEffect, useCallback } from 'react';
 
 export default function App() {
   const [themeSource, setThemeSource] = useState<'system' | 'manual'>(() => {
@@ -23,6 +23,11 @@ export default function App() {
     return () => mq.removeEventListener('change', handler);
   }, [themeSource]);
 
+  // Theme lives on <html> so portalled UI (dropdowns, dialogs, tooltips) rendered under <body> picks it up too
+  useLayoutEffect(() => {
+    document.documentElement.classList.toggle('dark', isDarkMode);
+  }, [isDarkMode]);
+
   // Persist manual choice
   useEffect(() => {
     if (themeSource === 'manual') {
@@ -36,9 +41,13 @@ export default function App() {
   }, []);
 
   return (
-    <div className={isDarkMode ? 'dark' : ''}>
+    <>
       <PaletteGenerator isDarkMode={isDarkMode} toggleDarkMode={toggleDarkMode} />
-      <Toaster />
-    </div>
+      <Toaster
+        theme={isDarkMode ? 'dark' : 'light'}
+        position="bottom-center"
+        toastOptions={{ duration: 1800 }}
+      />
+    </>
   );
 }

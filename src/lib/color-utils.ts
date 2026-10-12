@@ -1,9 +1,20 @@
 import chroma from 'chroma-js';
-import * as radixColors from '@radix-ui/colors';
+import Color from 'colorjs.io';
+import BezierEasing from 'bezier-easing';
+import * as RadixColors from '@radix-ui/colors';
+
+export type PaletteRole = 'accent' | 'gray';
 
 export interface ColorScale {
   name: string;
-  colors: string[]; // Array of 12 hex codes
+  colors: string[];          // 12 sRGB hex codes
+  wideGamut: string[];       // 12 oklch() strings (P3-capable)
+  alphaWideGamut: string[];  // 12 color(display-p3 … / a) strings
+  contrast: string;          // Text color for use on step 9
+  surface: string;           // Translucent panel color (hex8)
+  surfaceWideGamut: string;
+  background: string;        // Page background the scale was fitted to
+  mixedFrom: [string, string, number]; // Reference scales and mix ratio
 }
 
 export interface AlphaColor {
@@ -23,658 +34,343 @@ export interface AlphaColorScale {
 }
 
 // =====================================================================
-// Radix custom color generation logic
-// References https://www.radix-ui.com/colors/custom
+// Radix custom color generation
+// Port of radix-ui/website components/generate-radix-colors.tsx
+// (https://www.radix-ui.com/colors/custom), on @radix-ui/colors 3.0.0
+// and colorjs.io 0.5.2 to match the official output.
 //
-// The Radix custom tool does not build palettes from raw HSL ramps. It:
-//   1. finds the closest official Radix scales in OKLCH
-//   2. mixes those reference scales
-//   3. rescales chroma to the submitted color
-//   4. pins the requested hue across the generated scale
-//   5. anchors step 9 to the submitted color and derives step 10
+//   1. find the two closest official Radix P3 scales in OKLCH
+//   2. mix them in proportion to their distance from the submitted color
+//   3. rescale chroma and pin hue to the submitted color
+//   4. transpose lightness to the page background
+//   5. anchor step 9 to the submitted color and derive step 10
+//
+// Hue shift, saturation and lock step 9 are additions of this tool. At
+// their defaults (0, 1, off) the output is identical to Radix custom.
 // =====================================================================
 
-const RADIX_GRAY_SCALE_NAMES = ['gray', 'mauve', 'slate', 'sage', 'olive', 'sand'] as const;
-const RADIX_ACCENT_SCALE_NAMES = [
-  ...RADIX_GRAY_SCALE_NAMES,
-  'tomato',
-  'red',
-  'ruby',
-  'crimson',
-  'pink',
-  'plum',
-  'purple',
-  'violet',
-  'iris',
-  'indigo',
-  'blue',
-  'cyan',
-  'teal',
-  'jade',
-  'green',
-  'grass',
-  'brown',
-  'orange',
-  'sky',
-  'mint',
-  'lime',
-  'yellow',
-  'amber',
-] as const;
+type ArrayOf12<T> = [T, T, T, T, T, T, T, T, T, T, T, T];
+const arrayOf12 = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] as const;
 
-type RadixScaleName = typeof RADIX_ACCENT_SCALE_NAMES[number];
-type OklchTuple = [number, number, number];
+// prettier-ignore
+const grayScaleNames = ['gray', 'mauve', 'slate', 'sage', 'olive', 'sand'] as const;
 
-const radixColorExports = radixColors as unknown as Record<string, Record<string, string>>;
+// prettier-ignore
+const scaleNames = [...grayScaleNames, 'tomato', 'red', 'ruby', 'crimson', 'pink',
+  'plum', 'purple', 'violet', 'iris', 'indigo', 'blue', 'cyan', 'teal', 'jade', 'green',
+  'grass', 'brown', 'orange', 'sky', 'mint', 'lime', 'yellow', 'amber'] as const;
 
-function normalizeHue(hue: number): number {
-  return ((hue % 360) + 360) % 360;
-}
+type ScaleSet = Record<string, ArrayOf12<Color>>;
 
-function scaleExportKey(name: RadixScaleName, isDark: boolean): string {
-  return isDark ? `${name}Dark` : name;
-}
+export const DEFAULT_BACKGROUNDS = { light: '#FFFFFF', dark: '#111111' } as const;
+// Default gray of the Radix custom tool, used to tint pure black/white accents
+export const DEFAULT_GRAY = '#8B8D98';
 
-function getRadixScale(name: RadixScaleName, isDark: boolean): string[] {
-  const scale = radixColorExports[scaleExportKey(name, isDark)];
-  return Array.from({ length: 12 }, (_, index) => scale[`${name}${index + 1}`]);
-}
+const radixExports = RadixColors as unknown as Record<string, Record<string, string>>;
+const referenceCache = new Map<string, ScaleSet>();
 
-function colorToOklch(color: string): OklchTuple {
-  const [l, c, h] = chroma(color).oklch();
-  return [clamp01(l), Math.max(0, c || 0), Number.isFinite(h) ? normalizeHue(h) : 0];
-}
-
-function colorFromOklch([l, c, h]: OklchTuple): string {
-  return chroma.oklch(clamp01(l), Math.max(0, c), normalizeHue(h)).hex().toUpperCase();
-}
-
-function oklchDistance(a: OklchTuple, b: OklchTuple): number {
-  const hueA = a[2] * Math.PI / 180;
-  const hueB = b[2] * Math.PI / 180;
-  const aa = a[1] * Math.cos(hueA);
-  const ab = a[1] * Math.sin(hueA);
-  const ba = b[1] * Math.cos(hueB);
-  const bb = b[1] * Math.sin(hueB);
-
-  return Math.hypot(a[0] - b[0], aa - ba, ab - bb);
-}
-
-const RADIX_REFERENCE_CACHE = new Map<string, Record<RadixScaleName, string[]>>();
-
-function getReferenceScales(isDark: boolean): Record<RadixScaleName, string[]> {
-  const cacheKey = isDark ? 'dark' : 'light';
-  const cached = RADIX_REFERENCE_CACHE.get(cacheKey);
+function getReferenceScales(isDark: boolean, graysOnly: boolean): ScaleSet {
+  const key = `${isDark ? 'dark' : 'light'}-${graysOnly ? 'gray' : 'all'}`;
+  const cached = referenceCache.get(key);
   if (cached) return cached;
 
+  const names = graysOnly ? grayScaleNames : scaleNames;
   const scales = Object.fromEntries(
-    RADIX_ACCENT_SCALE_NAMES.map(name => [name, getRadixScale(name, isDark)])
-  ) as Record<RadixScaleName, string[]>;
-  RADIX_REFERENCE_CACHE.set(cacheKey, scales);
+    names.map((name) => [
+      name,
+      Object.values(radixExports[`${name}${isDark ? 'DarkP3' : 'P3'}`]).map((str) => new Color(str).to('oklch')),
+    ]),
+  ) as ScaleSet;
+  referenceCache.set(key, scales);
   return scales;
 }
 
-function findClosestReferenceScales(
-  target: OklchTuple,
-  references: Record<RadixScaleName, string[]>
-): [RadixScaleName, RadixScaleName, number] {
-  const ranked = Object.entries(references).map(([name, scale]) => {
-    const distance = Math.min(...scale.map(color => oklchDistance(target, colorToOklch(color))));
-    return { name: name as RadixScaleName, distance };
-  }).sort((a, b) => a.distance - b.distance);
+const cloneScale = (scale: ArrayOf12<Color>) => scale.map((color) => color.clone()) as ArrayOf12<Color>;
 
-  const nearest = ranked[0];
-  let candidates = ranked.filter((entry, index, all) => (
-    index === all.findIndex(item => item.name === entry.name)
-  ));
-
-  const nearestIsGray = RADIX_GRAY_SCALE_NAMES.includes(nearest.name as typeof RADIX_GRAY_SCALE_NAMES[number]);
-  const allCandidatesAreGray = candidates.every(entry => (
-    RADIX_GRAY_SCALE_NAMES.includes(entry.name as typeof RADIX_GRAY_SCALE_NAMES[number])
-  ));
-
-  if (nearestIsGray && !allCandidatesAreGray) {
-    candidates = [nearest, ...candidates.filter(entry => (
-      !RADIX_GRAY_SCALE_NAMES.includes(entry.name as typeof RADIX_GRAY_SCALE_NAMES[number])
-    ))];
-  }
-
-  const first = candidates[0];
-  const second = candidates[1] ?? candidates[0];
-  const firstStep = references[first.name].reduce((closest, color) => {
-    const distance = oklchDistance(target, colorToOklch(color));
-    return distance < closest.distance ? { color, distance } : closest;
-  }, { color: references[first.name][8], distance: Number.POSITIVE_INFINITY });
-  const secondStep = references[second.name].reduce((closest, color) => {
-    const distance = oklchDistance(target, colorToOklch(color));
-    return distance < closest.distance ? { color, distance } : closest;
-  }, { color: references[second.name][8], distance: Number.POSITIVE_INFINITY });
-
-  const h = first.distance;
-  const C = second.distance;
-  const d = oklchDistance(colorToOklch(firstStep.color), colorToOklch(secondStep.color));
-  const denominator = 2 * h * d;
-  const u = denominator === 0 ? 0 : (h ** 2 + d ** 2 - C ** 2) / denominator;
-  const g = Math.sin(Math.acos(Math.max(-1, Math.min(1, u)))) || 1;
-  const pDenominator = 2 * C * d;
-  const p = pDenominator === 0 ? 0 : (C ** 2 + d ** 2 - h ** 2) / pDenominator;
-  const m = Math.sin(Math.acos(Math.max(-1, Math.min(1, p)))) || 1;
-  const mixAmount = clamp01(0.5 * Math.max(0, (u / g) / (p / m || 1)));
-
-  return [first.name, second.name, mixAmount];
-}
-
-function mixReferenceScales(first: string[], second: string[], amount: number): OklchTuple[] {
-  return first.map((color, index) => (
-    colorToOklch(chroma.mix(color, second[index], amount, 'oklch').hex())
-  ));
-}
-
-function cubicBezier(x1: number, y1: number, x2: number, y2: number) {
-  const cx = 3 * x1;
-  const bx = 3 * (x2 - x1) - cx;
-  const ax = 1 - cx - bx;
-  const cy = 3 * y1;
-  const by = 3 * (y2 - y1) - cy;
-  const ay = 1 - cy - by;
-  const sampleX = (t: number) => ((ax * t + bx) * t + cx) * t;
-  const sampleY = (t: number) => ((ay * t + by) * t + cy) * t;
-  const sampleDX = (t: number) => (3 * ax * t + 2 * bx) * t + cx;
-
-  return (x: number) => {
-    let t = x;
-    for (let i = 0; i < 8; i++) {
-      const dx = sampleX(t) - x;
-      const d = sampleDX(t);
-      if (Math.abs(dx) < 1e-5 || Math.abs(d) < 1e-5) break;
-      t -= dx / d;
-    }
-    return sampleY(clamp01(t));
-  };
-}
-
-function adjustLightnessToBackground(
-  scale: OklchTuple[],
-  backgroundL: number,
-  isDark: boolean
-): OklchTuple[] {
-  const adjusted = scale.map(color => [...color] as OklchTuple);
-  const ease = isDark
-    ? cubicBezier(1, 0, 1, 0)
-    : cubicBezier(0, 2, 0, 2);
-  const values = isDark
-    ? adjusted.map(color => color[0])
-    : [1, ...adjusted.map(color => color[0])];
-
-  if (isDark) {
-    const firstL = adjusted[0][0] || 1;
-    const ratio = backgroundL / firstL;
-    const darkEase = ratio > 1.5 ? cubicBezier(0, 0, 0, 0) : ease;
-    adjusted.forEach((color, index, all) => {
-      color[0] = clamp01(values[index] - (values[0] - backgroundL) * darkEase(1 - index / (all.length - 1)));
-    });
-    return adjusted;
-  }
-
-  const lightValues = values.map((value, index, all) => {
-    return value - (all[0] - backgroundL) * ease(1 - index / (all.length - 1));
-  });
-  lightValues.shift();
-  lightValues.forEach((value, index) => {
-    adjusted[index][0] = clamp01(value);
-  });
-  return adjusted;
-}
-
-function buildRadixCustomScale(
-  baseColor: string,
-  isDark: boolean,
-  options: ScaleOptions
-): string[] {
-  const { hueShift = 0, saturationScale = 1, lockStep9 = false } = options;
-  const target = colorToOklch(baseColor);
-  const background = colorToOklch(isDark ? '#111111' : '#FFFFFF');
-  const references = getReferenceScales(isDark);
-  const [firstName, secondName, mixAmount] = findClosestReferenceScales(target, references);
-  const mixed = mixReferenceScales(references[firstName], references[secondName], mixAmount);
-  const closestInMixed = mixed.reduce((closest, color) => {
-    const distance = oklchDistance(target, color);
-    return distance < closest.distance ? { color, distance } : closest;
-  }, { color: mixed[8], distance: Number.POSITIVE_INFINITY }).color;
-  const chromaRatio = closestInMixed[1] > 0 ? target[1] / closestInMixed[1] : 1;
-
-  mixed.forEach((color, index) => {
-    const hueAdjustment = (hueShift / 12) * (index - 6);
-    color[1] = Math.min(1.5 * target[1], color[1] * chromaRatio * saturationScale);
-    color[2] = normalizeHue(target[2] + hueAdjustment);
-  });
-
-  const adjusted = adjustLightnessToBackground(mixed, background[0], isDark);
-  const colors = adjusted.map(colorFromOklch);
-  // Radix normally uses the submitted accent as step 9. The exception is when
-  // that color sits too close to the background, where the generated scale's
-  // step 9 keeps component contrast healthier. `lockStep9` forces exact output.
-  const shouldUseGeneratedStep9 = !lockStep9 && oklchDistance(target, adjusted[0]) * 100 < 25;
-  colors[8] = shouldUseGeneratedStep9 ? colorFromOklch(adjusted[8]) : chroma(baseColor).hex().toUpperCase();
-
-  const [step9L, step9C, step9H] = colorToOklch(colors[8]);
-  // Step 10 is derived from step 9, matching Radix custom's solid-hover logic.
-  const step10L = step9L > 0.4
-    ? step9L - 0.03 / (step9L + 0.1)
-    : step9L + 0.03 / (step9L + 0.1);
-  const step10C = step9L > 0.4 ? Math.max(0, 0.93 * step9C) : step9C;
-  colors[9] = colorFromOklch([step10L, step10C, step9H]);
-
-  const step8C = colorToOklch(colors[7])[1];
-  const step11 = colorToOklch(colors[10]);
-  const step12 = colorToOklch(colors[11]);
-
-  // Adjust chroma for steps 11 and 12 based on steps 8 and 9
-  step11[1] = Math.min(Math.max(step9C, step8C), step11[1]);
-  step12[1] = Math.min(Math.max(step9C, step8C), step12[1]);
-
-  // Radix-like contrast adjustment for step 11, ensuring it's distinct and has good contrast
-  // Step 11 (colors[10]) is often used for high-contrast text or icons
-  const [currentStep10L] = colorToOklch(colors[9]); // Get lightness of step 10
-  
-  if (isDark) {
-    // In dark mode, step 11 should be lighter than step 10 to provide contrast
-    step11[0] = Math.min(0.99, Math.max(step11[0], currentStep10L + 0.12)); // Ensure it's sufficiently lighter
-    step12[0] = Math.min(0.99, Math.max(step12[0], step11[0] + 0.08)); // Step 12 even lighter
-  } else {
-    // In light mode, step 11 should be darker than step 10
-    step11[0] = Math.max(0.02, Math.min(step11[0], currentStep10L - 0.12)); // Ensure it's sufficiently darker
-    step12[0] = Math.max(0.02, Math.min(step12[0], step11[0] - 0.08)); // Step 12 even darker
-  }
-
-  colors[10] = colorFromOklch(step11);
-  colors[11] = colorFromOklch(step12);
-
-  return colors;
-}
-
-// ===== LIGHTNESS SCAFFOLDS (steps 1-8, 0-1 scale) =====
-// Steps 9-12 are dynamically derived from the base color's lightness.
-
-// Light mode: from near-white backgrounds down to mid-tone borders
-const LIGHT_LIGHTNESS_SCAFFOLD = [
-  0.990,  // Step 1: App background
-  0.975,  // Step 2: Subtle background
-  0.940,  // Step 3: UI element background
-  0.890,  // Step 4: Hovered UI element
-  0.830,  // Step 5: Active UI element
-  0.750,  // Step 6: Subtle borders
-  0.650,  // Step 7: UI element border and focus rings
-  0.520,  // Step 8: Hovered UI element border
-];
-
-// Dark mode: from near-black backgrounds up to mid-tone borders
-const DARK_LIGHTNESS_SCAFFOLD = [
-  0.085,  // Step 1: App background
-  0.110,  // Step 2: Subtle background
-  0.140,  // Step 3: UI element background
-  0.170,  // Step 4: Hovered UI element
-  0.210,  // Step 5: Active UI element
-  0.280,  // Step 6: Subtle borders
-  0.360,  // Step 7: UI element border and focus rings
-  0.450,  // Step 8: Hovered UI element border
-];
-
-// ===== SATURATION CURVES (multipliers of base saturation) =====
-
-// Light mode: low saturation at extremes, full at step 9
-const LIGHT_SATURATION_CURVE = [
-  0.20,  // Step 1
-  0.35,  // Step 2
-  0.50,  // Step 3 — smoothed ramp (was 0.70)
-  0.65,  // Step 4 — smoothed ramp (was 0.78)
-  0.78,  // Step 5 — smoothed ramp (was 0.85)
-  0.85,  // Step 6
-  0.90,  // Step 7
-  0.95,  // Step 8
-  1.00,  // Step 9 (base anchor)
-  0.95,  // Step 10
-  0.80,  // Step 11
-  0.90,  // Step 12 — retain brand hue vibe at high-contrast text
-];
-
-// Dark mode: very low saturation for clean dark surfaces, ramps up to step 9
-const DARK_SATURATION_CURVE = [
-  0.10,  // Step 1
-  0.15,  // Step 2
-  0.40,  // Step 3 — raised from 0.35 for better surface color visibility
-  0.45,  // Step 4
-  0.52,  // Step 5 — differentiated from step 6 (was 0.55)
-  0.62,  // Step 6 — differentiated from step 5 (was 0.55)
-  0.65,  // Step 7
-  0.75,  // Step 8
-  1.00,  // Step 9 (base anchor)
-  0.95,  // Step 10
-  0.80,  // Step 11
-  0.90,  // Step 12 — retain brand hue vibe at high-contrast text
-];
-
-// ===== HUE-SPECIFIC ADJUSTMENTS =====
-// Some hues need tweaks to the base scaffolds for perceptual uniformity.
-
-type HueCategory = 'yellow' | 'orange' | 'lime' | 'cyan' | 'default';
-
-function getHueCategory(hue: number): HueCategory {
-  const h = ((hue % 360) + 360) % 360;
-  if (h >= 45 && h < 65) return 'yellow';
-  if (h >= 20 && h < 45)  return 'orange';
-  if (h >= 65 && h <= 100) return 'lime';
-  if (h >= 170 && h <= 200) return 'cyan';
-  return 'default';
-}
-
-// Light scaffold offsets per hue category (added to base scaffold)
-const LIGHT_SCAFFOLD_OFFSETS: Record<HueCategory, number[]> = {
-  default: [0, 0, 0, 0, 0, 0, 0, 0],
-  yellow:  [-0.005, -0.020, -0.025, -0.020, -0.015, -0.000, 0.020, 0.060],
-  orange:  [-0.003, -0.010, -0.012, -0.010, -0.008,  0.000, 0.010, 0.030],
-  lime:    [-0.002, -0.015, -0.020, -0.010, -0.005,  0.010, 0.035, 0.070],
-  cyan:    [ 0.000, -0.010, -0.015, -0.005,  0.005,  0.025, 0.050, 0.080],
-};
-
-// Dark scaffold offsets per hue category
-const DARK_SCAFFOLD_OFFSETS: Record<HueCategory, number[]> = {
-  default: [ 0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000,  0.000],
-  yellow:  [-0.010, -0.012, -0.010, -0.015, -0.020, -0.017, -0.016, -0.012],
-  orange:  [-0.005, -0.006, -0.005, -0.008, -0.010, -0.009, -0.008, -0.006],
-  lime:    [-0.007, -0.010, -0.008, -0.010, -0.014, -0.012, -0.012, -0.008],
-  cyan:    [-0.003, -0.005, -0.008, -0.005, -0.010, -0.008, -0.008, -0.004],
-};
-
-// Saturation curve adjustments per hue category (multiplied on top of base curve)
-const SAT_CURVE_ADJUSTMENTS: Record<HueCategory, { light: number[]; dark: number[] }> = {
-  default: {
-    light: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-    dark:  [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-  },
-  yellow: {
-    light: [1, 1, 1, 1, 1.15, 1.15, 1.15, 1.15, 1, 1, 1, 1],
-    dark:  [0.83, 0.86, 0.88, 0.89, 0.90, 0.94, 0.97, 0.97, 1, 1, 0.92, 0.92],
-  },
-  orange: {
-    light: [1, 1, 1, 1, 1.07, 1.07, 1.07, 1.07, 1, 1, 1, 1],
-    dark:  [0.90, 0.92, 0.93, 0.94, 0.95, 0.97, 0.98, 0.98, 1, 1, 0.96, 0.96],
-  },
-  lime: {
-    light: [1, 1, 1, 1.12, 1.12, 1.12, 1.12, 1.12, 1, 1, 1, 1],
-    dark:  [0.93, 0.95, 0.96, 0.96, 0.97, 0.99, 1.0, 1.0, 1, 1, 0.95, 0.97],
-  },
-  cyan: {
-    light: [1, 1, 1.10, 1.10, 1.10, 1.10, 1.10, 1.10, 1, 1, 1, 1],
-    dark:  [1.07, 1.05, 1.04, 1.03, 1.02, 1.02, 1.03, 1.03, 1, 1, 1.01, 1.05],
-  },
-};
-
-/**
- * Builds the full 12-step lightness array from the base color's lightness.
- *
- * Steps 1-8: scaffold (fixed per mode, with hue offsets)
- * Step 9:    base lightness (anchor)
- * Step 10:   base ± offset (hover state)
- * Step 11:   base ± larger offset (low-contrast text)
- * Step 12:   fixed endpoint (high-contrast text)
- */
-function buildLightnessScale(baseL: number, hue: number, isDark: boolean): number[] {
-  const category = getHueCategory(hue);
-
-  if (isDark) {
-    const offsets = DARK_SCAFFOLD_OFFSETS[category];
-    const scaffold = DARK_LIGHTNESS_SCAFFOLD.map((v, i) => Math.max(0, Math.min(1, v + offsets[i])));
-    return [
-      ...scaffold,
-      baseL,                                          // Step 9
-      Math.min(baseL + 0.05, 0.95),                  // Step 10: lighter hover
-      Math.min(Math.max(baseL + 0.25, 0.70), 0.75),  // Step 11: low-contrast text (capped at 0.75, always ≥0.12 below step 12)
-      0.87,                                           // Step 12: high-contrast text (~12.5:1 against dark bg)
-    ];
-  }
-
-  const offsets = LIGHT_SCAFFOLD_OFFSETS[category];
-  const scaffold = LIGHT_LIGHTNESS_SCAFFOLD.map((v, i) => Math.max(0, Math.min(1, v + offsets[i])));
-  return [
-    ...scaffold,
-    baseL,                                          // Step 9
-    Math.max(baseL - 0.05, 0),                      // Step 10: darker hover
-    Math.max(baseL - 0.13, 0.33),                   // Step 11: low-contrast text (floored at 0.33, always ≥0.13 above step 12)
-    0.20,                                           // Step 12: high-contrast text (~12.5:1 against light bg)
-  ];
-}
-
-/**
- * Builds the full 12-step saturation array from the base saturation.
- */
-function buildSaturationScale(baseS: number, hue: number, isDark: boolean): number[] {
-  const category = getHueCategory(hue);
-  const baseCurve = isDark ? DARK_SATURATION_CURVE : LIGHT_SATURATION_CURVE;
-  const adj = isDark ? SAT_CURVE_ADJUSTMENTS[category].dark : SAT_CURVE_ADJUSTMENTS[category].light;
-
-  return baseCurve.map((mult, i) => {
-    const sat = baseS * mult * adj[i];
-    return Math.max(0, Math.min(1, sat));
-  });
-}
-
-function clamp01(value: number): number {
-  return Math.max(0, Math.min(1, value));
-}
-
-function getAPCAScore(text: string, background: string): number {
-  return Math.abs(getAPCA(text, background));
-}
-
-function findLightnessForAPCAScore(
-  background: string,
-  hue: number,
-  saturation: number,
-  preferredLightness: number,
-  targetScore: number,
-): number {
-  let bestLightness = clamp01(preferredLightness);
-  let bestScoreDelta = Number.POSITIVE_INFINITY;
-  let bestDistanceFromPreferred = Number.POSITIVE_INFINITY;
-
-  const consider = (lightness: number) => {
-    const candidateLightness = clamp01(lightness);
-    const score = getAPCAScore(chroma.hsl(hue, saturation, candidateLightness).hex(), background);
-    const scoreDelta = Math.abs(score - targetScore);
-    const distanceFromPreferred = Math.abs(candidateLightness - preferredLightness);
-
-    if (
-      scoreDelta < bestScoreDelta ||
-      (Math.abs(scoreDelta - bestScoreDelta) < 0.001 && distanceFromPreferred < bestDistanceFromPreferred)
-    ) {
-      bestLightness = candidateLightness;
-      bestScoreDelta = scoreDelta;
-      bestDistanceFromPreferred = distanceFromPreferred;
-    }
-  };
-
-  const sampleCount = 96;
-  let prevLightness = 0;
-  let prevScoreDelta = getAPCAScore(chroma.hsl(hue, saturation, prevLightness).hex(), background) - targetScore;
-  consider(prevLightness);
-
-  for (let i = 1; i <= sampleCount; i++) {
-    const currentLightness = i / sampleCount;
-    const currentScoreDelta = getAPCAScore(chroma.hsl(hue, saturation, currentLightness).hex(), background) - targetScore;
-    consider(currentLightness);
-
-    if (prevScoreDelta === 0 || currentScoreDelta === 0 || prevScoreDelta * currentScoreDelta < 0) {
-      let low = prevLightness;
-      let high = currentLightness;
-
-      for (let j = 0; j < 20; j++) {
-        const mid = (low + high) / 2;
-        const midScoreDelta = getAPCAScore(chroma.hsl(hue, saturation, mid).hex(), background) - targetScore;
-        consider(mid);
-
-        if (prevScoreDelta * midScoreDelta <= 0) {
-          high = mid;
-        } else {
-          low = mid;
-          prevScoreDelta = midScoreDelta;
-        }
-      }
-    }
-
-    prevLightness = currentLightness;
-    prevScoreDelta = currentScoreDelta;
-  }
-
-  return bestLightness;
-}
-
-function adjustStep8ToAPCAMidpoint(
-  colors: string[],
-  lightnessScale: number[],
-  hue: number,
-  saturation: number,
-): string[] {
-  const background = colors[0];
-  const step7Score = getAPCAScore(colors[6], background);
-  const step9Score = getAPCAScore(colors[8], background);
-
-  if (!Number.isFinite(step7Score) || !Number.isFinite(step9Score) || step9Score <= step7Score) {
-    return colors;
-  }
-
-  const targetScore = (step7Score + step9Score) / 2;
-  const step8Lightness = findLightnessForAPCAScore(
-    background,
-    hue,
-    saturation,
-    lightnessScale[7],
-    targetScore,
-  );
-
-  const adjusted = [...colors];
-  adjusted[7] = chroma.hsl(hue, saturation, step8Lightness).hex().toUpperCase();
-  return adjusted;
-}
-
-// ===== LEGACY EXPORTS (kept for backward compatibility) =====
-// @deprecated These constants reflect the original fixed-scale approach and
-// may diverge from current generator output. The live scale uses
-// buildLightnessScale() which is anchor-based. Do not rely on these for new code.
-
-export const DEFAULT_LIGHTNESS_SCALE = [
-  0.990, 0.975, 0.940, 0.890, 0.830, 0.750, 0.650, 0.520, 0.50, 0.44, 0.35, 0.12,
-];
-export const YELLOW_LIGHT_SCALE = [
-  0.985, 0.955, 0.915, 0.870, 0.815, 0.750, 0.670, 0.580, 0.48, 0.42, 0.34, 0.12,
-];
-export const CYAN_LIGHT_SCALE = [
-  0.990, 0.965, 0.925, 0.885, 0.835, 0.775, 0.700, 0.600, 0.49, 0.43, 0.35, 0.12,
-];
-export const LIME_LIGHT_SCALE = [
-  0.988, 0.960, 0.920, 0.880, 0.825, 0.760, 0.685, 0.590, 0.485, 0.425, 0.345, 0.12,
-];
-export const DARK_LIGHTNESS_SCALE = [
-  0.085, 0.110, 0.140, 0.170, 0.210, 0.280, 0.360, 0.450, 0.50, 0.58, 0.66, 0.93,
-];
-export const YELLOW_DARK_SCALE = [
-  0.075, 0.098, 0.130, 0.155, 0.182, 0.215, 0.258, 0.330, 0.50, 0.58, 0.72, 0.94,
-];
-export const CYAN_DARK_SCALE = [
-  0.082, 0.105, 0.140, 0.165, 0.192, 0.224, 0.266, 0.338, 0.49, 0.57, 0.67, 0.93,
-];
-export const LIME_DARK_SCALE = [
-  0.078, 0.100, 0.135, 0.160, 0.188, 0.220, 0.262, 0.334, 0.485, 0.57, 0.70, 0.94,
-];
-
-// ===== SCALE OPTIONS =====
+const toHex = (color: Color) => formatHex(color.to('srgb').toString({ format: 'hex' })).toUpperCase();
 
 export interface ScaleOptions {
   hueShift?: number;        // Degrees to shift from start to end
   saturationScale?: number; // Multiplier 0.0 to 2.0
   lockStep9?: boolean;      // When true, force step 9 to the exact base color
-  useP3?: boolean;          // Use P3 color space (placeholder)
+  role?: PaletteRole;       // 'gray' fits only the Radix gray scales, like Radix custom's gray input
+  background?: string;      // Page background (defaults to #FFFFFF / #111111)
+  grayColor?: string;       // Gray that tints pure black/white accents
 }
 
-// ===== OPTIMAL STEP 9 LIGHTNESS =====
+function buildRadixCustomScale(baseColor: string, isDark: boolean, options: ScaleOptions) {
+  const {
+    hueShift = 0,
+    saturationScale = 1,
+    lockStep9 = false,
+    role = 'accent',
+    background = isDark ? DEFAULT_BACKGROUNDS.dark : DEFAULT_BACKGROUNDS.light,
+    grayColor = DEFAULT_GRAY,
+  } = options;
+  const tweaks = { hueShift, saturationScale };
+  const backgroundColor = new Color(background).to('oklch');
+  const backgroundHex = toHex(backgroundColor);
+  const grayScales = getReferenceScales(isDark, true);
+  const baseOklch = new Color(baseColor).to('oklch');
 
-/**
- * Computes the perceptually optimal lightness for step 9 based on hue.
- *
- * Different hues have different ideal lightness values due to the Helmholtz–Kohlrausch
- * effect — yellow and cyan appear brighter at the same measured lightness, so their
- * ideal anchor is adjusted. Values are derived from Radix's published scales.
- *
- * In dark mode, step 9 retains the same ideal lightness so the brand color stays
- * consistent across modes (a core Radix principle).
- */
-function getOptimalStep9Lightness(hue: number): number {
-  const h = ((hue % 360) + 360) % 360;
+  let scaleColors: ArrayOf12<Color>;
+  let mixedFrom: [string, string, number];
+  let contrastColor: Color;
+  let surfaceHex: string;
+  let surfaceWideGamut: string;
 
-  // Yellow / amber range (45-65): appears very bright, needs lower L
-  if (h >= 45 && h < 65) return 0.53;
+  if (role === 'gray') {
+    // Radix custom uses the gray scale as fitted, without anchoring step 9
+    ({ scale: scaleColors, mixedFrom } = getScaleFromColor(baseOklch, grayScales, backgroundColor, tweaks));
+    contrastColor = getTextColor(scaleColors[8]);
+    surfaceHex = isDark ? '#0000000D' : '#FFFFFFCC';
+    surfaceWideGamut = isDark ? 'color(display-p3 0 0 0 / 5%)' : 'color(display-p3 1 1 1 / 80%)';
+  } else {
+    ({ scale: scaleColors, mixedFrom } = getScaleFromColor(
+      baseOklch,
+      getReferenceScales(isDark, false),
+      backgroundColor,
+      tweaks,
+    ));
 
-  // Lime / green-yellow (65-100): still high perceived brightness
-  if (h >= 65 && h <= 100) return 0.46;
+    // Make sure we use the tint from the gray scale for when base is pure white or black
+    const baseHex = baseOklch.to('srgb').toString({ format: 'hex' });
+    if (baseHex === '#000' || baseHex === '#fff') {
+      const gray = getScaleFromColor(new Color(grayColor).to('oklch'), grayScales, backgroundColor, tweaks);
+      scaleColors = cloneScale(gray.scale);
+      mixedFrom = gray.mixedFrom;
+    }
 
-  // Green (100-160): mid-range perceived brightness
-  if (h > 100 && h < 160) return 0.44;
+    const [step9, contrast] = getStep9Colors(scaleColors, baseOklch, lockStep9);
+    contrastColor = contrast;
+    scaleColors[8] = step9;
+    scaleColors[9] = getButtonHoverColor(step9, [scaleColors]);
 
-  // Cyan / teal (160-200): high perceived brightness
-  if (h >= 160 && h <= 200) return 0.47;
-
-  // Blue (200-260): lower perceived brightness, can go slightly higher
-  if (h > 200 && h <= 260) return 0.50;
-
-  // Purple / violet (260-310)
-  if (h > 260 && h <= 310) return 0.52;
-
-  // Red / magenta / pink (310-360, 0-20)
-  if (h > 310 || h < 20) return 0.55;
-
-  // Orange (20-45)
-  if (h >= 20 && h < 45) return 0.54;
-
-  // Fallback
-  return 0.50;
-}
-
-/**
- * Returns the generated step 9 preview. Usually this is the exact base color;
- * it changes only when Radix's background-proximity safeguard kicks in.
- */
-export function getOptimizedStep9(baseColor: string, isDark: boolean): {
-  color: string;
-  originalL: number;
-  optimizedL: number;
-  delta: number;
-} {
-  try {
-    const [originalL] = colorToOklch(baseColor);
-    const scale = buildRadixCustomScale(baseColor, isDark, { lockStep9: false });
-    const color = scale[8];
-    const [optimizedL] = colorToOklch(color);
-    return {
-      color,
-      originalL: Math.round(originalL * 100),
-      optimizedL: Math.round(optimizedL * 100),
-      delta: Math.round((optimizedL - originalL) * 100),
-    };
-  } catch {
-    return { color: baseColor, originalL: 50, optimizedL: 50, delta: 0 };
+    // Limit saturation of the text colors
+    const maxTextChroma = Math.max(scaleColors[8].coords[1], scaleColors[7].coords[1]);
+    scaleColors[10].coords[1] = Math.min(maxTextChroma, scaleColors[10].coords[1]);
+    scaleColors[11].coords[1] = Math.min(maxTextChroma, scaleColors[11].coords[1]);
   }
+
+  const colors = scaleColors.map(toHex);
+  const wideGamut = scaleColors.map(toOklchString);
+
+  if (role !== 'gray') {
+    surfaceHex = getAlphaColorSrgb(colors[1], backgroundHex, isDark ? 0.5 : 0.8);
+    surfaceWideGamut = getAlphaColorP3(wideGamut[1], backgroundHex, isDark ? 0.5 : 0.8);
+  }
+
+  return {
+    colors,
+    wideGamut,
+    alphaWideGamut: colors.map((color) => getAlphaColorP3(color, backgroundHex)),
+    contrast: toHex(contrastColor),
+    surface: surfaceHex!,
+    surfaceWideGamut: surfaceWideGamut!,
+    background: backgroundHex,
+    mixedFrom,
+  };
+}
+
+function getStep9Colors(scale: ArrayOf12<Color>, accentBaseColor: Color, lockStep9: boolean): [Color, Color] {
+  const referenceBackgroundColor = scale[0];
+  const distance = accentBaseColor.deltaEOK(referenceBackgroundColor) * 100;
+
+  // If the accent base color is close to the page background color, it's likely
+  // white on white or black on black, so we want to return something that makes sense instead
+  if (distance < 25 && !lockStep9) {
+    return [scale[8], getTextColor(scale[8])];
+  }
+
+  return [accentBaseColor, getTextColor(accentBaseColor)];
+}
+
+function getButtonHoverColor(source: Color, scales: ArrayOf12<Color>[]) {
+  const [L, C, H] = source.coords;
+  const newL = L > 0.4 ? L - 0.03 / (L + 0.1) : L + 0.03 / (L + 0.1);
+  const newC = L > 0.4 && !isNaN(H) ? C * 0.93 + 0 : C;
+  const buttonHoverColor = new Color('oklch', [newL, newC, H]);
+
+  // Find closest in-scale color to donate the chroma and hue.
+  // Especially useful when the source color is pure white or black,
+  // but the gray scale is tinted.
+  let closestColor = buttonHoverColor;
+  let minDistance = Infinity;
+
+  scales.forEach((scale) => {
+    for (const color of scale) {
+      const distance = buttonHoverColor.deltaEOK(color);
+      if (distance < minDistance) {
+        minDistance = distance;
+        closestColor = color;
+      }
+    }
+  });
+
+  buttonHoverColor.coords[1] = closestColor.coords[1];
+  buttonHoverColor.coords[2] = closestColor.coords[2];
+  return buttonHoverColor;
+}
+
+function getScaleFromColor(
+  source: Color,
+  scales: ScaleSet,
+  backgroundColor: Color,
+  { hueShift, saturationScale }: { hueShift: number; saturationScale: number },
+): { scale: ArrayOf12<Color>; mixedFrom: [string, string, number] } {
+  const allColors: { scale: string; color: Color; distance: number }[] = [];
+
+  Object.entries(scales).forEach(([name, scale]) => {
+    for (const color of scale) {
+      const distance = source.deltaEOK(color);
+      allColors.push({ scale: name, distance, color });
+    }
+  });
+
+  allColors.sort((a, b) => a.distance - b.distance);
+
+  // Remove non-unique scales
+  const closestColors = allColors.filter(
+    (color, i, arr) => i === arr.findIndex((value) => value.scale === color.scale),
+  );
+
+  // If the next two closest colors are both grays, remove the second one until it's not a gray anymore.
+  // The grays are all extremely close to each other, so a second gray gives no useful data.
+  const grayScaleNamesStr = grayScaleNames as readonly string[];
+  const allAreGrays = closestColors.every((color) => grayScaleNamesStr.includes(color.scale));
+  if (!allAreGrays && grayScaleNamesStr.includes(closestColors[0].scale)) {
+    while (grayScaleNamesStr.includes(closestColors[1].scale)) {
+      closestColors.splice(1, 1);
+    }
+  }
+
+  const colorA = closestColors[0];
+  const colorB = closestColors[1];
+
+  // Treat source (C) and the two closest colors (A, B) as a triangle. If neither angle A nor B is
+  // obtuse, mix B into A in proportion to AD:BD, where D is the foot of the altitude from C.
+  // Otherwise B is directionally the same as A and only A is used.
+  const a = colorB.distance;
+  const b = colorA.distance;
+  const c = colorA.color.deltaEOK(colorB.color);
+
+  const cosA = (b ** 2 + c ** 2 - a ** 2) / (2 * b * c);
+  const sinA = Math.sin(Math.acos(cosA));
+  const cosB = (a ** 2 + c ** 2 - b ** 2) / (2 * a * c);
+  const sinB = Math.sin(Math.acos(cosB));
+
+  // The ratio of the tangents of angle C in triangles ACD and BCD equals AD:BD
+  const tanC1 = cosA / sinA;
+  const tanC2 = cosB / sinB;
+  const ratio = Math.max(0, tanC1 / tanC2) * 0.5;
+
+  const scaleA = scales[colorA.scale];
+  const scaleB = scales[colorB.scale];
+  const scale = arrayOf12.map((i) =>
+    new Color(Color.mix(scaleA[i], scaleB[i], ratio)).to('oklch'),
+  ) as ArrayOf12<Color>;
+
+  // Get the closest color from the pre-mixed scale we created
+  const baseColor = scale.slice().sort((x, y) => source.deltaEOK(x) - source.deltaEOK(y))[0];
+
+  // Note the chroma difference between the source color and the base color
+  const ratioC = source.coords[1] / baseColor.coords[1];
+
+  // Modify hue and chroma of the scale to match the source color
+  scale.forEach((color, i) => {
+    color.coords[1] = Math.min(source.coords[1] * 1.5, color.coords[1] * ratioC * saturationScale);
+    color.coords[2] = hueShift ? source.coords[2] + (hueShift / 12) * (i - 6) : source.coords[2];
+  });
+
+  const mixedFrom: [string, string, number] = [colorA.scale, colorB.scale, ratio];
+
+  // Light mode
+  if (scale[0].coords[0] > 0.5) {
+    const lightnessScale = scale.map(({ coords }) => coords[0]);
+    const backgroundL = Math.max(0, Math.min(1, backgroundColor.coords[0]));
+    const newLightnessScale = transposeProgressionStart(
+      backgroundL,
+      // Add white as the first "step" of the light scale
+      [1, ...lightnessScale],
+      lightModeEasing,
+    );
+
+    // Remove the step we added
+    newLightnessScale.shift();
+
+    newLightnessScale.forEach((lightness, i) => {
+      scale[i].coords[0] = lightness;
+    });
+
+    return { scale, mixedFrom };
+  }
+
+  // Dark mode
+  const ease: typeof darkModeEasing = [...darkModeEasing];
+  const referenceBackgroundColorL = scale[0].coords[0];
+  const backgroundColorL = Math.max(0, Math.min(1, backgroundColor.coords[0]));
+
+  // If background is lighter than step 0, we want to gradually change the easing to linear
+  const ratioL = backgroundColorL / referenceBackgroundColorL;
+
+  if (ratioL > 1) {
+    const maxRatio = 1.5;
+
+    for (let i = 0; i < ease.length; i++) {
+      const metaRatio = (ratioL - 1) * (maxRatio / (maxRatio - 1));
+      ease[i] = ratioL > maxRatio ? 0 : Math.max(0, ease[i] * (1 - metaRatio));
+    }
+  }
+
+  const lightnessScale = scale.map(({ coords }) => coords[0]);
+  const backgroundL = backgroundColor.coords[0];
+  const newLightnessScale = transposeProgressionStart(backgroundL, lightnessScale, ease);
+
+  newLightnessScale.forEach((lightness, i) => {
+    scale[i].coords[0] = lightness;
+  });
+
+  return { scale, mixedFrom };
+}
+
+function getTextColor(background: Color) {
+  const white = new Color('oklch', [1, 0, 0]);
+
+  if (Math.abs(white.contrastAPCA(background)) < 40) {
+    const [, C, H] = background.coords;
+    return new Color('oklch', [0.25, Math.max(0.08 * C, 0.04), H]);
+  }
+
+  return white;
+}
+
+const darkModeEasing = [1, 0, 1, 0] as [number, number, number, number];
+const lightModeEasing = [0, 2, 0, 2] as [number, number, number, number];
+
+function transposeProgressionStart(to: number, arr: number[], curve: [number, number, number, number]) {
+  return arr.map((n, i, all) => {
+    const lastIndex = all.length - 1;
+    const diff = all[0] - to;
+    const fn = BezierEasing(...curve);
+    return n - diff * fn(1 - i / lastIndex);
+  });
+}
+
+// Convert to OKLCH string with percentage for the lightness channel
+// https://github.com/radix-ui/themes/issues/420
+function toOklchString(color: Color) {
+  const L = +(color.coords[0] * 100).toFixed(1);
+  return color
+    .to('oklch')
+    .toString({ precision: 4 })
+    .replace(/(\S+)(.+)/, `oklch(${L}%$2`);
 }
 
 // ===== MAIN SCALE GENERATOR =====
 
 /**
- * Generates a 12-step Radix-style color scale from a base color.
- *
- * Follows the Radix custom palette approach:
- * - find and mix nearby official Radix scales
- * - reshape the mixed scale in OKLCH to the input color's hue/chroma
- * - anchor step 9 to the input color unless it is too close to the background
- * - derive step 10 and clamp text-step chroma like Radix custom
+ * Generates a 12-step Radix color scale from a base color, matching the
+ * official Radix custom palette generator.
  */
 export function generateScale(
   baseColor: string,
@@ -683,10 +379,21 @@ export function generateScale(
   options: ScaleOptions = {}
 ): ColorScale {
   try {
-    return { name, colors: buildRadixCustomScale(baseColor, isDark, options) };
+    return { name, ...buildRadixCustomScale(baseColor, isDark, options) };
   } catch (e) {
     console.error('Error generating scale', e);
-    return { name, colors: Array(12).fill('#000000') };
+    const black = Array(12).fill('#000000');
+    return {
+      name,
+      colors: black,
+      wideGamut: Array(12).fill('oklch(0% 0 0)'),
+      alphaWideGamut: Array(12).fill('color(display-p3 0 0 0)'),
+      contrast: '#FFFFFF',
+      surface: '#000000',
+      surfaceWideGamut: 'color(display-p3 0 0 0)',
+      background: isDark ? DEFAULT_BACKGROUNDS.dark : DEFAULT_BACKGROUNDS.light,
+      mixedFrom: ['gray', 'gray', 0],
+    };
   }
 }
 
@@ -767,139 +474,192 @@ export function isValidColor(c: string) {
   return chroma.valid(c);
 }
 
-// ===== SCALE INFO =====
+const HEX_RE = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i;
 
-/**
- * Gets information about which color system adjustment is being applied
- */
-export function getColorScaleInfo(baseColor: string, isDark: boolean): {
-  scaleType: 'default' | 'yellow' | 'lime' | 'cyan';
-  description: string;
-  isOptimized: boolean;
-} {
-  try {
-    const target = colorToOklch(baseColor);
-    const references = getReferenceScales(isDark);
-    const [firstName, secondName] = findClosestReferenceScales(target, references);
-    const category = getHueCategory(target[2]);
-    const scaleType = category === 'yellow' || category === 'lime' || category === 'cyan'
-      ? category
-      : 'default';
-    const description = `Radix custom: mixed from ${firstName} and ${secondName}, then reshaped in OKLCH`;
-
-    if (isDark) {
-      return { scaleType, description: `Dark mode: ${description}`, isOptimized: true };
-    }
-
-    return { scaleType, description, isOptimized: true };
-  } catch {
-    return { scaleType: 'default', description: 'Standard scale', isOptimized: false };
-  }
+/** Parses a 3 or 6 digit hex (with or without #) into lowercase #rrggbb, or null. */
+export function normalizeHex(value: string): string | null {
+  const match = value.trim().match(HEX_RE);
+  if (!match) return null;
+  let hex = match[1].toLowerCase();
+  if (hex.length === 3) hex = hex.split('').map((c) => c + c).join('');
+  return `#${hex}`;
 }
 
 // ===== ALPHA COLOR GENERATION =====
+// Same algorithm as Radix custom, so alpha steps blend back to the solid
+// steps exactly the way browsers composite them.
+
+// target = background * (1 - alpha) + foreground * alpha
+// alpha = (target - background) / (foreground - background)
+// Expects 0-1 numbers for the RGB channels
+function getAlphaColor(
+  targetRgb: number[],
+  backgroundRgb: number[],
+  rgbPrecision: number,
+  alphaPrecision: number,
+  targetAlpha?: number,
+) {
+  const [tr, tg, tb] = targetRgb.map((c) => Math.round(c * rgbPrecision));
+  const [br, bg, bb] = backgroundRgb.map((c) => Math.round(c * rgbPrecision));
+
+  // Is the background lighter, RGB-wise, than the target? If at least one channel of the
+  // target is lighter than the background, lighten the background; otherwise darken it.
+  let desiredRgb = 0;
+  if (tr > br) {
+    desiredRgb = rgbPrecision;
+  } else if (tg > bg) {
+    desiredRgb = rgbPrecision;
+  } else if (tb > bb) {
+    desiredRgb = rgbPrecision;
+  }
+
+  const alphaR = (tr - br) / (desiredRgb - br);
+  const alphaG = (tg - bg) / (desiredRgb - bg);
+  const alphaB = (tb - bb) / (desiredRgb - bb);
+
+  const isPureGray = [alphaR, alphaG, alphaB].every((alpha) => alpha === alphaR);
+
+  // No need for precision gymnastics with pure grays, and we can get cleaner output
+  if (!targetAlpha && isPureGray) {
+    const V = desiredRgb / rgbPrecision;
+    return [V, V, V, alphaR] as const;
+  }
+
+  const clampRgb = (n: number) => (isNaN(n) ? 0 : Math.min(rgbPrecision, Math.max(0, n)));
+  const clampA = (n: number) => (isNaN(n) ? 0 : Math.min(alphaPrecision, Math.max(0, n)));
+  const maxAlpha = targetAlpha ?? Math.max(alphaR, alphaG, alphaB);
+
+  const A = clampA(Math.ceil(maxAlpha * alphaPrecision)) / alphaPrecision;
+  let R = clampRgb(((br * (1 - A) - tr) / A) * -1);
+  let G = clampRgb(((bg * (1 - A) - tg) / A) * -1);
+  let B = clampRgb(((bb * (1 - A) - tb) / A) * -1);
+
+  R = Math.ceil(R);
+  G = Math.ceil(G);
+  B = Math.ceil(B);
+
+  const blendedR = blendAlpha(R, A, br);
+  const blendedG = blendAlpha(G, A, bg);
+  const blendedB = blendAlpha(B, A, bb);
+
+  // Correct for rounding errors in light mode
+  if (desiredRgb === 0) {
+    if (tr <= br && tr !== blendedR) R = tr > blendedR ? R + 1 : R - 1;
+    if (tg <= bg && tg !== blendedG) G = tg > blendedG ? G + 1 : G - 1;
+    if (tb <= bb && tb !== blendedB) B = tb > blendedB ? B + 1 : B - 1;
+  }
+
+  // Correct for rounding errors in dark mode
+  if (desiredRgb === rgbPrecision) {
+    if (tr >= br && tr !== blendedR) R = tr > blendedR ? R + 1 : R - 1;
+    if (tg >= bg && tg !== blendedG) G = tg > blendedG ? G + 1 : G - 1;
+    if (tb >= bb && tb !== blendedB) B = tb > blendedB ? B + 1 : B - 1;
+  }
+
+  return [R / rgbPrecision, G / rgbPrecision, B / rgbPrecision, A] as const;
+}
+
+// Browsers round each blended channel term separately, not the whole result.
+function blendAlpha(foreground: number, alpha: number, background: number) {
+  return Math.round(background * (1 - alpha)) + Math.round(foreground * alpha);
+}
+
+function getAlphaColorSrgb(targetColor: string, backgroundColor: string, targetAlpha?: number) {
+  const [r, g, b, a] = getAlphaColor(
+    new Color(targetColor).to('srgb').coords,
+    new Color(backgroundColor).to('srgb').coords,
+    255,
+    255,
+    targetAlpha,
+  );
+
+  return formatHex(new Color('srgb', [r, g, b], a).toString({ format: 'hex' })).toUpperCase();
+}
+
+function getAlphaColorP3(targetColor: string, backgroundColor: string, targetAlpha?: number) {
+  const [r, g, b, a] = getAlphaColor(
+    new Color(targetColor).to('p3').coords,
+    new Color(backgroundColor).to('p3').coords,
+    // P3 alpha colors blend most precisely in browsers when rounded to 255 integers too
+    255,
+    1000,
+    targetAlpha,
+  );
+
+  return new Color('p3', [r, g, b], a)
+    .toString({ precision: 4 })
+    // In non-browser environments colorjs.io outputs a different format
+    .replace('color(p3 ', 'color(display-p3 ');
+}
+
+// Format shortform hex to longform
+function formatHex(str: string) {
+  if (!str.startsWith('#')) return str;
+  if (str.length === 4 || str.length === 5) {
+    return '#' + str.slice(1).split('').map((c) => c + c).join('');
+  }
+  return str;
+}
+
+/** Parses a #RRGGBB or #RRGGBBAA hex into an AlphaColor. */
+function hex8ToAlphaColor(hex8: string): AlphaColor {
+  const hex = formatHex(hex8).padEnd(9, 'F').toUpperCase();
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  const alpha = parseInt(hex.slice(7, 9), 16) / 255;
+  const alphaStr = alpha === 1 ? '1' : alpha.toFixed(4).replace(/0+$/, '').replace(/\.$/, '');
+
+  const fg = chroma(r, g, b);
+  const h = fg.get('hsl.h') || 0;
+  const s = fg.get('hsl.s') * 100;
+  const l = fg.get('hsl.l') * 100;
+
+  return {
+    rgba: `rgba(${r}, ${g}, ${b}, ${alphaStr})`,
+    hsla: `hsla(${Math.round(h)}, ${Math.round(s)}%, ${Math.round(l)}%, ${alphaStr})`,
+    hex8: hex,
+    alpha,
+    r,
+    g,
+    b,
+  };
+}
 
 /**
  * Converts a solid color to its alpha equivalent over a given background.
- * Finds the minimum alpha value where all RGB channels remain in [0, 255].
  */
-export function solidToAlpha(solidColor: string, backgroundColor: string): AlphaColor {
+export function solidToAlpha(solidColor: string, backgroundColor: string, targetAlpha?: number): AlphaColor {
   try {
-    const solid = chroma(solidColor).rgb();
-    const bg = chroma(backgroundColor).rgb();
-
-    const sr = solid[0], sg = solid[1], sb = solid[2];
-    const br = bg[0], bg_ = bg[1], bb = bg[2];
-
-    let minAlpha = 0.01; // 1% floor avoids precision issues with near-matching solid+bg pairs
-
-    const channels = [
-      { s: sr, b: br },
-      { s: sg, b: bg_ },
-      { s: sb, b: bb },
-    ];
-
-    for (const { s, b } of channels) {
-      if (s === b) continue;
-
-      if (s < b) {
-        if (b > 0) {
-          const needed = (b - s) / b;
-          minAlpha = Math.max(minAlpha, needed);
-        }
-      } else {
-        if (b < 255) {
-          const needed = (s - b) / (255 - b);
-          minAlpha = Math.max(minAlpha, needed);
-        } else {
-          minAlpha = Math.max(minAlpha, 1);
-        }
-      }
-    }
-
-    let alpha = Math.ceil(minAlpha * 1000) / 1000;
-    alpha = Math.min(1, Math.max(0.001, alpha));
-
-    let fgR = Math.round((sr - br * (1 - alpha)) / alpha);
-    let fgG = Math.round((sg - bg_ * (1 - alpha)) / alpha);
-    let fgB = Math.round((sb - bb * (1 - alpha)) / alpha);
-
-    fgR = Math.max(0, Math.min(255, fgR));
-    fgG = Math.max(0, Math.min(255, fgG));
-    fgB = Math.max(0, Math.min(255, fgB));
-
-    const alphaStr = alpha === 1 ? '1' : alpha.toFixed(3).replace(/0+$/, '').replace(/\.$/, '');
-
-    const alphaByte = Math.round(alpha * 255);
-    const hex8 = `#${fgR.toString(16).padStart(2, '0')}${fgG.toString(16).padStart(2, '0')}${fgB.toString(16).padStart(2, '0')}${alphaByte.toString(16).padStart(2, '0')}`.toUpperCase();
-
-    const fgChroma = chroma(fgR, fgG, fgB);
-    const h = fgChroma.get('hsl.h') || 0;
-    const s = fgChroma.get('hsl.s') * 100;
-    const l = fgChroma.get('hsl.l') * 100;
-
-    return {
-      rgba: `rgba(${fgR}, ${fgG}, ${fgB}, ${alphaStr})`,
-      hsla: `hsla(${Math.round(h)}, ${Math.round(s)}%, ${Math.round(l)}%, ${alphaStr})`,
-      hex8,
-      alpha,
-      r: fgR,
-      g: fgG,
-      b: fgB,
-    };
+    return hex8ToAlphaColor(getAlphaColorSrgb(solidColor, backgroundColor, targetAlpha));
   } catch (e) {
     console.error('Error converting to alpha:', e);
-    return {
-      rgba: 'rgba(0, 0, 0, 1)',
-      hsla: 'hsla(0, 0%, 0%, 1)',
-      hex8: '#000000FF',
-      alpha: 1,
-      r: 0,
-      g: 0,
-      b: 0,
-    };
+    return hex8ToAlphaColor('#000000FF');
   }
 }
 
 /**
- * Generates a full alpha color scale from a solid color scale.
+ * Generates a full alpha color scale from a solid color scale, over the
+ * background the scale was generated for.
  */
 export function generateAlphaScale(
   solidScale: ColorScale,
   isDark: boolean,
   customBackground?: string
 ): AlphaColorScale {
-  const background = customBackground || (isDark ? '#111111' : '#FFFFFF');
-
-  const alphaColors = solidScale.colors.map(solidColor => {
-    return solidToAlpha(solidColor, background);
-  });
+  const background =
+    customBackground || solidScale.background || (isDark ? DEFAULT_BACKGROUNDS.dark : DEFAULT_BACKGROUNDS.light);
 
   return {
     name: `${solidScale.name}A`,
-    colors: alphaColors,
+    colors: solidScale.colors.map((solidColor) => solidToAlpha(solidColor, background)),
     background,
   };
+}
+
+/** The scale's surface color (translucent step 2) as an AlphaColor. */
+export function getSurfaceColor(scale: ColorScale): AlphaColor {
+  return hex8ToAlphaColor(scale.surface);
 }
 
 /**
@@ -936,24 +696,6 @@ export function getStepDescription(step: number, paletteName: string, isAlpha: b
   return descriptions[step] || `${paletteName} color step ${step}`;
 }
 
-/**
- * Composites an alpha color over a background to verify visual equivalence
- */
-export function compositeAlphaOver(alphaColor: AlphaColor, backgroundColor: string): string {
-  try {
-    const bg = chroma(backgroundColor).rgb();
-    const a = alphaColor.alpha;
-
-    const r = Math.round(alphaColor.r * a + bg[0] * (1 - a));
-    const g = Math.round(alphaColor.g * a + bg[1] * (1 - a));
-    const b = Math.round(alphaColor.b * a + bg[2] * (1 - a));
-
-    return chroma(r, g, b).hex();
-  } catch {
-    return '#000000';
-  }
-}
-
 // ===== COLOR FORMAT CONVERSION =====
 
 export type ColorFormat = 'hex' | 'oklch';
@@ -980,4 +722,11 @@ export function hexToOklch(hex: string): string {
 export function formatColor(hex: string, format: ColorFormat): string {
   if (format === 'oklch') return hexToOklch(hex);
   return hex;
+}
+
+/**
+ * Formats one step of a scale. OKLCH uses the wide-gamut value, like Radix custom.
+ */
+export function formatScaleColor(scale: ColorScale, index: number, format: ColorFormat): string {
+  return format === 'oklch' ? scale.wideGamut[index] : scale.colors[index];
 }
