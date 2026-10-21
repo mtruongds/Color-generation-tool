@@ -31,7 +31,6 @@ import {
 import { PaletteDisplay } from './PaletteDisplay';
 import { PaletteDocumentation } from './PaletteDocumentation';
 import { PalettePreview } from './PalettePreview';
-import { PaletteSidebar } from './PaletteSidebar';
 import { PalettePicker } from './PalettePicker';
 import { PaletteInspector } from './PaletteInspector';
 import { ExportDialog } from './ExportDialog';
@@ -497,19 +496,11 @@ export function PaletteGenerator({
 
   const FoundationIcon = FOUNDATION_META[foundation].icon;
 
-  const showDockedInspector = (!isColor || activeView === 'editor') && isDesktop;
+  const showDockedInspector = isDesktop;
 
   const mobileNavContent = (
     <div className="flex h-full flex-col">
       <FoundationNav active={foundation} summaries={summaries} onSelect={selectFoundation} />
-      {isColor && (
-        <>
-          <div className="mx-4 h-px shrink-0 bg-border" />
-          <div className="min-h-0 flex-1">
-            <PaletteSidebar {...sidebarProps} />
-          </div>
-        </>
-      )}
     </div>
   );
 
@@ -670,7 +661,7 @@ export function PaletteGenerator({
             <SheetContent side="left" className="w-72 gap-0 bg-sidebar p-0" onOpenAutoFocus={(e) => e.preventDefault()}>
               <SheetHeader className="sr-only">
                 <SheetTitle>Navigation</SheetTitle>
-                <SheetDescription>Switch foundations, or select, add and reorder palettes</SheetDescription>
+                <SheetDescription>Switch foundations</SheetDescription>
               </SheetHeader>
               <div className="h-full pt-10">{mobileNavContent}</div>
             </SheetContent>
@@ -774,6 +765,11 @@ export function PaletteGenerator({
                       {isDarkMode ? <Moon className="size-3" /> : <Sun className="size-3" />}
                       {isDarkMode ? 'Dark' : 'Light'} mode
                     </span>
+                    {!isDesktop && (
+                      <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setInspectorOpen(true)}>
+                        <SlidersHorizontal /> Settings
+                      </Button>
+                    )}
                   </div>
                 </div>
                 <div className="divide-y overflow-hidden rounded-2xl border bg-card shadow-card">
