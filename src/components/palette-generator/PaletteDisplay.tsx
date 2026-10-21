@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import { Check, Copy, Lock, SlidersHorizontal } from 'lucide-react';
+import { useMemo, useRef, useState } from 'react';
+import { Check, Copy, Lock, SlidersHorizontal, X } from 'lucide-react';
 import { Button } from '../ui/button';
 import { IconSwap } from '../ui/icon-swap';
 import { Tabs, TabsList, TabsTrigger } from '../ui/tabs';
@@ -415,17 +415,12 @@ function AlphaScaleView({
 
 // ---------- PaletteContrast ----------
 
-const APCA_BANDS = [
-  { min: 90, color: 'hsl(160, 85%, 35%)', label: '90+ Excellent' },
-  { min: 75, color: 'hsl(160, 70%, 45%)', label: '75 Great' },
-  { min: 60, color: 'hsl(160, 50%, 55%)', label: '60 Good' },
-  { min: 45, color: 'hsl(45, 85%, 50%)', label: '45 Fair' },
-  { min: 30, color: 'hsl(25, 85%, 50%)', label: '30 Poor' },
-  { min: 15, color: 'hsl(5, 85%, 50%)', label: '15 Very poor' },
-  { min: 0, color: 'hsl(0, 70%, 45%)', label: '<15 Fail' },
+const APCA_LEVELS = [
+  { min: 45, label: 'Large text (≥24px bold or ≥36px regular)' },
+  { min: 60, label: 'Small text, UI elements' },
+  { min: 75, label: 'Body text (minimum)' },
+  { min: 90, label: 'Body text (preferred)' },
 ];
-
-const bandFor = (apca: number) => APCA_BANDS.find((b) => Math.abs(apca) >= b.min)!;
 
 function PaletteContrast({ colors }: { colors: string[] }) {
   const [mode, setMode] = useState<'text-on-bg' | 'bg-on-text'>('text-on-bg');
@@ -480,8 +475,9 @@ function PaletteContrast({ colors }: { colors: string[] }) {
                   aria-label={`Step ${i + 1}`}
                   onClick={() => setSelected(i)}
                   className={cn(
-                    'relative size-6 rounded-md text-[0.625rem] font-mono font-medium ring-offset-2 ring-offset-card transition-transform after:absolute after:-inset-x-0.5 after:-inset-y-2 hover:scale-110 active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                    i === selected && 'ring-2 ring-foreground',
+                    'relative size-6 rounded-md text-[0.625rem] font-mono font-medium transition-transform after:absolute after:-inset-x-0.5 after:-inset-y-2 hover:scale-110 active:scale-[0.96] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring',
+                    // Inset so the selection never paints over neighbouring swatches in the 4px gap
+                    i === selected && 'shadow-[inset_0_0_0_2px_var(--foreground),inset_0_0_0_3.5px_var(--card)]',
                   )}
                   style={{ backgroundColor: c, color: readableOn(c) }}
                 >
@@ -537,59 +533,167 @@ function PaletteContrast({ colors }: { colors: string[] }) {
           </div>
         </>
       ) : (
-        <>
-          <div className="overflow-x-auto rounded-lg border">
-            <div
-              className="grid min-w-[44rem]"
-              style={{ gridTemplateColumns: `3rem repeat(${colors.length}, minmax(0, 1fr))` }}
-            >
-              <div className="flex items-center justify-center border-r border-b bg-muted/50 p-1.5 text-[0.625rem] text-muted-foreground">
-                bg\fg
+        <ContrastMatrix colors={colors} />
+      )}
+    </div>
+  );
+}
+
+// ---------- ContrastMatrix ----------
+
+/** Rows are the text color, columns the background — each cell reads "row on column". */
+function ContrastMatrix({ colors }: { colors: string[] }) {
+  const [threshold, setThreshold] = useState('60');
+  const [active, setActive] = useState<{ fi: number; bi: number; rect: DOMRect } | null>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  const steps = useMemo(
+    () => [
+      { label: 'White', color: '#ffffff' },
+      ...colors.map((color, i) => ({ label: String(i + 1), color })),
+      { label: 'Black', color: '#000000' },
+    ],
+    [colors],
+  );
+  const lc = useMemo(() => steps.map((fg) => steps.map((bg) => Math.round(getAPCA(fg.color, bg.color)))), [steps]);
+  const min = Number(threshold);
+
+  const show = (fi: number, bi: number, el: HTMLElement) => setActive({ fi, bi, rect: el.getBoundingClientRect() });
+
+  // Anchor the detail panel under the hovered cell, flipping above / left when it would overflow.
+  let panelStyle: React.CSSProperties | undefined;
+  if (active && wrapRef.current) {
+    const wrap = wrapRef.current.getBoundingClientRect();
+    const width = Math.min(320, wrap.width);
+    const below = active.rect.bottom - wrap.top + 6;
+    const fitsBelow = below + 230 <= wrap.height;
+    panelStyle = {
+      width,
+      left: Math.max(0, Math.min(active.rect.left - wrap.left, wrap.width - width)),
+      ...(fitsBelow ? { top: below } : { bottom: wrap.bottom - active.rect.top + 6 }),
+    };
+  }
+
+  const fg = active && steps[active.fi];
+  const bg = active && steps[active.bi];
+  const value = active ? lc[active.fi][active.bi] : 0;
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+        <span>Row text on column background. Highlighted pairs reach the target.</span>
+        <span className="flex items-center gap-2">
+          Target
+          <Segmented
+            size="sm"
+            value={threshold}
+            onChange={setThreshold}
+            options={APCA_LEVELS.map((l) => ({ value: String(l.min), label: `Lc ${l.min}` }))}
+          />
+        </span>
+      </div>
+
+      <div ref={wrapRef} className="relative" onMouseLeave={() => setActive(null)}>
+        <div className="overflow-x-auto pb-1" onScroll={() => setActive(null)}>
+          <div
+            className="grid min-w-[46rem] gap-1 font-mono text-[0.6875rem] tabular"
+            style={{ gridTemplateColumns: `4.5rem repeat(${steps.length}, minmax(0, 1fr))` }}
+          >
+            <div />
+            {steps.map((s) => (
+              <div key={s.label} className="flex flex-col items-center gap-1 pb-1">
+                <span className="swatch-outline aspect-square w-full max-w-7 rounded-md" style={{ backgroundColor: s.color }} />
+                <span className="text-[0.625rem] text-muted-foreground">{s.label}</span>
               </div>
-              {colors.map((c, i) => (
-                <div key={i} className="flex flex-col items-center gap-1 border-b bg-muted/50 py-1.5">
-                  <span className="size-3 rounded-full border" style={{ backgroundColor: c }} />
-                  <span className="font-mono text-[0.625rem]">{i + 1}</span>
+            ))}
+
+            {steps.map((row, fi) => (
+              <div key={row.label} className="contents">
+                <div className="flex items-center justify-end gap-2 pr-1">
+                  <span className="text-[0.625rem] text-muted-foreground">{row.label}</span>
+                  <span className="swatch-outline size-6 shrink-0 rounded-md" style={{ backgroundColor: row.color }} />
                 </div>
-              ))}
-              {colors.map((bg, bi) => (
-                <div key={bi} className="contents">
-                  <div className="flex items-center justify-center gap-1 border-r bg-muted/50">
-                    <span className="font-mono text-[0.625rem]">{bi + 1}</span>
-                    <span className="size-3 rounded-full border" style={{ backgroundColor: bg }} />
-                  </div>
-                  {colors.map((fg, fi) => {
-                    if (bi === fi) return <div key={fi} className="bg-muted" />;
-                    const apca = getAPCA(fg, bg);
-                    const band = bandFor(apca);
+                {steps.map((col, bi) => {
+                  if (fi === bi) {
                     return (
-                      <div
-                        key={fi}
-                        title={`Lc ${Math.abs(apca).toFixed(1)} — step ${fi + 1} text on step ${bi + 1}`}
-                        className="flex items-center justify-center py-2.5 font-mono text-[0.6875rem] font-medium tabular"
-                        style={{
-                          backgroundColor: band.color,
-                          color: Math.abs(apca) >= 45 ? 'rgba(255,255,255,0.95)' : 'rgba(0,0,0,0.8)',
-                        }}
-                      >
-                        {Math.round(Math.abs(apca))}
+                      <div key={bi} className="flex h-8 items-center justify-center text-muted-foreground/60">
+                        —
                       </div>
                     );
-                  })}
-                </div>
-              ))}
-            </div>
-          </div>
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-muted-foreground">
-            {APCA_BANDS.map((b) => (
-              <span key={b.label} className="flex items-center gap-1.5">
-                <span className="size-2.5 rounded-sm" style={{ backgroundColor: b.color }} />
-                {b.label}
-              </span>
+                  }
+                  const v = lc[fi][bi];
+                  const pass = Math.abs(v) >= min;
+                  const isActive = active?.fi === fi && active.bi === bi;
+                  return (
+                    <button
+                      key={bi}
+                      type="button"
+                      aria-label={`Step ${row.label} text on ${col.label}: Lc ${v}`}
+                      onMouseEnter={(e) => show(fi, bi, e.currentTarget)}
+                      onFocus={(e) => show(fi, bi, e.currentTarget)}
+                      onBlur={() => setActive(null)}
+                      className={cn(
+                        'flex h-8 items-center justify-center rounded-md transition-[box-shadow] focus-visible:outline-none',
+                        pass ? 'font-semibold' : 'hatched text-muted-foreground',
+                        isActive && 'ring-2 ring-foreground ring-offset-2 ring-offset-card',
+                      )}
+                      style={pass ? { backgroundColor: col.color, color: row.color } : undefined}
+                    >
+                      {v}
+                    </button>
+                  );
+                })}
+              </div>
             ))}
           </div>
-        </>
-      )}
+        </div>
+
+        {active && fg && bg && (
+          <div
+            role="status"
+            className="pointer-events-none absolute z-20 rounded-xl border bg-popover p-3 text-popover-foreground shadow-lg"
+            style={panelStyle}
+          >
+            <div className="mb-2.5 flex items-baseline justify-between text-xs">
+              <span className="font-medium">
+                {fg.label} on {bg.label}
+              </span>
+              <span className="font-mono text-muted-foreground tabular">Lc {value}</span>
+            </div>
+            <div
+              className="swatch-outline mb-3 truncate rounded-lg px-3 py-2.5 text-sm"
+              style={{ backgroundColor: bg.color, color: fg.color }}
+            >
+              Sample text preview
+            </div>
+            <ul className="space-y-1.5 text-xs">
+              {APCA_LEVELS.map((l) => {
+                const ok = Math.abs(value) >= l.min;
+                return (
+                  <li key={l.min} className="flex items-center gap-2">
+                    {ok ? (
+                      <Check className="size-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                    ) : (
+                      <X className="size-3.5 shrink-0 text-rose-600 dark:text-rose-400" />
+                    )}
+                    <span className={cn('flex-1', !ok && 'text-muted-foreground line-through')}>{l.label}</span>
+                    <span
+                      className={cn(
+                        'rounded px-1.5 py-0.5 font-mono text-[0.625rem] tabular',
+                        ok
+                          ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                          : 'bg-muted text-muted-foreground',
+                      )}
+                    >
+                      {l.min}+
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
