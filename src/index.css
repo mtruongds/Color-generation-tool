@@ -180,6 +180,35 @@
     box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.1);
   }
 
+  /* Foundation preview highlights: elements tagged with data-fx get an outline and a token label */
+  .fx-preview [data-fx] {
+    position: relative;
+    outline: 1.5px dashed var(--fx-accent);
+    outline-offset: 2px;
+  }
+
+  .fx-preview [data-fx]::after {
+    content: attr(data-fx);
+    position: absolute;
+    top: -0.625rem;
+    left: 0.25rem;
+    z-index: 30;
+    padding: 0 0.3rem;
+    border-radius: 0.25rem;
+    background: var(--fx-accent);
+    color: var(--fx-contrast);
+    font: 500 0.625rem/1rem var(--font-mono);
+    letter-spacing: 0;
+    text-transform: none;
+    white-space: nowrap;
+    pointer-events: none;
+  }
+
+  /* Inset shadow as wide as the padding tints exactly the padding area */
+  .fx-preview [data-fx-pad] {
+    box-shadow: inset 0 0 0 var(--fx-pad) color-mix(in oklab, var(--fx-accent) 18%, transparent) !important;
+  }
+
   .scrollbar-thin {
     scrollbar-width: thin;
     scrollbar-color: var(--border) transparent;

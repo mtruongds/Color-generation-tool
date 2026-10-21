@@ -1,11 +1,9 @@
 import {
   AlphaColor,
-  ColorFormat,
   ColorScale,
   DEFAULT_BACKGROUNDS,
   DEFAULT_GRAY,
   ScaleOptions,
-  formatScaleColor,
   generateAlphaScale,
   generateScale,
   getStepDescription,
@@ -55,12 +53,6 @@ export const toTokenName = (name: string) =>
 export const modeTokenName = (name: string, isDark: boolean) =>
   `${toTokenName(name)}${isDark ? '-dark' : ''}`;
 
-const hexToComponents = (hex: string) => [
-  parseInt(hex.slice(1, 3), 16) / 255,
-  parseInt(hex.slice(3, 5), 16) / 255,
-  parseInt(hex.slice(5, 7), 16) / 255,
-];
-
 export function downloadFile(content: string, filename: string, type: string) {
   const blob = new Blob([content], { type });
   const url = URL.createObjectURL(blob);
@@ -73,116 +65,6 @@ export function downloadFile(content: string, filename: string, type: string) {
   URL.revokeObjectURL(url);
 }
 
-export function generateCssVariables(palettes: GeneratedPalette[], format: ColorFormat) {
-  let css = ':root {\n  /* Solid Colors */\n';
-  palettes.forEach((p) => {
-    p.scale.colors.forEach((_, i) => {
-      css += `  --${modeTokenName(p.name, p.isDark)}-${i + 1}: ${formatScaleColor(p.scale, i, format)};\n`;
-    });
-  });
-  css += '\n  /* Alpha Colors */\n';
-  palettes.forEach((p) => {
-    generateAlphaScale(p.scale, p.isDark).colors.forEach((alpha, i) => {
-      css += `  --${modeTokenName(p.name, p.isDark)}-a${i + 1}: ${alpha.rgba};\n`;
-    });
-  });
-  css += '\n  /* Contrast and Surface */\n';
-  palettes.forEach((p) => {
-    css += `  --${modeTokenName(p.name, p.isDark)}-contrast: ${p.scale.contrast};\n`;
-    css += `  --${modeTokenName(p.name, p.isDark)}-surface: ${p.scale.surface};\n`;
-  });
-  css += '}\n';
-
-  // Wide-gamut values for P3 displays, as in Radix custom's CSS output
-  css += '\n@supports (color: color(display-p3 1 1 1)) {\n  @media (color-gamut: p3) {\n    :root {\n';
-  palettes.forEach((p) => {
-    const token = modeTokenName(p.name, p.isDark);
-    p.scale.wideGamut.forEach((value, i) => (css += `      --${token}-${i + 1}: ${value};\n`));
-    p.scale.alphaWideGamut.forEach((value, i) => (css += `      --${token}-a${i + 1}: ${value};\n`));
-    css += `      --${token}-surface: ${p.scale.surfaceWideGamut};\n`;
-  });
-  return css + '    }\n  }\n}';
-}
-
-export function generateJsonTokens(palettes: GeneratedPalette[], format: ColorFormat) {
-  const obj: Record<string, Record<string, { value: string; type: string; description: string }>> = {};
-  palettes.forEach((p) => {
-    const tokens: (typeof obj)[string] = {};
-    p.scale.colors.forEach((_, i) => {
-      tokens[`${i + 1}`] = {
-        value: formatScaleColor(p.scale, i, format),
-        type: 'color',
-        description: getStepDescription(i + 1, p.name, false),
-      };
-    });
-    generateAlphaScale(p.scale, p.isDark).colors.forEach((alpha, i) => {
-      tokens[`a${i + 1}`] = {
-        value: alpha.rgba,
-        type: 'color',
-        description: getStepDescription(i + 1, p.name, true),
-      };
-    });
-    tokens.contrast = { value: p.scale.contrast, type: 'color', description: CONTRAST_USAGE };
-    tokens.surface = {
-      value: format === 'oklch' ? p.scale.surfaceWideGamut : p.scale.surface,
-      type: 'color',
-      description: SURFACE_USAGE,
-    };
-    obj[modeTokenName(p.name, p.isDark)] = tokens;
-  });
-  return JSON.stringify(obj, null, 2);
-}
-
-export function generateFigmaTokens(palettes: GeneratedPalette[]) {
-  const figmaExtensions = { 'com.figma.scopes': ['ALL_SCOPES'], 'com.figma.isOverride': true };
-  const obj: Record<string, unknown> = {};
-
-  palettes.forEach((p) => {
-    const tokens: Record<string, unknown> = {};
-    p.scale.colors.forEach((color, i) => {
-      tokens[`${i + 1}`] = {
-        $type: 'color',
-        $value: { colorSpace: 'srgb', components: hexToComponents(color), alpha: 1, hex: color },
-        $description: getStepDescription(i + 1, p.name, false),
-        $extensions: figmaExtensions,
-      };
-    });
-    const alphaToken = (alpha: AlphaColor, description: string) => ({
-      $type: 'color',
-      $value: {
-        colorSpace: 'srgb',
-        components: [alpha.r / 255, alpha.g / 255, alpha.b / 255],
-        alpha: alpha.alpha,
-        hex: alpha.hex8,
-      },
-      $description: description,
-      $extensions: figmaExtensions,
-    });
-    generateAlphaScale(p.scale, p.isDark).colors.forEach((alpha, i) => {
-      tokens[`a${i + 1}`] = alphaToken(alpha, getStepDescription(i + 1, p.name, true));
-    });
-    tokens.contrast = {
-      $type: 'color',
-      $value: { colorSpace: 'srgb', components: hexToComponents(p.scale.contrast), alpha: 1, hex: p.scale.contrast },
-      $description: CONTRAST_USAGE,
-      $extensions: figmaExtensions,
-    };
-    tokens.surface = alphaToken(getSurfaceColor(p.scale), SURFACE_USAGE);
-    obj[modeTokenName(p.name, p.isDark)] = tokens;
-  });
-
-  return JSON.stringify(
-    {
-      Color: {
-        ...obj,
-        $extensions: { 'com.figma.collectionName': 'Color', 'com.figma.modeName': 'Mode 1' },
-      },
-    },
-    null,
-    2,
-  );
-}
-
 function alphaToOklch(alpha: AlphaColor): string {
   const hex = `#${[alpha.r, alpha.g, alpha.b].map((v) => v.toString(16).padStart(2, '0')).join('')}`;
   const alphaValue =
@@ -193,8 +75,11 @@ function alphaToOklch(alpha: AlphaColor): string {
 const escapeCsv = (field: string) =>
   /[",\n]/.test(field) ? `"${field.replace(/"/g, '""')}"` : field;
 
-/** Light rows, then `-dark` rows, one value per row — ready to paste into Google Sheets. */
-export function generateSheetCsv(palettes: GeneratedPalette[]) {
+/**
+ * Primitive color rows, light then `-dark`, one value per row — ready to paste into Google Sheets.
+ * `primitiveName` maps a palette to its primitive token name (e.g. indigo).
+ */
+export function generateSheetCsv(palettes: GeneratedPalette[], primitiveName: (p: GeneratedPalette) => string) {
   const headers = ['Name', 'Mode: Base', 'OKLCH', 'Palette Name', 'Step', 'Type', 'Description', 'Collection Name'];
   let csv = headers.join(',') + '\n';
   const row = (fields: string[]) => [...fields, 'Color'].map(escapeCsv).join(',') + '\n';
@@ -205,7 +90,7 @@ export function generateSheetCsv(palettes: GeneratedPalette[]) {
       const scale = generatePaletteScale(p, isDark, context);
       const alpha = generateAlphaScale(scale, isDark);
       const surface = getSurfaceColor(scale);
-      const tokenBase = modeTokenName(p.name, isDark);
+      const tokenBase = `${primitiveName(p)}${isDark ? '-dark' : ''}`;
 
       scale.colors.forEach((color, i) => {
         const step = i + 1;

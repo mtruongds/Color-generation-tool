@@ -30,14 +30,14 @@ export function BackgroundControl({
         <Button
           variant="ghost"
           size="sm"
-          className="gap-1.5 text-muted-foreground hover:text-foreground max-md:size-8 max-md:px-0"
+          className="gap-1.5 text-muted-foreground hover:text-foreground max-lg:size-8 max-lg:px-0"
           aria-label="Page background"
         >
           <span
             className="size-4 rounded-full shadow-[inset_0_0_0_1px_rgb(0_0_0/0.15)] dark:shadow-[inset_0_0_0_1px_rgb(255_255_255/0.2)]"
             style={{ backgroundColor: value }}
           />
-          <span className="hidden md:inline">Background</span>
+          <span className="hidden lg:inline">Background</span>
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-64 space-y-3">

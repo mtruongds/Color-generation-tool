@@ -1,4 +1,6 @@
 import type { PaletteRole } from '../../lib/color-utils';
+import type { Foundations } from '../../lib/foundations';
+import type { ColorRole } from '../../lib/tokens';
 
 export interface PaletteConfig {
   id: string;
@@ -10,14 +12,19 @@ export interface PaletteConfig {
   lockStep9: boolean;
   /** 'gray' fits only the Radix gray scales. Missing on older saves, which means 'accent'. */
   role?: PaletteRole;
-  /** Default palettes (Primary and the default gray) can't be deleted or change role. */
-  locked?: boolean;
   description?: string;
+  /**
+   * Base token role this palette fills (brand-1, brand-secondary-9, success-9, …). Missing means
+   * "guess" by name, then brand and neutral go to the first free accent and gray. 'none' keeps it primitive only.
+   */
+  tokenRole?: ColorRole | 'none';
 }
 
 export interface SavedPreset {
   id: string;
   name: string;
   palettes: PaletteConfig[];
+  /** Typography, spacing, radius, shadow and grid. Missing on presets saved before foundations existed. */
+  foundations?: Foundations;
   createdAt: number;
 }

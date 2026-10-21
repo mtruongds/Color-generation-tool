@@ -6,11 +6,8 @@ import {
   getContrast,
   getWCAGRating,
 } from '../../lib/color-utils';
-import {
-  GeneratedPalette,
-  STEP_USAGE,
-  modeTokenName,
-} from '../../lib/export-utils';
+import { GeneratedPalette, STEP_USAGE } from '../../lib/export-utils';
+import { colorTokenInfo } from '../../lib/tokens';
 import { cn } from '../ui/utils';
 
 function alphaBadgeClass(alpha: number) {
@@ -48,6 +45,7 @@ interface PaletteDocumentationProps {
 }
 
 export function PaletteDocumentation({ palettes, colorFormat = 'hex' }: PaletteDocumentationProps) {
+  const info = colorTokenInfo(palettes);
   return (
     <div className="space-y-12 pb-16">
       <div className="flex flex-col items-start justify-between gap-4 border-b pb-6 md:flex-row md:items-end">
@@ -63,7 +61,9 @@ export function PaletteDocumentation({ palettes, colorFormat = 'hex' }: PaletteD
       {palettes.map((palette) => {
         const s = palette.scale.colors;
         const alphaScale = generateAlphaScale(palette.scale, palette.isDark);
-        const token = modeTokenName(palette.name, palette.isDark);
+        const { primitive, role } = info.get(palette.id)!;
+        // Exports name dark primitives with a -dark suffix
+        const primitiveToken = `${primitive}${palette.isDark ? '-dark' : ''}`;
 
         return (
           <section key={palette.id} id={`palette-${palette.id}`} className="scroll-mt-6 space-y-4">
@@ -71,6 +71,9 @@ export function PaletteDocumentation({ palettes, colorFormat = 'hex' }: PaletteD
               <div className="flex items-center gap-2.5">
                 <span className="swatch-outline size-5 rounded-md" style={{ backgroundColor: palette.baseColor }} />
                 <h2 className="text-xl font-semibold tracking-tight">{palette.name}</h2>
+                {role && (
+                  <span className="rounded-full bg-muted px-2 py-0.5 font-mono text-[0.6875rem] text-muted-foreground">{role}</span>
+                )}
                 <span className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[0.6875rem] text-muted-foreground">
                   {palette.isDark ? <Moon className="size-3" /> : <Sun className="size-3" />}
                   {palette.isDark ? 'Dark' : 'Light'}
@@ -113,10 +116,8 @@ export function PaletteDocumentation({ palettes, colorFormat = 'hex' }: PaletteD
                         <tr key={i} className="transition-colors hover:bg-muted/30">
                           <td className="px-4 py-2">
                             <div className="font-mono text-xs">
-                              {token}-{i + 1}
-                            </div>
-                            <div className="font-mono text-[0.6875rem] text-muted-foreground">
-                              {token}-a{i + 1}
+                              {primitiveToken}-{i + 1}
+                              <span className="text-muted-foreground"> · a{i + 1}</span>
                             </div>
                           </td>
                           <td className="px-4 py-2">

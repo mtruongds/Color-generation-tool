@@ -18,6 +18,7 @@ import { Label } from '../ui/label';
 import { Switch } from '../ui/switch';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '../ui/select';
 import { cn } from '../ui/utils';
+import { resolveColorRoles } from '../../lib/tokens';
 import { type ColorScale, getSurfaceColor } from '../../lib/color-utils';
 import type { GeneratedPalette } from '../../lib/export-utils';
 
@@ -57,7 +58,10 @@ export function PalettePreview({
   const [accentId, setAccentId] = useState(
     () => accents.find((p) => p.id === activeId)?.id ?? accents[0]?.id ?? palettes[0]?.id,
   );
-  const [grayId, setGrayId] = useState(() => (grays.find((p) => p.locked) ?? grays[0] ?? palettes[0])?.id);
+  const [grayId, setGrayId] = useState(() => {
+    const roles = resolveColorRoles(palettes);
+    return (grays.find((p) => roles.get(p.id) === 'neutral') ?? grays[0] ?? palettes[0])?.id;
+  });
   const [tooltipsOn, setTooltipsOn] = useState(loadTooltipsOn);
 
   useEffect(() => {

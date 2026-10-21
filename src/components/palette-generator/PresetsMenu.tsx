@@ -21,6 +21,7 @@ import {
   DropdownMenuTrigger,
 } from '../ui/dropdown-menu';
 import { downloadFile } from '../../lib/export-utils';
+import type { Foundations } from '../../lib/foundations';
 import type { PaletteConfig, SavedPreset } from './types';
 
 const STORAGE_KEY = 'radixgen_presets';
@@ -37,11 +38,14 @@ const newId = () => Math.random().toString(36).slice(2, 11);
 
 export function PresetsMenu({
   palettes,
+  foundations,
   onLoad,
   onMerge,
 }: {
   palettes: PaletteConfig[];
-  onLoad: (palettes: PaletteConfig[]) => void;
+  foundations: Foundations;
+  /** Replaces the palettes, and the foundations when the preset has them. */
+  onLoad: (palettes: PaletteConfig[], foundations?: Foundations) => void;
   /** Adds the preset's palettes to the current ones and reports how many were added or skipped. */
   onMerge: (palettes: PaletteConfig[]) => { added: number; skipped: number };
 }) {
@@ -67,14 +71,14 @@ export function PresetsMenu({
   const save = () => {
     const trimmed = name.trim();
     if (!trimmed) return;
-    update([...presets, { id: newId(), name: trimmed, palettes, createdAt: Date.now() }]);
+    update([...presets, { id: newId(), name: trimmed, palettes, foundations, createdAt: Date.now() }]);
     setName('');
     setSaveOpen(false);
     toast.success(`Saved “${trimmed}”`);
   };
 
   const load = (preset: SavedPreset) => {
-    onLoad(preset.palettes);
+    onLoad(preset.palettes, preset.foundations);
     setManageOpen(false);
     toast.success(`Loaded “${preset.name}”`);
   };
@@ -155,10 +159,10 @@ export function PresetsMenu({
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground hover:text-foreground max-md:size-8 max-md:px-0" aria-label="Presets">
+          <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground hover:text-foreground max-lg:size-8 max-lg:px-0" aria-label="Presets">
             <Library />
-            <span className="hidden md:inline">Presets</span>
-            <ChevronDown className="hidden size-3.5 opacity-60 md:block" />
+            <span className="hidden lg:inline">Presets</span>
+            <ChevronDown className="hidden size-3.5 opacity-60 lg:block" />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-52">
@@ -186,8 +190,8 @@ export function PresetsMenu({
           <DialogHeader>
             <DialogTitle>Save preset</DialogTitle>
             <DialogDescription>
-              Stores the current {palettes.length} palette{palettes.length === 1 ? '' : 's'} in this
-              browser.
+              Stores the current {palettes.length} palette{palettes.length === 1 ? '' : 's'} and all foundation
+              settings in this browser.
             </DialogDescription>
           </DialogHeader>
           <form
@@ -221,7 +225,9 @@ export function PresetsMenu({
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Presets</DialogTitle>
-            <DialogDescription>Pick a preset to replace the current palettes, or merge one to add its palettes to them.</DialogDescription>
+            <DialogDescription>
+              Pick a preset to replace the current palettes and foundations, or merge one to add only its palettes.
+            </DialogDescription>
           </DialogHeader>
           {presets.length === 0 ? (
             <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed py-10 text-center">
@@ -255,6 +261,7 @@ export function PresetsMenu({
                         <div className="text-xs text-muted-foreground">
                           {new Date(preset.createdAt).toLocaleDateString()} ·{' '}
                           {preset.palettes.length} {preset.palettes.length === 1 ? 'scale' : 'scales'}
+                          {preset.foundations && ' · foundations'}
                         </div>
                       </div>
                     </button>

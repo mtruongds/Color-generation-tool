@@ -10,18 +10,38 @@ import {
 } from '@dnd-kit/core';
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { ArrowDownToLine, ArrowUpToLine, CopyPlus, GripVertical, Lock, MoreHorizontal, Plus, Trash2 } from 'lucide-react';
+import { ArrowDownToLine, ArrowUpToLine, CopyPlus, GripVertical, MoreHorizontal, Plus, Tag, Trash2 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '../ui/dropdown-menu';
 import { cn } from '../ui/utils';
 import type { GeneratedPalette } from '../../lib/export-utils';
+import { ROLE_LABELS, type ColorRole } from '../../lib/tokens';
+
+/** Short role names for the row badge. */
+const ROLE_BADGES: Record<ColorRole, string> = {
+  brand: 'Brand',
+  'brand-secondary': 'Brand 2',
+  neutral: 'Neutral',
+  info: 'Info',
+  success: 'Success',
+  warning: 'Warning',
+  danger: 'Danger',
+};
+/** Roles offered in the row menu: neutral fits gray palettes, the rest fit accents. */
+const ACCENT_ROLES: ColorRole[] = ['brand', 'brand-secondary', 'info', 'success', 'warning', 'danger'];
+const GRAY_ROLES: ColorRole[] = ['neutral'];
 
 interface PaletteSidebarProps {
   palettes: GeneratedPalette[];
@@ -33,6 +53,10 @@ interface PaletteSidebarProps {
   onMove: (id: string, toIndex: number) => void;
   onDuplicate: (id: string) => void;
   onRemove: (id: string) => void;
+  /** Resolved token role of each palette. */
+  roles: Map<string, { role?: ColorRole }>;
+  /** Gives a palette a token role, swapping with the palette that holds it. */
+  onSetRole: (id: string, role: ColorRole | 'none') => void;
 }
 
 export function PaletteSidebar({
@@ -44,6 +68,8 @@ export function PaletteSidebar({
   onMove,
   onDuplicate,
   onRemove,
+  roles,
+  onSetRole,
 }: PaletteSidebarProps) {
   const sensors = useSensors(
     // A small distance keeps a click on the handle from starting a drag.
@@ -132,6 +158,9 @@ export function PaletteSidebar({
                 onMoveToLast={() => onMove(p.id, palettes.length - 1)}
                 onDuplicate={() => onDuplicate(p.id)}
                 onRemove={() => onRemove(p.id)}
+                canRemove={palettes.length > 1}
+                role={roles.get(p.id)?.role}
+                onSetRole={(role) => onSetRole(p.id, role)}
               />
             ))}
           </SortableContext>
@@ -163,6 +192,9 @@ interface SortablePaletteItemProps {
   onMoveToLast: () => void;
   onDuplicate: () => void;
   onRemove: () => void;
+  canRemove: boolean;
+  role?: ColorRole;
+  onSetRole: (role: ColorRole | 'none') => void;
 }
 
 function SortablePaletteItem({
@@ -175,7 +207,12 @@ function SortablePaletteItem({
   onMoveToLast,
   onDuplicate,
   onRemove,
+  canRemove,
+  role,
+  onSetRole,
 }: SortablePaletteItemProps) {
+  const badge = role && ROLE_BADGES[role];
+  const menuRoles = p.role === 'gray' ? GRAY_ROLES : ACCENT_ROLES;
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({
     id: p.id,
   });
@@ -217,7 +254,14 @@ function SortablePaletteItem({
           <span className="swatch-outline size-8 shrink-0 rounded-sm" style={{ backgroundColor: p.baseColor }} />
           <span className="min-w-0 flex-1">
             <span className="flex items-baseline justify-between gap-2">
-              <span className="truncate text-sm font-medium">{p.name || 'Untitled'}</span>
+              <span className="flex min-w-0 items-center gap-1.5">
+                <span className="truncate text-sm font-medium">{p.name || 'Untitled'}</span>
+                {badge && (
+                  <span className="shrink-0 rounded-full bg-foreground/10 px-1.5 py-px text-[0.625rem] font-medium text-foreground/80">
+                    {badge}
+                  </span>
+                )}
+              </span>
               <span className="font-mono text-[0.6875rem] text-muted-foreground uppercase">
                 {p.baseColor.replace('#', '')}
               </span>
@@ -241,7 +285,7 @@ function SortablePaletteItem({
               <MoreHorizontal />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" side="right" className="w-44">
+          <DropdownMenuContent align="start" side="right" className="w-56">
             <DropdownMenuItem onSelect={onMoveToTop} disabled={isFirst}>
               <ArrowUpToLine /> Move to top
             </DropdownMenuItem>
@@ -251,17 +295,25 @@ function SortablePaletteItem({
             <DropdownMenuItem onSelect={onDuplicate}>
               <CopyPlus /> Duplicate
             </DropdownMenuItem>
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>
+                <Tag /> Token role
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent className="w-48">
+                <DropdownMenuRadioGroup value={role ?? ''} onValueChange={(v) => onSetRole(v as ColorRole | 'none')}>
+                  {menuRoles.map((r) => (
+                    <DropdownMenuRadioItem key={r} value={r}>
+                      {ROLE_LABELS[r]}
+                    </DropdownMenuRadioItem>
+                  ))}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuRadioItem value="none">None</DropdownMenuRadioItem>
+                </DropdownMenuRadioGroup>
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
             <DropdownMenuSeparator />
-            <DropdownMenuItem variant="destructive" onSelect={onRemove} disabled={p.locked}>
-              {p.locked ? (
-                <>
-                  <Lock /> Default palette
-                </>
-              ) : (
-                <>
-                  <Trash2 /> Delete
-                </>
-              )}
+            <DropdownMenuItem variant="destructive" onSelect={onRemove} disabled={!canRemove}>
+              <Trash2 /> Delete
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

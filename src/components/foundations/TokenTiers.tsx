@@ -1,0 +1,515 @@
+import { useMemo, useState } from 'react';
+import { Check, ChevronRight, ChevronsUpDown, Plus, RotateCcw, Search, Trash2 } from 'lucide-react';
+import { Button } from '../ui/button';
+import { Input } from '../ui/input';
+import { Command, CommandEmpty, CommandInput, CommandItem, CommandList } from '../ui/command';
+import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
+import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
+import { cn } from '../ui/utils';
+import { copyToClipboard } from '../../lib/clipboard';
+import type { ColorFormat } from '../../lib/color-utils';
+import type { GeneratedPalette } from '../../lib/export-utils';
+import { type Foundations, type ShadowLayer, layerToCss } from '../../lib/foundations';
+import {
+  type CustomToken,
+  TIERS,
+  type Tier,
+  type Token,
+  type TokenGroup,
+  aliasOptions,
+  aliasTargets,
+  buildTokens,
+  isTokenName,
+  resolveToken,
+} from '../../lib/tokens';
+
+const ALL_GROUPS: TokenGroup[] = ['color', 'typography', 'spacing', 'radius', 'shadow', 'grid'];
+
+const TIER_META: Record<Tier, { label: string; blurb: string; tone: string }> = {
+  primitive: { label: 'Primitive', blurb: 'Raw values · locked', tone: 'bg-muted text-muted-foreground' },
+  base: { label: 'Base', blurb: 'Values mapped to a purpose · editable', tone: 'bg-sky-500/10 text-sky-700 dark:text-sky-300' },
+  semantic: { label: 'Semantic', blurb: 'Values mapped to context and theme · editable', tone: 'bg-violet-500/10 text-violet-700 dark:text-violet-300' },
+};
+
+/** Example names for the add form, in each group's naming style. */
+const NAME_HINTS: Record<TokenGroup, Record<'base' | 'semantic', string>> = {
+  color: { base: 'brand-9', semantic: 'bg-card' },
+  typography: { base: 'font-size-hero', semantic: 'text-hero-size' },
+  spacing: { base: 'space-4xl', semantic: 'padding-section' },
+  radius: { base: 'radius-3xl', semantic: 'radius-input' },
+  shadow: { base: 'shadow-3xl', semantic: 'shadow-toast' },
+  grid: { base: 'container-narrow', semantic: 'page-narrow' },
+};
+
+/** Long primitive lists (every color step, both modes) start folded. */
+const FOLD_OVER = 60;
+
+function formatValue(t: Token | undefined): string {
+  if (!t || t.value === undefined) return '—';
+  switch (t.type) {
+    case 'dimension':
+      return `${t.value}px`;
+    case 'letterSpacing':
+      return `${t.value}em`;
+    case 'fontFamily':
+      return String(t.value).split(',')[0].replace(/["']/g, '');
+    case 'shadow': {
+      const n = (t.value as ShadowLayer[]).length;
+      return `${n} ${n === 1 ? 'layer' : 'layers'}`;
+    }
+    default:
+      return String(t.value);
+  }
+}
+
+function Preview({ t }: { t: Token | undefined }) {
+  if (!t || t.value === undefined) return null;
+  if (t.type === 'color') return <span className="size-4 shrink-0 rounded-[4px] border border-black/10" style={{ background: String(t.value) }} />;
+  if (t.type === 'shadow') {
+    return <span className="h-4 w-6 shrink-0 rounded-[3px] bg-card" style={{ boxShadow: (t.value as ShadowLayer[]).map(layerToCss).join(', ') }} />;
+  }
+  return null;
+}
+
+/** Resolved value, with the widest breakpoint's value when the token switches by width. */
+function Resolved({ t, byName, isDark }: { t: Token; byName: Map<string, Token>; isDark: boolean }) {
+  const resolved = resolveToken(t, byName, isDark);
+  const last = t.responsive?.at(-1);
+  const wide = last && byName.get(last.ref);
+  return (
+    <span className="flex items-center gap-2 font-mono text-xs whitespace-nowrap text-muted-foreground tabular">
+      <Preview t={resolved} />
+      {formatValue(resolved)}
+      {last && wide && (
+        <span className="text-muted-foreground/70">
+          → {formatValue(resolveToken(wide, byName, isDark))} ≥{last.minWidth}
+        </span>
+      )}
+    </span>
+  );
+}
+
+/**
+ * Every token in one foundation, split into its three tiers. Primitives are read-only; base and
+ * semantic tokens can be re-pointed to any token in the tier below, and new ones added.
+ */
+export function TokenTiers({
+  group,
+  palettes,
+  foundations,
+  colorFormat,
+  isDark,
+  onAliasChange,
+  onResetAliases,
+  onAddToken,
+  onUpdateToken,
+  onRemoveToken,
+}: {
+  group: TokenGroup;
+  palettes: GeneratedPalette[];
+  foundations: Foundations;
+  colorFormat: ColorFormat;
+  isDark: boolean;
+  /** `null` restores the generator's alias. */
+  onAliasChange: (name: string, ref: string | null) => void;
+  onResetAliases: (names: string[]) => void;
+  onAddToken: (token: CustomToken) => void;
+  onUpdateToken: (name: string, ref: string) => void;
+  onRemoveToken: (name: string) => void;
+}) {
+  const [query, setQuery] = useState('');
+  const [folded, setFolded] = useState<Partial<Record<Tier, boolean>>>({});
+
+  // Every group, so new names can't clash with a custom property elsewhere
+  const allTokens = useMemo(
+    () => buildTokens(palettes, foundations, { groups: ALL_GROUPS, modes: 'both', colorFormat }),
+    [palettes, foundations, colorFormat],
+  );
+  const tokens = useMemo(() => allTokens.filter((t) => t.group === group), [allTokens, group]);
+  const byName = useMemo(() => new Map(allTokens.map((t) => [t.name, t])), [allTokens]);
+  const edited = tokens.filter((t) => t.defaultRef);
+
+  /** Tokens that alias each token, so one in use can't be deleted. */
+  const usedBy = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const t of tokens) {
+      for (const ref of [t.ref, t.darkRef, ...(t.responsive?.map((r) => r.ref) ?? [])]) {
+        if (ref) map.set(ref, [...(map.get(ref) ?? []), t.name]);
+      }
+    }
+    return map;
+  }, [tokens]);
+
+  const q = query.trim().toLowerCase();
+  const matches = (t: Token) => !q || t.name.includes(q) || t.ref?.includes(q) || t.description?.toLowerCase().includes(q);
+
+  return (
+    <div className="space-y-6 pb-16">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative min-w-[12rem] flex-1">
+          <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filter tokens" className="h-8 pl-8 text-sm" aria-label="Filter tokens" />
+        </div>
+        {edited.length > 0 && (
+          <Button variant="outline" size="sm" className="gap-1.5" onClick={() => onResetAliases(edited.map((t) => t.name))}>
+            <RotateCcw className="size-3.5" /> Reset {edited.length} {edited.length === 1 ? 'edit' : 'edits'}
+          </Button>
+        )}
+      </div>
+
+      {TIERS.map((tier) => {
+        const all = tokens.filter((t) => t.tier === tier);
+        if (all.length === 0 && tier === 'primitive') return null;
+        const rows = all.filter(matches);
+        const isFolded = !q && (folded[tier] ?? (tier === 'primitive' && all.length > FOLD_OVER));
+        const meta = TIER_META[tier];
+        const editedHere = all.filter((t) => t.defaultRef).length;
+        const customHere = all.filter((t) => t.custom).length;
+
+        return (
+          <section key={tier} className="overflow-hidden rounded-xl border bg-card shadow-card">
+            <button
+              type="button"
+              aria-expanded={!isFolded}
+              onClick={() => setFolded((f) => ({ ...f, [tier]: !isFolded }))}
+              className="flex w-full items-center gap-2.5 px-4 py-3 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+            >
+              <ChevronRight className={cn('size-4 shrink-0 text-muted-foreground transition-transform', !isFolded && 'rotate-90')} />
+              <span className={cn('rounded-md px-1.5 py-0.5 text-xs font-medium', meta.tone)}>{meta.label}</span>
+              <span className="truncate text-xs text-muted-foreground">{meta.blurb}</span>
+              <span className="ml-auto shrink-0 font-mono text-[0.6875rem] text-muted-foreground tabular">
+                {customHere > 0 && <span className="mr-2 text-emerald-600 dark:text-emerald-400">{customHere} added</span>}
+                {editedHere > 0 && <span className="mr-2 text-amber-600 dark:text-amber-400">{editedHere} edited</span>}
+                {q ? `${rows.length}/${all.length}` : all.length}
+              </span>
+            </button>
+
+            {!isFolded && (
+              <div className="overflow-x-auto border-t">
+                <table className="w-full min-w-[44rem] text-left text-sm">
+                  <thead className="border-b bg-muted/50 text-xs text-muted-foreground">
+                    <tr>
+                      <th className="w-[30%] px-4 py-2 font-medium">Token</th>
+                      {tier !== 'primitive' && <th className="w-[30%] px-4 py-2 font-medium">Aliases</th>}
+                      <th className="px-4 py-2 font-medium">{tier === 'primitive' ? 'Value' : 'Resolves to'}</th>
+                      <th className="px-4 py-2 font-medium">Usage</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {rows.map((t) => (
+                      <tr key={t.name} className="transition-colors hover:bg-muted/30">
+                        <td className="px-4 py-2">
+                          <span className="flex items-center gap-1.5">
+                            {t.defaultRef && <span className="size-1.5 shrink-0 rounded-full bg-amber-500" aria-label="Edited" />}
+                            <button
+                              type="button"
+                              onClick={() => copyToClipboard(t.name, 'Token')}
+                              className="truncate rounded font-mono text-xs font-medium hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            >
+                              {t.name}
+                            </button>
+                            {t.custom && (
+                              <span className="shrink-0 rounded bg-emerald-500/10 px-1 text-[0.625rem] font-medium text-emerald-700 dark:text-emerald-300">
+                                custom
+                              </span>
+                            )}
+                          </span>
+                        </td>
+                        {tier !== 'primitive' && (
+                          <td className="px-4 py-1.5">
+                            <AliasCell
+                              token={t}
+                              tokens={tokens}
+                              byName={byName}
+                              isDark={isDark}
+                              usedBy={usedBy.get(t.name)}
+                              onAliasChange={onAliasChange}
+                              onUpdateToken={onUpdateToken}
+                              onRemoveToken={onRemoveToken}
+                            />
+                          </td>
+                        )}
+                        <td className="px-4 py-2">
+                          <Resolved t={t} byName={byName} isDark={isDark} />
+                        </td>
+                        <td className="px-4 py-2 text-xs text-muted-foreground">{t.description}</td>
+                      </tr>
+                    ))}
+                    {rows.length === 0 && q && (
+                      <tr>
+                        <td colSpan={4} className="px-4 py-6 text-center text-xs text-muted-foreground">
+                          No {meta.label.toLowerCase()} tokens match “{query}”
+                        </td>
+                      </tr>
+                    )}
+                    {tier !== 'primitive' && (
+                      <AddTokenRow key={`${group}-${tier}`} tier={tier} group={group} tokens={tokens} taken={byName} isDark={isDark} onAdd={onAddToken} />
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        );
+      })}
+    </div>
+  );
+}
+
+function AliasCell({
+  token,
+  tokens,
+  byName,
+  isDark,
+  usedBy,
+  onAliasChange,
+  onUpdateToken,
+  onRemoveToken,
+}: {
+  token: Token;
+  tokens: Token[];
+  byName: Map<string, Token>;
+  isDark: boolean;
+  usedBy?: string[];
+  onAliasChange: (name: string, ref: string | null) => void;
+  onUpdateToken: (name: string, ref: string) => void;
+  onRemoveToken: (name: string) => void;
+}) {
+  const options = aliasOptions(token, tokens);
+  const defaultRef = token.defaultRef ?? token.ref;
+  const change = (ref: string) => (token.custom ? onUpdateToken(token.name, ref) : onAliasChange(token.name, ref === token.defaultRef ? null : ref));
+
+  return (
+    <div className="flex items-center gap-1">
+      <AliasPicker
+        value={token.ref}
+        options={options}
+        byName={byName}
+        isDark={isDark}
+        defaultRef={token.custom ? undefined : defaultRef}
+        label={`Alias for ${token.name}`}
+        title={token.responsive ? 'Picking one token replaces the per-breakpoint values' : undefined}
+        onChange={change}
+      />
+      {token.defaultRef && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-7 shrink-0 text-muted-foreground"
+              aria-label={`Reset ${token.name} to ${token.defaultRef}`}
+              onClick={() => onAliasChange(token.name, null)}
+            >
+              <RotateCcw className="size-3" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Reset to {token.defaultRef}</TooltipContent>
+        </Tooltip>
+      )}
+      {token.custom && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            {/* Wrapped so the tooltip still shows while the button is disabled */}
+            <span tabIndex={usedBy ? 0 : -1} className="shrink-0 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-7 text-muted-foreground hover:text-destructive"
+                aria-label={`Delete ${token.name}`}
+                disabled={!!usedBy}
+                onClick={() => onRemoveToken(token.name)}
+              >
+                <Trash2 className="size-3" />
+              </Button>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>{usedBy ? `Used by ${usedBy.join(', ')}` : `Delete ${token.name}`}</TooltipContent>
+        </Tooltip>
+      )}
+    </div>
+  );
+}
+
+function AddTokenRow({
+  tier,
+  group,
+  tokens,
+  taken,
+  isDark,
+  onAdd,
+}: {
+  tier: 'base' | 'semantic';
+  group: TokenGroup;
+  tokens: Token[];
+  /** Every token name across groups. */
+  taken: Map<string, Token>;
+  isDark: boolean;
+  onAdd: (token: CustomToken) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState('');
+  const [ref, setRef] = useState('');
+  const [description, setDescription] = useState('');
+  const targets = aliasTargets(tier, group, tokens);
+
+  const slug = name.trim().toLowerCase().replace(/\s+/g, '-');
+  const error = !slug ? null : !isTokenName(slug) ? 'Use lowercase letters, numbers and hyphens' : taken.has(slug) ? 'Name already in use' : null;
+  const canAdd = !!slug && !error && !!ref;
+
+  const close = () => {
+    setOpen(false);
+    setName('');
+    setRef('');
+    setDescription('');
+  };
+  const submit = () => {
+    if (!canAdd) return;
+    onAdd({ tier, group, name: slug, ref, description: description.trim() || undefined });
+    close();
+  };
+
+  if (!open) {
+    return (
+      <tr>
+        <td colSpan={4} className="px-2 py-1.5">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 gap-1.5 text-xs text-muted-foreground"
+            disabled={targets.length === 0}
+            onClick={() => setOpen(true)}
+          >
+            <Plus className="size-3.5" /> Add {TIER_META[tier].label.toLowerCase()} token
+          </Button>
+        </td>
+      </tr>
+    );
+  }
+
+  return (
+    <tr className="bg-muted/30 align-top">
+      <td className="px-4 py-2">
+        <Input
+          autoFocus
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') submit();
+            if (e.key === 'Escape') close();
+          }}
+          placeholder={NAME_HINTS[group][tier]}
+          aria-label="Token name"
+          aria-invalid={!!error}
+          className="h-7 font-mono text-xs"
+        />
+        {error && <p className="mt-1 text-[0.6875rem] text-destructive">{error}</p>}
+      </td>
+      <td className="px-4 py-2">
+        <AliasPicker
+          value={ref || undefined}
+          options={targets}
+          byName={taken}
+          isDark={isDark}
+          label="Aliases"
+          placeholder={`Pick a ${TIER_META[tier === 'base' ? 'primitive' : 'base'].label.toLowerCase()} token`}
+          onChange={setRef}
+        />
+      </td>
+      <td colSpan={2} className="px-4 py-2">
+        <div className="flex items-center gap-1.5">
+          <Input
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') submit();
+              if (e.key === 'Escape') close();
+            }}
+            placeholder="Usage (optional)"
+            aria-label="Usage"
+            className="h-7 min-w-0 flex-1 text-xs"
+          />
+          <Button size="sm" className="h-7 px-2.5 text-xs" disabled={!canAdd} onClick={submit}>
+            Add
+          </Button>
+          <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={close}>
+            Cancel
+          </Button>
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+/** Searchable list of tokens to alias. Matches on name or resolved value, like "16px" or "#3e63dd". */
+function AliasPicker({
+  value,
+  options,
+  byName,
+  isDark,
+  defaultRef,
+  label,
+  placeholder = 'Pick a token',
+  title,
+  onChange,
+}: {
+  value?: string;
+  options: Token[];
+  byName: Map<string, Token>;
+  isDark: boolean;
+  defaultRef?: string;
+  label: string;
+  placeholder?: string;
+  title?: string;
+  onChange: (ref: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          aria-label={label}
+          title={title}
+          className="h-7 min-w-0 flex-1 justify-between gap-1 px-2.5 font-mono text-xs font-normal"
+        >
+          <span className={cn('truncate', !value && 'text-muted-foreground')}>{value ?? placeholder}</span>
+          <ChevronsUpDown className="size-3.5 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-[var(--radix-popover-trigger-width)] min-w-72 p-0">
+        <Command>
+          <CommandInput placeholder="Search by name or value" className="h-9 text-xs" />
+          <CommandList className="max-h-72">
+            <CommandEmpty className="py-6 text-center text-xs text-muted-foreground">No matching token</CommandEmpty>
+            {options.map((o) => {
+              const resolved = resolveToken(o, byName, isDark);
+              const shown = formatValue(resolved);
+              return (
+                <CommandItem
+                  key={o.name}
+                  value={o.name}
+                  keywords={[shown, o.description ?? '']}
+                  onSelect={() => {
+                    onChange(o.name);
+                    setOpen(false);
+                  }}
+                  className="gap-2 font-mono text-xs"
+                >
+                  <Check className={cn('size-3.5 shrink-0', o.name === value ? 'opacity-100' : 'opacity-0')} />
+                  <Preview t={resolved} />
+                  <span className="truncate">{o.name}</span>
+                  {o.name === defaultRef && <span className="shrink-0 text-muted-foreground">· default</span>}
+                  <span className="ml-auto shrink-0 pl-2 text-muted-foreground tabular">{shown}</span>
+                </CommandItem>
+              );
+            })}
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
