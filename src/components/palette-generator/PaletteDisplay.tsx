@@ -134,7 +134,7 @@ export function PaletteDisplay({
             ]}
           />
           {onEdit && (
-            <Button variant="outline" size="icon" className="size-8 lg:hidden" onClick={onEdit} aria-label={`Edit ${palette.name}`}>
+            <Button variant="outline" size="icon" className="size-8 md:hidden" onClick={onEdit} aria-label={`Edit ${palette.name}`}>
               <SlidersHorizontal />
             </Button>
           )}

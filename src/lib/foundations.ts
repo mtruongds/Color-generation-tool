@@ -345,7 +345,14 @@ export interface GridConfig {
   sidebarFrom: string;
 }
 
-export const GRID_PRESETS: { label: string; hint: string; breakpoints: Breakpoint[]; maxWidth: number }[] = [
+export const GRID_PRESETS: {
+  label: string;
+  hint: string;
+  breakpoints: Breakpoint[];
+  maxWidth: number;
+  /** Breakpoint the sidebar starts at when switching to this preset. Defaults to the fourth. */
+  sidebarFrom?: string;
+}[] = [
   {
     label: 'Adaptive',
     hint: '4 → 8 → 12 columns, like Material',
@@ -383,6 +390,20 @@ export const GRID_PRESETS: { label: string; hint: string; breakpoints: Breakpoin
       { name: 'lg', minWidth: 1024, columns: 12, gutter: 24, margin: 32 },
       { name: 'xl', minWidth: 1280, columns: 12, gutter: 32, margin: 48 },
       { name: '2xl', minWidth: 1536, columns: 12, gutter: 32, margin: 64 },
+    ],
+  },
+  {
+    label: 'Webflow',
+    hint: 'Webflow’s device breakpoints, 940px container, 12 columns',
+    maxWidth: 940,
+    sidebarFrom: 'md',
+    breakpoints: [
+      { name: 'xs', minWidth: 0, columns: 12, gutter: 20, margin: 20 },
+      { name: 'sm', minWidth: 480, columns: 12, gutter: 20, margin: 20 },
+      { name: 'md', minWidth: 768, columns: 12, gutter: 20, margin: 20 },
+      { name: 'lg', minWidth: 1280, columns: 12, gutter: 20, margin: 20 },
+      { name: 'xl', minWidth: 1440, columns: 12, gutter: 20, margin: 20 },
+      { name: 'xxl', minWidth: 1920, columns: 12, gutter: 20, margin: 20 },
     ],
   },
 ];

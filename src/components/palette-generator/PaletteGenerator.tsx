@@ -32,6 +32,7 @@ import { PaletteDisplay } from './PaletteDisplay';
 import { PaletteDocumentation } from './PaletteDocumentation';
 import { PalettePreview } from './PalettePreview';
 import { PaletteSidebar } from './PaletteSidebar';
+import { PalettePicker } from './PalettePicker';
 import { PaletteInspector } from './PaletteInspector';
 import { ExportDialog } from './ExportDialog';
 import { PresetsMenu } from './PresetsMenu';
@@ -181,8 +182,7 @@ export function PaletteGenerator({
 
   // --- UI state ---
   const isDesktop = useMediaQuery('(min-width: 768px)');
-  const isWide = useMediaQuery('(min-width: 1024px)');
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [panelCollapsed, setPanelCollapsed] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
@@ -490,14 +490,14 @@ export function PaletteGenerator({
   );
 
   const inspectorHeader = isColor ? (
-    activePalette && <InspectorHeader palette={activePalette} />
+    <PalettePicker {...sidebarProps} />
   ) : (
     <FoundationInspectorHeader foundation={foundation as Exclude<FoundationKey, 'color'>} onReset={resetFoundation} />
   );
 
   const FoundationIcon = FOUNDATION_META[foundation].icon;
 
-  const showDockedInspector = (!isColor || activeView === 'editor') && isWide;
+  const showDockedInspector = (!isColor || activeView === 'editor') && isDesktop;
 
   const mobileNavContent = (
     <div className="flex h-full flex-col">
@@ -632,32 +632,36 @@ export function PaletteGenerator({
               summaries={summaries}
               onSelect={selectFoundation}
               footer={
-                isColor && (
+                showDockedInspector && (
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Button
                         variant="ghost"
                         size="icon"
                         className="size-10 rounded-xl text-muted-foreground"
-                        aria-label={sidebarCollapsed ? 'Expand palettes' : 'Collapse palettes'}
-                        onClick={() => setSidebarCollapsed((c) => !c)}
+                        aria-label={panelCollapsed ? 'Show controls' : 'Hide controls'}
+                        onClick={() => setPanelCollapsed((c) => !c)}
                       >
-                        <IconSwap active={!sidebarCollapsed} on={<PanelLeftClose />} off={<PanelLeft />} />
+                        <IconSwap active={!panelCollapsed} on={<PanelLeftClose />} off={<PanelLeft />} />
                       </Button>
                     </TooltipTrigger>
-                    <TooltipContent side="right">{sidebarCollapsed ? 'Expand palettes' : 'Collapse palettes'}</TooltipContent>
+                    <TooltipContent side="right">{panelCollapsed ? 'Show controls' : 'Hide controls'}</TooltipContent>
                   </Tooltip>
                 )
               }
             />
-            {isColor && (
+            {showDockedInspector && inspector && (
               <aside
                 className={cn(
                   'shrink-0 overflow-hidden border-r bg-sidebar transition-[width] duration-200 ease-out',
-                  sidebarCollapsed ? 'w-14' : 'w-64',
+                  panelCollapsed ? 'w-0 border-r-0' : 'w-80',
                 )}
               >
-                <PaletteSidebar {...sidebarProps} collapsed={sidebarCollapsed} />
+                {/* Fixed inner width keeps the controls from reflowing while the panel animates */}
+                <div className="scrollbar-thin h-full w-80 overflow-y-auto">
+                  {inspectorHeader}
+                  {inspector}
+                </div>
               </aside>
             )}
           </>
@@ -712,7 +716,7 @@ export function PaletteGenerator({
                         : FOUNDATION_META[foundation].blurb}
                     </p>
                   </div>
-                  {!isWide && (
+                  {!isDesktop && (
                     <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setInspectorOpen(true)}>
                       <SlidersHorizontal /> Settings
                     </Button>
@@ -799,7 +803,6 @@ export function PaletteGenerator({
             aria-label="Back to top"
             className={cn(
               'fixed right-6 bottom-6 z-40 size-10 rounded-full bg-card shadow-card-hover transition-[opacity,translate,scale] duration-200',
-              showDockedInspector && 'right-[21.5rem]',
               showGoToTop ? 'translate-y-0 opacity-100' : 'pointer-events-none translate-y-2 opacity-0',
             )}
           >
@@ -807,17 +810,11 @@ export function PaletteGenerator({
           </Button>
         </main>
 
-        {showDockedInspector && inspector && (
-          <aside className="scrollbar-thin w-80 shrink-0 overflow-y-auto border-l bg-sidebar">
-            {inspectorHeader}
-            {inspector}
-          </aside>
-        )}
       </div>
 
-      {!isWide && (
+      {!isDesktop && (
         <Sheet open={inspectorOpen && !!inspector} onOpenChange={setInspectorOpen}>
-          <SheetContent side="right" className="w-[22rem] max-w-[90vw] gap-0 overflow-y-auto bg-sidebar p-0">
+          <SheetContent side="left" className="w-[22rem] max-w-[90vw] gap-0 overflow-y-auto bg-sidebar p-0">
             <SheetHeader className="sr-only">
               <SheetTitle>{isColor ? 'Edit palette' : `${FOUNDATION_META[foundation].label} settings`}</SheetTitle>
               <SheetDescription>{isColor ? 'Adjust the active palette' : FOUNDATION_META[foundation].blurb}</SheetDescription>
@@ -837,22 +834,6 @@ export function PaletteGenerator({
         isDark={isDarkMode}
         initialScope={foundation}
       />
-    </div>
-  );
-}
-
-function InspectorHeader({ palette }: { palette: GeneratedPalette }) {
-  return (
-    <div className="sticky top-0 z-10 border-b bg-sidebar/95 px-5 py-3.5 backdrop-blur">
-      <div className="text-[0.6875rem] font-medium tracking-wide text-muted-foreground uppercase">Editing</div>
-      <div className="mt-1 flex items-center gap-2">
-        <span className="truncate text-sm font-semibold">{palette.name || 'Untitled'}</span>
-      </div>
-      <div className="mt-2.5 flex h-2 overflow-hidden rounded-full">
-        {palette.scale.colors.map((c, i) => (
-          <span key={i} className="flex-1" style={{ backgroundColor: c }} />
-        ))}
-      </div>
     </div>
   );
 }
