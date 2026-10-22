@@ -186,11 +186,11 @@ export function TokenTiers({
 
             {!isFolded && (
               <div className="overflow-x-auto border-t">
-                <table className="w-full min-w-[44rem] text-left text-sm">
+                <table className="w-full min-w-[44rem] table-fixed text-left text-sm">
                   <thead className="border-b bg-muted/50 text-xs text-muted-foreground">
                     <tr>
-                      <th className="w-[30%] px-4 py-2 font-medium">Token</th>
-                      {tier !== 'primitive' && <th className="w-[30%] px-4 py-2 font-medium">Aliases</th>}
+                      <th className="w-48 px-4 py-2 font-medium">Token</th>
+                      {tier !== 'primitive' && <th className="w-60 px-4 py-2 font-medium">Aliases</th>}
                       <th className="px-4 py-2 font-medium">{tier === 'primitive' ? 'Value' : 'Resolves to'}</th>
                       <th className="px-4 py-2 font-medium">Usage</th>
                     </tr>
@@ -204,7 +204,8 @@ export function TokenTiers({
                             <button
                               type="button"
                               onClick={() => copyToClipboard(t.name, 'Token')}
-                              className="truncate rounded font-mono text-xs font-medium hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                              title={t.name}
+                              className="min-w-0 truncate rounded font-mono text-xs font-medium hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                             >
                               {t.name}
                             </button>
@@ -480,10 +481,10 @@ function AliasPicker({
           <ChevronsUpDown className="size-3.5 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-[var(--radix-popover-trigger-width)] min-w-72 p-0">
+      <PopoverContent align="start" className="w-[var(--radix-popover-trigger-width)] min-w-[26rem] p-0">
         <Command>
           <CommandInput placeholder="Search by name or value" className="h-9 text-xs" />
-          <CommandList className="max-h-72">
+          <CommandList className="max-h-72 p-1">
             <CommandEmpty className="py-6 text-center text-xs text-muted-foreground">No matching token</CommandEmpty>
             {options.map((o) => {
               const resolved = resolveToken(o, byName, isDark);
@@ -501,9 +502,11 @@ function AliasPicker({
                 >
                   <Check className={cn('size-3.5 shrink-0', o.name === value ? 'opacity-100' : 'opacity-0')} />
                   <Preview t={resolved} />
-                  <span className="truncate">{o.name}</span>
+                  <span className="max-w-[65%] shrink-0 truncate" title={o.name}>{o.name}</span>
                   {o.name === defaultRef && <span className="shrink-0 text-muted-foreground">· default</span>}
-                  <span className="ml-auto shrink-0 pl-2 text-muted-foreground tabular">{shown}</span>
+                  <span className="ml-auto min-w-0 truncate pl-4 text-right text-muted-foreground tabular" title={shown}>
+                    {shown}
+                  </span>
                 </CommandItem>
               );
             })}
