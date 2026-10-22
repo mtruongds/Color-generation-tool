@@ -1,4 +1,4 @@
-import { Layers, LayoutGrid, Palette, Ruler, SquareRoundCorner, Type, type LucideIcon } from 'lucide-react';
+import { Eye, Layers, LayoutGrid, Palette, Ruler, SquareRoundCorner, Type, type LucideIcon } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
 import { cn } from '../ui/utils';
 import type { FoundationKey } from '../../lib/foundations';
@@ -14,6 +14,16 @@ export const FOUNDATION_META: Record<FoundationKey, { label: string; icon: Lucid
 
 export const FOUNDATION_ORDER: FoundationKey[] = ['color', 'typography', 'spacing', 'radius', 'shadow', 'grid'];
 
+/** A rail destination: one of the foundations, or the Preview section that shows them all together. */
+export type NavKey = FoundationKey | 'preview';
+
+export const NAV_META: Record<NavKey, { label: string; icon: LucideIcon; title: string; blurb: string }> = {
+  ...FOUNDATION_META,
+  preview: { label: 'Preview', icon: Eye, title: 'Preview', blurb: 'Every foundation together in real pages' },
+};
+
+export const NAV_ORDER: NavKey[] = [...FOUNDATION_ORDER, 'preview'];
+
 /**
  * Switches between foundations. `rail` is the always-visible icon column on desktop;
  * `list` is the labelled version used in the mobile drawer.
@@ -25,19 +35,19 @@ export function FoundationNav({
   footer,
   onSelect,
 }: {
-  active: FoundationKey;
+  active: NavKey;
   /** Short count for each item, e.g. "10". */
-  summaries: Record<FoundationKey, string>;
+  summaries: Record<NavKey, string>;
   variant?: 'rail' | 'list';
   /** Pinned to the bottom of the rail. */
   footer?: React.ReactNode;
-  onSelect: (key: FoundationKey) => void;
+  onSelect: (key: NavKey) => void;
 }) {
   if (variant === 'rail') {
     return (
       <nav aria-label="Foundations" className="flex h-full w-14 shrink-0 flex-col items-center gap-1 border-r bg-sidebar py-3">
-        {FOUNDATION_ORDER.map((key) => {
-          const { label, icon: Icon } = FOUNDATION_META[key];
+        {NAV_ORDER.map((key) => {
+          const { label, icon: Icon } = NAV_META[key];
           const isActive = key === active;
           return (
             <Tooltip key={key}>
@@ -79,8 +89,8 @@ export function FoundationNav({
     <nav aria-label="Foundations" className="px-2 pt-3 pb-2">
       <h2 className="flex h-7 items-center px-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">Foundations</h2>
       <ul className="mt-1 flex flex-col gap-0.5">
-        {FOUNDATION_ORDER.map((key) => {
-          const { label, icon: Icon } = FOUNDATION_META[key];
+        {NAV_ORDER.map((key) => {
+          const { label, icon: Icon } = NAV_META[key];
           const isActive = key === active;
           return (
             <li key={key}>

@@ -210,6 +210,24 @@
     pointer-events: none;
   }
 
+  /* Preview pages draw states from the picked scales, like a real site built on them */
+  .fx-preview ::selection {
+    background: var(--a5);
+    color: var(--a12);
+  }
+
+  .fx-preview .fx-link {
+    transition: color 150ms ease-out;
+  }
+
+  .fx-preview .fx-link:hover {
+    color: var(--g12) !important;
+  }
+
+  .fx-preview .fx-row:hover .fx-row-title {
+    color: var(--a11) !important;
+  }
+
   /* Inset shadow as wide as the padding tints exactly the padding area */
   .fx-preview [data-fx-pad] {
     box-shadow: inset 0 0 0 var(--fx-pad) color-mix(in oklab, var(--fx-accent) 18%, transparent) !important;

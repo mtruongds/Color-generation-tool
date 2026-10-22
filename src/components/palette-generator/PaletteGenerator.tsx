@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  AppWindow,
   ArrowRight,
   ArrowUp,
   BookOpen,
   Download,
-  Eye,
   ListTree,
   Moon,
   PanelLeft,
@@ -30,7 +30,6 @@ import {
 } from '../../lib/export-utils';
 import { PaletteDisplay } from './PaletteDisplay';
 import { PaletteDocumentation } from './PaletteDocumentation';
-import { PalettePreview } from './PalettePreview';
 import { PalettePicker } from './PalettePicker';
 import { PaletteInspector } from './PaletteInspector';
 import { ExportDialog } from './ExportDialog';
@@ -38,6 +37,7 @@ import { PresetsMenu } from './PresetsMenu';
 import { BackgroundControl } from './BackgroundControl';
 import type { PaletteConfig } from './types';
 import { useGoogleFonts } from '../../lib/fonts';
+import { openPreviewWindow } from '../../lib/preview-window';
 import {
   type Accent,
   DEFAULT_FOUNDATIONS,
@@ -50,11 +50,11 @@ import {
   normalizeFoundations,
   resolveFoundations,
 } from '../../lib/foundations';
-import { FOUNDATION_META, FOUNDATION_ORDER, FoundationNav } from '../foundations/FoundationNav';
+import { FOUNDATION_META, NAV_ORDER, type NavKey, FoundationNav } from '../foundations/FoundationNav';
 import { FoundationSample } from '../foundations/FoundationSample';
 import { FoundationDocs } from '../foundations/FoundationDocs';
 import { type ColorRole, type CustomToken, colorTokenInfo, resolveColorRoles } from '../../lib/tokens';
-import { FoundationPreview } from '../foundations/FoundationPreview';
+import { PreviewSection } from '../foundations/PreviewSection';
 import { TokenTiers } from '../foundations/TokenTiers';
 import { TypographyCanvas, TypographyInspector } from '../foundations/TypographyFoundation';
 import { SpacingCanvas, SpacingInspector } from '../foundations/SpacingFoundation';
@@ -65,9 +65,9 @@ import { GridCanvas, GridInspector } from '../foundations/GridFoundation';
 // Re-export for backward compat
 export type { PaletteConfig } from './types';
 
-const PALETTES_KEY = 'lumina_palettes';
-const BACKGROUNDS_KEY = 'lumina_backgrounds';
-const FOUNDATIONS_KEY = 'lumina_foundations';
+export const PALETTES_KEY = 'lumina_palettes';
+export const BACKGROUNDS_KEY = 'lumina_backgrounds';
+export const FOUNDATIONS_KEY = 'lumina_foundations';
 const FOUNDATION_VIEW_KEY = 'lumina_foundation_view';
 const PANEL_WIDTH_KEY = 'lumina_panel_width';
 /** Docked controls panel width in px: default, and the range the drag handle allows. */
@@ -91,7 +91,7 @@ const SUGGESTIONS = [
   { name: 'Teal', baseColor: '#12a594' },
 ];
 
-type View = 'editor' | 'tokens' | 'docs' | 'preview';
+type View = 'editor' | 'tokens' | 'docs';
 
 const newId = () => Math.random().toString(36).slice(2, 11);
 
@@ -115,7 +115,7 @@ function normalizePalettes(list: (PaletteConfig & { locked?: boolean })[]): Pale
   });
 }
 
-function loadPalettes(): PaletteConfig[] {
+export function loadPalettes(): PaletteConfig[] {
   try {
     const saved = localStorage.getItem(PALETTES_KEY);
     const parsed = saved ? JSON.parse(saved) : null;
@@ -126,7 +126,7 @@ function loadPalettes(): PaletteConfig[] {
   return DEFAULT_PALETTES;
 }
 
-function loadBackgrounds(): ScaleContext['backgrounds'] {
+export function loadBackgrounds(): ScaleContext['backgrounds'] {
   try {
     const parsed = JSON.parse(localStorage.getItem(BACKGROUNDS_KEY) ?? 'null');
     if (typeof parsed?.light === 'string' && typeof parsed?.dark === 'string') return parsed;
@@ -136,7 +136,7 @@ function loadBackgrounds(): ScaleContext['backgrounds'] {
   return { ...DEFAULT_BACKGROUNDS };
 }
 
-function loadFoundations(): Foundations {
+export function loadFoundations(): Foundations {
   try {
     return normalizeFoundations(JSON.parse(localStorage.getItem(FOUNDATIONS_KEY) ?? 'null'));
   } catch {
@@ -154,10 +154,10 @@ function loadPanelWidth(): number {
   return PANEL_WIDTH.default;
 }
 
-function loadFoundationView(): FoundationKey {
+function loadSection(): NavKey {
   try {
-    const saved = localStorage.getItem(FOUNDATION_VIEW_KEY) as FoundationKey | null;
-    if (saved && FOUNDATION_ORDER.includes(saved)) return saved;
+    const saved = localStorage.getItem(FOUNDATION_VIEW_KEY) as NavKey | null;
+    if (saved && NAV_ORDER.includes(saved)) return saved;
   } catch {
     // Fall through to the default view.
   }
@@ -189,8 +189,11 @@ export function PaletteGenerator({
   const [activeView, setActiveView] = useState<View>('editor');
   const [colorFormat, setColorFormat] = useState<ColorFormat>('hex');
   const [backgrounds, setBackgrounds] = useState(loadBackgrounds);
-  const [foundation, setFoundation] = useState<FoundationKey>(loadFoundationView);
+  const [section, setSection] = useState<NavKey>(loadSection);
   const [foundations, setFoundations] = useState<Foundations>(loadFoundations);
+  const isPreview = section === 'preview';
+  // Preview has no controls of its own; color stands in wherever a foundation is required
+  const foundation: FoundationKey = isPreview ? 'color' : section;
   const isColor = foundation === 'color';
 
   // --- UI state ---
@@ -255,11 +258,11 @@ export function PaletteGenerator({
   useEffect(() => {
     try {
       localStorage.setItem(FOUNDATIONS_KEY, JSON.stringify(foundations));
-      localStorage.setItem(FOUNDATION_VIEW_KEY, foundation);
+      localStorage.setItem(FOUNDATION_VIEW_KEY, section);
     } catch {
       // Storage full or blocked — foundations still work for this session.
     }
-  }, [foundations, foundation]);
+  }, [foundations, section]);
 
   const { headingFamily, bodyFamily, monoFamily } = foundations.typography;
   useGoogleFonts([headingFamily, bodyFamily, monoFamily]);
@@ -298,7 +301,7 @@ export function PaletteGenerator({
 
   const resolved = useMemo(() => resolveFoundations(foundations, isDarkMode), [foundations, isDarkMode]);
 
-  const summaries: Record<FoundationKey, string> = useMemo(
+  const summaries: Record<NavKey, string> = useMemo(
     () => ({
       color: String(palettes.length),
       typography: String(generateTypeScale(foundations.typography).length),
@@ -306,6 +309,7 @@ export function PaletteGenerator({
       radius: String(generateRadiusScale(foundations.radius).length),
       shadow: String(generateShadowScale(foundations.shadow, false).length),
       grid: `${foundations.grid.breakpoints.length} bp`,
+      preview: '3',
     }),
     [palettes.length, foundations],
   );
@@ -347,8 +351,8 @@ export function PaletteGenerator({
     toast.success(`Deleted ${name}`);
   }, []);
 
-  const selectFoundation = useCallback((key: FoundationKey) => {
-    setFoundation(key);
+  const selectFoundation = useCallback((key: NavKey) => {
+    setSection(key);
     setMobileNavOpen(false);
     mainRef.current?.scrollTo({ top: 0 });
   }, []);
@@ -407,6 +411,7 @@ export function PaletteGenerator({
     ]);
     setActivePaletteId(id);
     setActiveView('editor');
+    setSection('color');
     setMobileNavOpen(false);
     scrollToPalette(id);
   }, [palettes, isDarkMode, scrollToPalette]);
@@ -544,11 +549,11 @@ export function PaletteGenerator({
 
   const FoundationIcon = FOUNDATION_META[foundation].icon;
 
-  const showDockedInspector = isDesktop;
+  const showDockedInspector = isDesktop && !isPreview;
 
   const mobileNavContent = (
     <div className="flex h-full flex-col">
-      <FoundationNav active={foundation} summaries={summaries} onSelect={selectFoundation} />
+      <FoundationNav active={section} summaries={summaries} onSelect={selectFoundation} />
     </div>
   );
 
@@ -592,9 +597,9 @@ export function PaletteGenerator({
           </span>
         </div>
 
-        <div className="mx-1 hidden h-5 w-px bg-border sm:block" />
+        <div className={cn('mx-1 hidden h-5 w-px bg-border', !isPreview && 'sm:block')} />
 
-        <Tabs value={activeView} onValueChange={(v) => setActiveView(v as View)} className="gap-0">
+        <Tabs value={activeView} onValueChange={(v) => setActiveView(v as View)} className={cn('gap-0', isPreview && 'hidden')}>
           <TabsList className="h-8 rounded-lg">
             <TabsTrigger value="editor" title="Editor" className="gap-1.5 rounded-md px-2 text-xs lg:px-3">
               {isColor ? <PaletteIcon className="size-3.5" /> : <FoundationIcon className="size-3.5" />}
@@ -607,10 +612,6 @@ export function PaletteGenerator({
             <TabsTrigger value="docs" title="Docs" className="gap-1.5 rounded-md px-2 text-xs lg:px-3">
               <BookOpen className="size-3.5" />
               <span className="max-lg:sr-only">Docs</span>
-            </TabsTrigger>
-            <TabsTrigger value="preview" title="Preview" className="gap-1.5 rounded-md px-2 text-xs lg:px-3">
-              <Eye className="size-3.5" />
-              <span className="max-lg:sr-only">Preview</span>
             </TabsTrigger>
           </TabsList>
         </Tabs>
@@ -645,6 +646,21 @@ export function PaletteGenerator({
                 variant="ghost"
                 size="icon"
                 className="size-8 text-muted-foreground hover:text-foreground"
+                onClick={openPreviewWindow}
+                aria-label="Open preview in a new window"
+              >
+                <AppWindow />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Preview in a new window, live while you edit</TooltipContent>
+          </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-8 text-muted-foreground hover:text-foreground"
                 onClick={toggleDarkMode}
                 aria-label={isDarkMode ? 'Switch to light mode' : 'Switch to dark mode'}
               >
@@ -667,7 +683,7 @@ export function PaletteGenerator({
           <>
             <FoundationNav
               variant="rail"
-              active={foundation}
+              active={section}
               summaries={summaries}
               onSelect={selectFoundation}
               footer={
@@ -748,8 +764,16 @@ export function PaletteGenerator({
         )}
 
         <main ref={mainRef} className="scrollbar-thin relative min-w-0 flex-1 overflow-y-auto">
-          <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 md:px-8 md:py-8">
-            {activeView === 'tokens' ? (
+          {/* Preview pages get the full width, so the desktop frame scales down as little as possible */}
+          <div className={cn('mx-auto px-4 py-6 sm:px-6 md:px-8 md:py-8', !isPreview && 'max-w-6xl')}>
+            {isPreview ? (
+              <PreviewSection
+                palettes={generatedPalettes}
+                activePaletteId={activePalette?.id}
+                foundations={foundations}
+                isDark={isDarkMode}
+              />
+            ) : activeView === 'tokens' ? (
               <>
                 <div className="mb-6">
                   <h1 className="text-xl font-semibold tracking-tight">{FOUNDATION_META[foundation].label} tokens</h1>
@@ -777,14 +801,8 @@ export function PaletteGenerator({
               <>
                 <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
                   <div>
-                    <h1 className="text-xl font-semibold tracking-tight">
-                      {activeView === 'preview' ? `${FOUNDATION_META[foundation].label} in context` : FOUNDATION_META[foundation].title}
-                    </h1>
-                    <p className="mt-0.5 text-sm text-muted-foreground">
-                      {activeView === 'preview'
-                        ? `A sample page built from every foundation, with ${FOUNDATION_META[foundation].label.toLowerCase()} highlighted.`
-                        : FOUNDATION_META[foundation].blurb}
-                    </p>
+                    <h1 className="text-xl font-semibold tracking-tight">{FOUNDATION_META[foundation].title}</h1>
+                    <p className="mt-0.5 text-sm text-muted-foreground">{FOUNDATION_META[foundation].blurb}</p>
                   </div>
                   {!isDesktop && (
                     <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setInspectorOpen(true)}>
@@ -792,9 +810,7 @@ export function PaletteGenerator({
                     </Button>
                   )}
                 </div>
-                {activeView === 'preview' ? (
-                  <FoundationPreview foundation={foundation} foundations={foundations} isDark={isDarkMode} accent={accent} />
-                ) : foundation === 'typography' ? (
+                {foundation === 'typography' ? (
                   <TypographyCanvas config={foundations.typography} />
                 ) : foundation === 'spacing' ? (
                   <SpacingCanvas config={foundations.spacing} accent={accent} />
@@ -805,11 +821,11 @@ export function PaletteGenerator({
                 ) : (
                   <GridCanvas config={foundations.grid} accent={accent} />
                 )}
-                {activeView === 'editor' && foundation !== 'grid' && (
+                {foundation !== 'grid' && (
                   <div className="mt-8">
                     <div className="mb-3 flex items-center justify-between gap-2">
                       <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">All foundations together</h2>
-                      <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs text-muted-foreground" onClick={() => setActiveView('preview')}>
+                      <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs text-muted-foreground" onClick={() => selectFoundation('preview')}>
                         Full preview <ArrowRight className="size-3.5" />
                       </Button>
                     </div>
@@ -864,10 +880,8 @@ export function PaletteGenerator({
                   ))}
                 </div>
               </>
-            ) : activeView === 'docs' ? (
-              <PaletteDocumentation palettes={generatedPalettes} colorFormat={colorFormat} />
             ) : (
-              <PalettePreview palettes={generatedPalettes} activeId={activePalette?.id} />
+              <PaletteDocumentation palettes={generatedPalettes} colorFormat={colorFormat} />
             )}
           </div>
 
@@ -907,7 +921,7 @@ export function PaletteGenerator({
         colorFormat={colorFormat}
         foundations={foundations}
         isDark={isDarkMode}
-        initialScope={foundation}
+        initialScope={isPreview ? 'all' : foundation}
       />
     </div>
   );
