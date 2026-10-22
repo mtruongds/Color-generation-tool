@@ -3,9 +3,9 @@ import { CONTRAST_USAGE, type GeneratedPalette, STEP_USAGE, SURFACE_USAGE, gener
 import { fontKind } from './fonts';
 import {
   FONT_WEIGHTS,
+  type FontWeightName,
   type Foundations,
   RADIUS_FULL,
-  TYPE_STEPS,
   type TypeStyle,
   type ShadowLayer,
   fontStack,
@@ -281,14 +281,18 @@ function colorTokens(palettes: GeneratedPalette[], modes: TokenModes, format: Co
 // Typography
 // ============================================================
 
-/** Base size names by scale step: body is md, each step up or down moves one size. */
-const SIZE_ROLES: Record<number, string> = { [-2]: 'xs', [-1]: 'sm', 0: 'md', 1: 'lg', 2: 'xl', 3: '2xl', 4: '3xl', 5: '4xl', 6: '5xl' };
+/** Base size names by scale step: body is md, each step up or down moves one size (…, 2xs, xs, sm, md, lg, xl, 2xl, …). */
+const sizeRole = (step: number) =>
+  step === 0 ? 'md' : step === 1 ? 'lg' : step === -1 ? 'sm' : step === 2 ? 'xl' : step === -2 ? 'xs' : step > 0 ? `${step - 1}xl` : `${-step - 1}xs`;
 
 /**
  * Type primitives are named by scale step, not by px, so changing the base size or ratio keeps
  * every name: step-0 is body, step-1 one step up, step-n1 one step down. Steps above body also
  * get a `-mobile` primitive for the smaller ratio below the type breakpoint.
  */
+/** Base weight names by emphasis; they can't reuse the primitive weight names. */
+const WEIGHT_EMPHASIS: Record<FontWeightName, string> = { regular: 'normal', medium: 'emphasis', semibold: 'strong', bold: 'heavy' };
+
 const stepCode = (step: number) => `step-${step < 0 ? `n${-step}` : step}`;
 
 /** Type sizes step down below this width: the grid's `md`, or the first breakpoint from 768px. */
@@ -302,9 +306,8 @@ function typographyTokens(f: Foundations): Token[] {
   const styles = generateTypeScale(c);
   const bp = typeBreakpoint(f);
   const tokens: Token[] = [];
-  const stepOf = (name: string) => TYPE_STEPS.find((t) => t.name === name)!.step;
   /** One style per scale step — styles on the same step share their size. */
-  const bySteps = [...new Map(styles.map((s) => [stepOf(s.name), s])).entries()].sort(([a], [b]) => a - b);
+  const bySteps = [...new Map(styles.map((s) => [s.step, s])).entries()].sort(([a], [b]) => a - b);
 
   // Primitives. Families are named by slot, not by font, so picking another font keeps the name.
   const FAMILY_SLOTS = [
@@ -352,15 +355,12 @@ function typographyTokens(f: Foundations): Token[] {
       tw,
     });
   }
-  for (const [role, weight] of [
-    ['heading', c.headingWeight],
-    ['body', c.bodyWeight],
-  ] as const) {
-    tokens.push({ tier: 'base', group: 'typography', name: `font-weight-${role}`, path: ['font', 'weight', role], type: 'fontWeight', ref: `font-weight-${weight}` });
+  // Base: emphasis levels, so each style's weight aliases a purpose rather than a primitive
+  for (const [weight, emphasis] of Object.entries(WEIGHT_EMPHASIS)) {
+    tokens.push({ tier: 'base', group: 'typography', name: `font-weight-${emphasis}`, path: ['font', 'weight', emphasis], type: 'fontWeight', ref: `font-weight-${weight}` });
   }
 
   // Base: a t-shirt size scale, one entry per step. Mobile-first, so the responsive switch lives here.
-  const sizeRole = (name: string) => SIZE_ROLES[stepOf(name)];
   /** Points at the mobile primitive and switches to the desktop one from the breakpoint, when they differ. */
   const mobileFirst = (prim: string, step: number, mobileValue: number, desktopValue: number): Partial<Token> => {
     const desktopRef = `${prim}-${stepCode(step)}`;
@@ -369,7 +369,7 @@ function typographyTokens(f: Foundations): Token[] {
       : { ref: `${desktopRef}-mobile`, responsive: [{ minWidth: bp, label: 'desktop', ref: desktopRef }], baseLabel: 'mobile' };
   };
   for (const [step, s] of bySteps) {
-    const size = sizeRole(s.name);
+    const size = sizeRole(s.step);
     tokens.push(
       {
         tier: 'base',
@@ -401,7 +401,7 @@ function typographyTokens(f: Foundations): Token[] {
   // Semantic: one text style per role in the UI
   for (const s of styles) {
     const role = s.role === 'heading' ? 'heading' : 'body';
-    const size = sizeRole(s.name);
+    const size = sizeRole(s.step);
     const t = (prop: string, type: TokenType, ref: string, tw?: string): Token => ({
       tier: 'semantic',
       group: 'typography',
@@ -416,7 +416,7 @@ function typographyTokens(f: Foundations): Token[] {
       t('family', 'fontFamily', `font-family-${role}`),
       t('size', 'dimension', `font-size-${size}`, `text-${s.name}`),
       t('line-height', 'dimension', `line-height-${size}`, `text-${s.name}--line-height`),
-      t('weight', 'fontWeight', `font-weight-${role}`, `text-${s.name}--font-weight`),
+      t('weight', 'fontWeight', `font-weight-${WEIGHT_EMPHASIS[s.weightName]}`, `text-${s.name}--font-weight`),
       t('tracking', 'letterSpacing', `letter-spacing-${size}`, `text-${s.name}--letter-spacing`),
     );
   }

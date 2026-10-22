@@ -93,6 +93,15 @@ function Resolved({ t, byName, isDark }: { t: Token; byName: Map<string, Token>;
  * Every token in one foundation, split into its three tiers. Primitives are read-only; base and
  * semantic tokens can be re-pointed to any token in the tier below, and new ones added.
  */
+/**
+ * Token column wide enough for the group's longest name (mono 12px ≈ 0.45rem a character),
+ * plus room for the edited dot and custom badge. Names past the cap still truncate.
+ */
+function tokenColumnWidth(tokens: Token[]) {
+  const chars = Math.max(0, ...tokens.map((t) => t.name.length + (t.custom ? 8 : 0) + (t.defaultRef ? 2 : 0)));
+  return `${Math.min(24, Math.max(12, chars * 0.45 + 2.5))}rem`;
+}
+
 export function TokenTiers({
   group,
   palettes,
@@ -164,6 +173,7 @@ export function TokenTiers({
         const isFolded = !q && (folded[tier] ?? (tier === 'primitive' && all.length > FOLD_OVER));
         const meta = TIER_META[tier];
         const editedHere = all.filter((t) => t.defaultRef).length;
+        const nameWidth = tokenColumnWidth(all);
         const customHere = all.filter((t) => t.custom).length;
 
         return (
@@ -189,7 +199,9 @@ export function TokenTiers({
                 <table className="w-full min-w-[44rem] table-fixed text-left text-sm">
                   <thead className="border-b bg-muted/50 text-xs text-muted-foreground">
                     <tr>
-                      <th className="w-48 px-4 py-2 font-medium">Token</th>
+                      <th className="px-4 py-2 font-medium" style={{ width: nameWidth }}>
+                        Token
+                      </th>
                       {tier !== 'primitive' && <th className="w-60 px-4 py-2 font-medium">Aliases</th>}
                       <th className="px-4 py-2 font-medium">{tier === 'primitive' ? 'Value' : 'Resolves to'}</th>
                       <th className="px-4 py-2 font-medium">Usage</th>

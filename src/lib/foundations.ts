@@ -22,27 +22,43 @@ export interface TypographyConfig {
   ratio: number;
   /** Ratio used below the md breakpoint, so large headings step down on small screens. */
   mobileRatio: number;
-  headingWeight: FontWeightName;
-  bodyWeight: FontWeightName;
-  /** Line heights snap to this grid in px. */
+  /** Grid row in px that line heights round to; 0 rounds to whole pixels. */
   lineHeightGrid: number;
+  /** Line height as a multiple of font size, before rounding to the grid. */
+  headingLineHeight: number;
+  bodyLineHeight: number;
   /** Tightens large sizes and opens up small ones. */
   opticalTracking: boolean;
+  /** The text styles, each placed on a scale step. Users add, rename and remove these. */
+  steps: TypeStepConfig[];
+  /** Desktop px sizes typed over the computed ones, by scale step. Styles on one step share it. */
+  sizeOverrides: Record<string, number>;
 }
 
 export type TypeRole = 'heading' | 'body';
 
-export const TYPE_STEPS: { name: string; label: string; step: number; role: TypeRole; usage: string }[] = [
-  { name: 'display', label: 'Display', step: 6, role: 'heading', usage: 'Hero and marketing headlines' },
-  { name: 'h1', label: 'Heading 1', step: 5, role: 'heading', usage: 'Page titles' },
-  { name: 'h2', label: 'Heading 2', step: 4, role: 'heading', usage: 'Section titles' },
-  { name: 'h3', label: 'Heading 3', step: 3, role: 'heading', usage: 'Subsection titles' },
-  { name: 'h4', label: 'Heading 4', step: 2, role: 'heading', usage: 'Card and dialog titles' },
-  { name: 'h5', label: 'Heading 5', step: 1, role: 'heading', usage: 'Group labels, small titles' },
-  { name: 'body-lg', label: 'Body large', step: 1, role: 'body', usage: 'Lead paragraphs' },
-  { name: 'body', label: 'Body', step: 0, role: 'body', usage: 'Default text' },
-  { name: 'body-sm', label: 'Body small', step: -1, role: 'body', usage: 'Secondary text, dense UI' },
-  { name: 'caption', label: 'Caption', step: -2, role: 'body', usage: 'Labels, metadata, footnotes' },
+export interface TypeStepConfig {
+  name: string;
+  label: string;
+  /** Exponent on the ratio: 0 is body, 1 one step up, -1 one step down. */
+  step: number;
+  role: TypeRole;
+  weight: FontWeightName;
+  usage: string;
+}
+
+/** The default text styles. Previews ask for these names, and fall back to the nearest step when one is gone. */
+export const TYPE_STEPS: TypeStepConfig[] = [
+  { name: 'display', label: 'Display', step: 6, role: 'heading', weight: 'semibold', usage: 'Hero and marketing headlines' },
+  { name: 'h1', label: 'Heading 1', step: 5, role: 'heading', weight: 'semibold', usage: 'Page titles' },
+  { name: 'h2', label: 'Heading 2', step: 4, role: 'heading', weight: 'semibold', usage: 'Section titles' },
+  { name: 'h3', label: 'Heading 3', step: 3, role: 'heading', weight: 'semibold', usage: 'Subsection titles' },
+  { name: 'h4', label: 'Heading 4', step: 2, role: 'heading', weight: 'semibold', usage: 'Card and dialog titles' },
+  { name: 'h5', label: 'Heading 5', step: 1, role: 'heading', weight: 'semibold', usage: 'Group labels, small titles' },
+  { name: 'body-lg', label: 'Body large', step: 1, role: 'body', weight: 'regular', usage: 'Lead paragraphs' },
+  { name: 'body', label: 'Body', step: 0, role: 'body', weight: 'regular', usage: 'Default text' },
+  { name: 'body-sm', label: 'Body small', step: -1, role: 'body', weight: 'regular', usage: 'Secondary text, dense UI' },
+  { name: 'caption', label: 'Caption', step: -2, role: 'body', weight: 'regular', usage: 'Labels, metadata, footnotes' },
 ];
 
 export const TYPE_RATIOS = [
@@ -59,6 +75,7 @@ export const TYPE_RATIOS = [
 export interface TypeStyle {
   name: string;
   label: string;
+  step: number;
   role: TypeRole;
   usage: string;
   family: string;
@@ -72,21 +89,18 @@ export interface TypeStyle {
   mobileLineHeight: number;
   /** em */
   tracking: number;
+  /** The desktop size was typed in rather than computed from the ratio. */
+  overridden: boolean;
 }
 
-/** Larger text needs less leading. */
-function lineHeightRatio(size: number) {
-  if (size <= 14) return 1.45;
-  if (size <= 18) return 1.5;
-  if (size <= 24) return 1.35;
-  if (size <= 36) return 1.25;
-  return 1.1;
-}
-
-function snapLineHeight(size: number, grid: number) {
-  const raw = size * lineHeightRatio(size);
-  const snapped = grid > 0 ? Math.round(raw / grid) * grid : Math.round(raw);
-  return Math.max(snapped, Math.ceil(size));
+/**
+ * The Good Line-Height method: size × multiplier, rounded to the nearest grid row, so every line
+ * box spans whole rows and text keeps a shared vertical rhythm. Never tighter than the text itself.
+ */
+export function gridLineHeight(size: number, multiplier: number, grid: number) {
+  const row = grid > 0 ? grid : 1;
+  const snapped = Math.round((size * multiplier) / row) * row;
+  return snapped >= size ? snapped : Math.ceil(size / row) * row;
 }
 
 /** Roughly follows Inter's dynamic metrics: +0.01em at 12px, -0.025em from ~45px. */
@@ -98,27 +112,114 @@ function trackingFor(size: number) {
 /** Sizes below body step down at half the ratio, so captions stay readable on large ratios. */
 const stepExponent = (step: number) => (step < 0 ? step / 2 : step);
 
+/** Desktop size from the ratio alone, before any override. */
+export const computedTypeSize = (c: Pick<TypographyConfig, 'baseSize' | 'ratio'>, step: number) =>
+  Math.round(c.baseSize * Math.pow(c.ratio, stepExponent(step)));
+
+/** Largest step first; on a shared step, the heading comes before the body style. */
+export const sortTypeSteps = <T extends Pick<TypeStepConfig, 'step' | 'role'>>(steps: T[]) =>
+  [...steps].sort((a, b) => b.step - a.step || (a.role === b.role ? 0 : a.role === 'heading' ? -1 : 1));
+
 export function generateTypeScale(c: TypographyConfig): TypeStyle[] {
-  return TYPE_STEPS.map((s) => {
-    const size = Math.round(c.baseSize * Math.pow(c.ratio, stepExponent(s.step)));
-    // Only steps above body shrink on mobile
-    const mobileSize = s.step > 0 ? Math.round(c.baseSize * Math.pow(c.mobileRatio, s.step)) : size;
-    const weightName = s.role === 'heading' ? c.headingWeight : c.bodyWeight;
+  return sortTypeSteps(c.steps).map((s) => {
+    const computed = computedTypeSize(c, s.step);
+    const override = c.sizeOverrides[s.step];
+    const size = override ?? computed;
+    // Only steps above body shrink on mobile; an override keeps the same desktop-to-mobile proportion
+    const mobileComputed = s.step > 0 ? Math.round(c.baseSize * Math.pow(c.mobileRatio, s.step)) : computed;
+    const mobileSize = override === undefined ? mobileComputed : Math.max(1, Math.round((override * mobileComputed) / computed));
+    const weightName = s.weight;
+    const leading = s.role === 'heading' ? c.headingLineHeight : c.bodyLineHeight;
     return {
       name: s.name,
       label: s.label,
+      step: s.step,
       role: s.role,
       usage: s.usage,
       family: s.role === 'heading' ? c.headingFamily : c.bodyFamily,
       weight: FONT_WEIGHTS[weightName],
       weightName,
       size,
-      lineHeight: snapLineHeight(size, c.lineHeightGrid),
+      lineHeight: gridLineHeight(size, leading, c.lineHeightGrid),
       mobileSize,
-      mobileLineHeight: snapLineHeight(mobileSize, c.lineHeightGrid),
+      mobileLineHeight: gridLineHeight(mobileSize, leading, c.lineHeightGrid),
       tracking: c.opticalTracking ? trackingFor(size) : 0,
+      overridden: override !== undefined,
     };
   });
+}
+
+/**
+ * A style by name, or the nearest one on the scale when the user removed or renamed it,
+ * so previews that ask for `h4` or `caption` keep rendering.
+ */
+export function typeStyleFor(styles: TypeStyle[], name: string): TypeStyle {
+  const exact = styles.find((s) => s.name === name);
+  if (exact) return exact;
+  const want = TYPE_STEPS.find((t) => t.name === name) ?? { step: 0, role: 'body' as TypeRole };
+  const distance = (s: TypeStyle) => Math.abs(s.step - want.step) * 2 + (s.role === want.role ? 0 : 1);
+  return styles.reduce((best, s) => (distance(s) < distance(best) ? s : best));
+}
+
+/** Token-safe style name: lowercase letters, digits and dashes. */
+export const typeStepSlug = (raw: string) =>
+  raw
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+
+/** "body-lg" → "Body lg" */
+export const typeStepLabel = (name: string) => {
+  const words = name.replace(/-/g, ' ');
+  return words.charAt(0).toUpperCase() + words.slice(1);
+};
+
+/** Saves from before weights moved onto each step kept one weight per role. */
+type LegacyTypography = Partial<TypographyConfig> & { headingWeight?: FontWeightName; bodyWeight?: FontWeightName };
+
+const isWeight = (w: unknown): w is FontWeightName => typeof w === 'string' && w in FONT_WEIGHTS;
+
+function normalizeTypography(raw: LegacyTypography): TypographyConfig {
+  const { headingWeight, bodyWeight, ...rest } = raw;
+  const c = { ...DEFAULT_FOUNDATIONS.typography, ...rest };
+  const roleWeight = (role: TypeRole): FontWeightName =>
+    role === 'heading' ? (isWeight(headingWeight) ? headingWeight : 'semibold') : isWeight(bodyWeight) ? bodyWeight : 'regular';
+  const seen = new Set<string>();
+  // Only saved steps; without them the defaults below pick up a legacy save's role weights
+  const steps = Array.isArray(rest.steps)
+    ? rest.steps.filter((s): s is TypeStepConfig => {
+        const ok =
+          !!s &&
+          typeof s === 'object' &&
+          typeof s.name === 'string' &&
+          !!typeStepSlug(s.name) &&
+          !seen.has(s.name) &&
+          Number.isInteger(s.step) &&
+          (s.role === 'heading' || s.role === 'body');
+        if (ok) seen.add(s.name);
+        return ok;
+      })
+    : [];
+  const overrides =
+    c.sizeOverrides && typeof c.sizeOverrides === 'object'
+      ? Object.fromEntries(Object.entries(c.sizeOverrides).filter(([k, v]) => Number.isInteger(Number(k)) && typeof v === 'number' && v > 0))
+      : {};
+  const ratio = (r: unknown, fallback: number) => (typeof r === 'number' && r > 1 && r <= 4 ? r : fallback);
+  const leading = (r: unknown, fallback: number) => (typeof r === 'number' && r >= 1 && r <= 2.5 ? r : fallback);
+  return {
+    ...c,
+    headingLineHeight: leading(c.headingLineHeight, DEFAULT_FOUNDATIONS.typography.headingLineHeight),
+    bodyLineHeight: leading(c.bodyLineHeight, DEFAULT_FOUNDATIONS.typography.bodyLineHeight),
+    lineHeightGrid: Number.isInteger(c.lineHeightGrid) && c.lineHeightGrid >= 0 && c.lineHeightGrid <= 16 ? c.lineHeightGrid : DEFAULT_FOUNDATIONS.typography.lineHeightGrid,
+    ratio: ratio(c.ratio, DEFAULT_FOUNDATIONS.typography.ratio),
+    mobileRatio: ratio(c.mobileRatio, DEFAULT_FOUNDATIONS.typography.mobileRatio),
+    steps:
+      steps.length > 0
+        ? steps.map((s) => ({ ...s, label: s.label || typeStepLabel(s.name), usage: s.usage ?? '', weight: isWeight(s.weight) ? s.weight : roleWeight(s.role) }))
+        : TYPE_STEPS.map((s) => ({ ...s, weight: roleWeight(s.role) })),
+    sizeOverrides: overrides,
+  };
 }
 
 /** CSS font stack for a family picked in the inspector. */
@@ -462,10 +563,12 @@ export const DEFAULT_FOUNDATIONS: Foundations = {
     baseSize: 16,
     ratio: 1.25,
     mobileRatio: 1.2,
-    headingWeight: 'semibold',
-    bodyWeight: 'regular',
     lineHeightGrid: 4,
+    headingLineHeight: 1.2,
+    bodyLineHeight: 1.5,
     opticalTracking: true,
+    steps: TYPE_STEPS,
+    sizeOverrides: {},
   },
   spacing: { base: 4, progression: 'linear' },
   radius: { base: 8 },
@@ -490,7 +593,7 @@ export function normalizeFoundations(raw: unknown): Foundations {
   const grid = merge('grid');
   if (!Array.isArray(grid.breakpoints) || grid.breakpoints.length === 0) grid.breakpoints = DEFAULT_FOUNDATIONS.grid.breakpoints;
   return {
-    typography: merge('typography'),
+    typography: normalizeTypography(r.typography && typeof r.typography === 'object' ? r.typography : {}),
     spacing: merge('spacing'),
     radius: merge('radius'),
     shadow: merge('shadow'),
@@ -510,12 +613,17 @@ function normalizeCustomTokens(raw: unknown): CustomToken[] {
     .map((c) => ({ ...c, ref: renameRoles(c.ref) }));
 }
 
-/** Renamed color roles: primary became brand (primary-9 → brand-9), secondary became brand-secondary (bg-secondary → bg-brand-secondary). */
+/**
+ * Renamed roles: primary became brand (primary-9 → brand-9), secondary became brand-secondary (bg-secondary → bg-brand-secondary),
+ * and the per-role weights became emphasis levels at their old defaults (font-weight-heading → font-weight-strong).
+ */
 const renameRoles = (name: string) =>
   name
     .replace(/^primary-(\d+|a\d+|contrast|surface)$/, 'brand-$1')
     .replace(/^secondary-(\d+|a\d+|contrast|surface)$/, 'brand-secondary-$1')
-    .replace(/^(bg|fg-on|fg|border)-secondary(-subtle)?$/, '$1-brand-secondary$2');
+    .replace(/^(bg|fg-on|fg|border)-secondary(-subtle)?$/, '$1-brand-secondary$2')
+    .replace(/^font-weight-heading$/, 'font-weight-strong')
+    .replace(/^font-weight-body$/, 'font-weight-normal');
 
 function normalizeAliases(raw: unknown): Record<string, string> {
   if (!raw || typeof raw !== 'object') return {};
@@ -547,9 +655,17 @@ export interface ResolvedFoundations {
   mono: string;
 }
 
+/** Every style by name, plus the default names mapped to their nearest style when the user dropped them. */
+function resolveTypeStyles(styles: TypeStyle[]): Record<string, TypeStyle> {
+  return {
+    ...Object.fromEntries(TYPE_STEPS.map((t) => [t.name, typeStyleFor(styles, t.name)])),
+    ...Object.fromEntries(styles.map((s) => [s.name, s])),
+  };
+}
+
 export function resolveFoundations(f: Foundations, isDark: boolean): ResolvedFoundations {
   return {
-    type: Object.fromEntries(generateTypeScale(f.typography).map((s) => [s.name, s])),
+    type: resolveTypeStyles(generateTypeScale(f.typography)),
     space: (m) => m * f.spacing.base,
     radius: Object.fromEntries(generateRadiusScale(f.radius).map((r) => [r.name, r.value])),
     shadow: Object.fromEntries(generateShadowScale(f.shadow, isDark).map((s) => [s.name, s.css])),

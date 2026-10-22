@@ -69,6 +69,10 @@ const PALETTES_KEY = 'lumina_palettes';
 const BACKGROUNDS_KEY = 'lumina_backgrounds';
 const FOUNDATIONS_KEY = 'lumina_foundations';
 const FOUNDATION_VIEW_KEY = 'lumina_foundation_view';
+const PANEL_WIDTH_KEY = 'lumina_panel_width';
+/** Docked controls panel width in px: default, and the range the drag handle allows. */
+const PANEL_WIDTH = { default: 360, min: 280, max: 560 };
+const clampPanelWidth = (w: number) => Math.round(Math.min(PANEL_WIDTH.max, Math.max(PANEL_WIDTH.min, w)));
 
 const DEFAULT_PALETTES: PaletteConfig[] = [
   { id: '1', name: 'Brand', baseColor: '#3e63dd', isDark: false, hueShift: 0, saturationScale: 1, lockStep9: false },
@@ -140,6 +144,16 @@ function loadFoundations(): Foundations {
   }
 }
 
+function loadPanelWidth(): number {
+  try {
+    const saved = Number(localStorage.getItem(PANEL_WIDTH_KEY));
+    if (saved > 0) return clampPanelWidth(saved);
+  } catch {
+    // Fall through to the default width.
+  }
+  return PANEL_WIDTH.default;
+}
+
 function loadFoundationView(): FoundationKey {
   try {
     const saved = localStorage.getItem(FOUNDATION_VIEW_KEY) as FoundationKey | null;
@@ -182,6 +196,40 @@ export function PaletteGenerator({
   // --- UI state ---
   const isDesktop = useMediaQuery('(min-width: 768px)');
   const [panelCollapsed, setPanelCollapsed] = useState(false);
+  const [panelWidth, setPanelWidth] = useState(loadPanelWidth);
+  const [resizingPanel, setResizingPanel] = useState(false);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(PANEL_WIDTH_KEY, String(panelWidth));
+    } catch {
+      // Blocked storage only forgets the width.
+    }
+  }, [panelWidth]);
+
+  /** Drags the panel's right edge; the width follows the pointer from where the drag began. */
+  const startPanelResize = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const startX = e.clientX;
+    const startWidth = panelWidth;
+    setResizingPanel(true);
+    // Keep the resize cursor and block text selection while the pointer is over the page
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    const onMove = (ev: PointerEvent) => setPanelWidth(clampPanelWidth(startWidth + ev.clientX - startX));
+    const onUp = () => {
+      setResizingPanel(false);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
+  };
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
@@ -644,15 +692,46 @@ export function PaletteGenerator({
             {showDockedInspector && inspector && (
               <aside
                 className={cn(
-                  'shrink-0 overflow-hidden border-r bg-sidebar transition-[width] duration-200 ease-out',
-                  panelCollapsed ? 'w-0 border-r-0' : 'w-80',
+                  'relative shrink-0 border-r bg-sidebar',
+                  // No easing while dragging, so the edge stays under the pointer
+                  !resizingPanel && 'transition-[width] duration-200 ease-out',
+                  panelCollapsed && 'border-r-0',
                 )}
+                style={{ width: panelCollapsed ? 0 : panelWidth }}
               >
-                {/* Fixed inner width keeps the controls from reflowing while the panel animates */}
-                <div className="scrollbar-thin h-full w-80 overflow-y-auto">
-                  {inspectorHeader}
-                  {inspector}
+                <div className="h-full overflow-hidden">
+                  {/* Fixed inner width keeps the controls from reflowing while the panel animates */}
+                  <div className="scrollbar-thin h-full overflow-y-auto" style={{ width: panelWidth }}>
+                    {inspectorHeader}
+                    {inspector}
+                  </div>
                 </div>
+                {!panelCollapsed && (
+                  <div
+                    role="separator"
+                    aria-orientation="vertical"
+                    aria-label="Resize controls"
+                    aria-valuenow={panelWidth}
+                    aria-valuemin={PANEL_WIDTH.min}
+                    aria-valuemax={PANEL_WIDTH.max}
+                    tabIndex={0}
+                    title="Drag to resize · double-click to reset"
+                    onPointerDown={startPanelResize}
+                    onDoubleClick={() => setPanelWidth(PANEL_WIDTH.default)}
+                    onKeyDown={(e) => {
+                      const delta = e.key === 'ArrowLeft' ? -1 : e.key === 'ArrowRight' ? 1 : 0;
+                      if (!delta) return;
+                      e.preventDefault();
+                      setPanelWidth((w) => clampPanelWidth(w + delta * (e.shiftKey ? 40 : 10)));
+                    }}
+                    className={cn(
+                      'group absolute inset-y-0 -right-1.5 z-20 w-3 cursor-col-resize touch-none focus-visible:outline-none',
+                      'after:absolute after:inset-y-0 after:left-1/2 after:w-0.5 after:-translate-x-1/2 after:bg-transparent after:transition-colors',
+                      'hover:after:bg-ring/60 focus-visible:after:bg-ring',
+                      resizingPanel && 'after:bg-ring',
+                    )}
+                  />
+                )}
               </aside>
             )}
           </>

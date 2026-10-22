@@ -1,5 +1,5 @@
 import { useEffect, useId, useState } from 'react';
-import { RotateCcw } from 'lucide-react';
+import { Info, RotateCcw } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -7,12 +7,42 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Slider } from '../ui/slider';
 import { Switch } from '../ui/switch';
 import { Tabs, TabsList, TabsTrigger } from '../ui/tabs';
+import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
 
-export function Section({ title, children, action }: { title: string; children: React.ReactNode; action?: React.ReactNode }) {
+export function Section({
+  title,
+  children,
+  action,
+  info,
+}: {
+  title: string;
+  children: React.ReactNode;
+  action?: React.ReactNode;
+  /** Explanation shown in a tooltip beside the title. */
+  info?: React.ReactNode;
+}) {
   return (
     <section className="space-y-3 border-b px-5 py-5 last:border-b-0">
       <div className="flex h-5 items-center justify-between">
-        <h3 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">{title}</h3>
+        <div className="flex items-center gap-1">
+          <h3 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">{title}</h3>
+          {info && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  aria-label={`About ${title.toLowerCase()}`}
+                  className="relative grid size-4 place-items-center rounded-sm text-muted-foreground/70 transition-colors after:absolute after:-inset-1.5 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                >
+                  <Info className="size-3" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" align="start" className="max-w-[19rem] text-pretty">
+                {info}
+              </TooltipContent>
+            </Tooltip>
+          )}
+        </div>
         {action}
       </div>
       {children}
@@ -56,7 +86,7 @@ export function SliderField({
   const id = useId();
   const changed = value !== defaultValue;
   return (
-    <div className="space-y-2.5">
+    <div className="space-y-2.5 pb-2">
       <div className="flex items-center justify-between">
         <Label htmlFor={id} className="text-sm font-normal">
           {label}
@@ -160,11 +190,12 @@ export function SwitchField({
   );
 }
 
-/** Compact number input that commits valid values as you type and restores the last one on blur. */
+/** Compact number input that commits in-range values as you type, clamps on blur, and restores the last value when the draft isn't a number. */
 export function NumberInput({
   value,
   min,
   max,
+  decimals = 0,
   onChange,
   className,
   ...props
@@ -172,24 +203,33 @@ export function NumberInput({
   value: number;
   min?: number;
   max?: number;
+  /** Digits kept after the point; 0 rounds to whole numbers. */
+  decimals?: number;
   onChange: (v: number) => void;
   className?: string;
   'aria-label': string;
+  placeholder?: string;
 }) {
   const [draft, setDraft] = useState(String(value));
   useEffect(() => setDraft(String(value)), [value]);
-  const clamp = (n: number) => Math.min(max ?? Infinity, Math.max(min ?? -Infinity, Math.round(n)));
+  const f = 10 ** decimals;
+  const clamp = (n: number) => Math.min(max ?? Infinity, Math.max(min ?? -Infinity, Math.round(n * f) / f));
   return (
     <Input
       {...props}
-      inputMode="numeric"
+      inputMode={decimals > 0 ? 'decimal' : 'numeric'}
       value={draft}
       onChange={(e) => {
         setDraft(e.target.value);
         const n = Number(e.target.value);
-        if (e.target.value.trim() !== '' && Number.isFinite(n)) onChange(clamp(n));
+        // Out-of-range values wait for blur, so typing "1" on the way to "1.2" isn't clamped mid-word
+        if (e.target.value.trim() !== '' && Number.isFinite(n) && n >= (min ?? -Infinity) && n <= (max ?? Infinity)) onChange(clamp(n));
       }}
-      onBlur={() => setDraft(String(value))}
+      onBlur={() => {
+        const n = Number(draft);
+        if (draft.trim() !== '' && Number.isFinite(n) && clamp(n) !== value) onChange(clamp(n));
+        else setDraft(String(value));
+      }}
       className={className ?? 'h-8 px-2 text-right font-mono text-xs tabular'}
     />
   );
