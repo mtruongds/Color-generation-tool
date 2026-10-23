@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AppWindow,
-  ArrowRight,
   ArrowUp,
   BookOpen,
   Download,
@@ -53,7 +52,6 @@ import {
   resolveFoundations,
 } from '../../lib/foundations';
 import { FOUNDATION_META, NAV_ORDER, type NavKey, FoundationNav } from '../foundations/FoundationNav';
-import { FoundationSample } from '../foundations/FoundationSample';
 import { FoundationDocs } from '../foundations/FoundationDocs';
 import {
   type ColorRole,
@@ -978,17 +976,6 @@ export function PaletteGenerator({
                   <ShadowCanvas config={foundations.shadow} isDark={isDarkMode} radius={resolved.radius.lg} />
                 ) : (
                   <GridCanvas config={foundations.grid} accent={accent} />
-                )}
-                {foundation !== 'grid' && (
-                  <div className="mt-8">
-                    <div className="mb-3 flex items-center justify-between gap-2">
-                      <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">All foundations together</h2>
-                      <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs text-muted-foreground" onClick={() => selectFoundation('preview')}>
-                        Full preview <ArrowRight className="size-3.5" />
-                      </Button>
-                    </div>
-                    <FoundationSample tokens={resolved} accent={accent} />
-                  </div>
                 )}
               </>
             ) : activeView === 'editor' ? (

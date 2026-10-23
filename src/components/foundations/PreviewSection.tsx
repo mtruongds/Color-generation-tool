@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   AppWindow,
   Boxes,
+  Component,
   Highlighter,
   LayoutDashboard,
   Monitor,
@@ -53,9 +54,14 @@ function loadProduct(): string | null {
   }
 }
 
-type PreviewPage = 'dashboard' | 'landing' | 'article';
+type PreviewPage = 'components' | 'dashboard' | 'landing' | 'article';
 
 const PAGES: Record<PreviewPage, { label: string; icon: LucideIcon; blurb: string }> = {
+  components: {
+    label: 'Components',
+    icon: Component,
+    blurb: 'Core components after shadcn/ui, styled only with your tokens.',
+  },
   dashboard: {
     label: 'Dashboard',
     icon: LayoutDashboard,

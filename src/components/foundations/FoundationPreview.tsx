@@ -31,6 +31,8 @@ import {
   type FoundationKey,
   type Foundations,
   type GridConfig,
+  type ResolvedFoundations,
+  type TypeStyle,
   computeGridLayout,
   resolveFoundations,
   sortedBreakpoints,
@@ -39,11 +41,12 @@ import {
 import { typeCss } from './FoundationSample';
 import type { ColorScale } from '../../lib/color-utils';
 import { StepTokenLayer, scaleVars } from '../palette-generator/PalettePreview';
+import { ComponentGallery } from './ComponentGallery';
 
-type PreviewKey = Exclude<FoundationKey, 'color'>;
+export type PreviewKey = Exclude<FoundationKey, 'color'>;
 
 /** Pages drawn from the foundation tokens. */
-export type FoundationPage = 'dashboard' | 'landing' | 'article';
+export type FoundationPage = 'dashboard' | 'components' | 'landing' | 'article';
 
 /** Room left under the dashboard's last panel for the floating toast. */
 const TOAST_CLEARANCE = 88;
@@ -70,7 +73,7 @@ const BUTTONS = {
   neutral: ['bg-(--g-surface) text-(--g12) shadow-[inset_0_0_0_1px_var(--g7)] hover:bg-(--g3)', 'bg: gray surface → g3 on hover · border: g7 · text: g12'],
   disabled: ['cursor-not-allowed bg-(--g3) text-(--g8)', 'disabled: g3 · text: g8'],
 } as const;
-type ButtonKind = keyof typeof BUTTONS;
+export type ButtonKind = keyof typeof BUTTONS;
 
 const BADGES = {
   solid: ['bg-(--a9) text-(--a-contrast)', 'solid: a9 · text: contrast'],
@@ -79,7 +82,7 @@ const BADGES = {
   outline: ['text-(--a11) shadow-[inset_0_0_0_1px_var(--a7)]', 'outline: border a7 · text: a11'],
   gray: ['bg-(--g3) text-(--g11)', 'gray: g3 · text: g11'],
 } as const;
-type BadgeKind = keyof typeof BADGES;
+export type BadgeKind = keyof typeof BADGES;
 
 /** A dashboard needs a sidebar; when the grid has none, use 240px from the first breakpoint of 768px or wider. */
 function dashboardGrid(grid: GridConfig): GridConfig {
@@ -110,6 +113,7 @@ export type PreviewHighlight = PreviewKey | 'none';
 /** Where each page would live, shown in the frame's address bar. */
 const PAGE_URL: Record<FoundationPage, string> = {
   dashboard: 'app.northwind.co/overview',
+  components: 'ui.northwind.co/components',
   landing: 'northwind.co',
   article: 'northwind.co/blog/rebuilding-color',
 };
@@ -122,6 +126,38 @@ export const HIGHLIGHT_LABEL: Record<PreviewHighlight, string> = {
   shadow: 'Elevation',
   grid: 'Grid columns',
 };
+
+export interface TextProps {
+  s: string;
+  /** Repeated items label only their first instance, so tags don't pile up. */
+  tagged?: boolean;
+  as?: React.ElementType;
+  className?: string;
+  style?: React.CSSProperties;
+  children: React.ReactNode;
+}
+
+type PadProps = { 'data-fx'?: string; 'data-fx-pad'?: string; style?: React.CSSProperties };
+
+/** What a page drawn outside this file needs: the resolved tokens and the shared element styles. */
+export interface PreviewKit {
+  tokens: ResolvedFoundations;
+  mobile: boolean;
+  /** Masonry columns that fit the content width. */
+  columns: number;
+  gutter: number;
+  container: React.CSSProperties;
+  typeCss: (s: TypeStyle) => React.CSSProperties;
+  Text: (props: TextProps) => React.ReactElement;
+  btn: (kind: ButtonKind, size?: 'sm' | 'md' | 'lg' | 'icon') => { className: string; style: React.CSSProperties; 'data-tokens': string };
+  badge: (kind: BadgeKind) => { className: string; style: React.CSSProperties; 'data-tokens': string };
+  steps: (tokens: string) => { 'data-tokens': string };
+  mark: (kind: PreviewKey, label: string) => Record<string, string>;
+  pad: (multiplier: number, label?: string) => PadProps;
+  mergeStyle: (a: PadProps, style: React.CSSProperties) => PadProps;
+  MUTED: string;
+  HAIRLINE: string;
+}
 
 /**
  * A landing or article page built only from foundation tokens. One foundation can be
@@ -278,9 +314,9 @@ export function FoundationPreview({
   const shadowName = (name: string) => `shadow-${name}`;
 
   /** Tags an element for the active highlight. Only the current foundation's tags show. */
-  const mark = (kind: PreviewKey, label: string) => (on(kind) ? { 'data-fx': label } : {});
+  const mark = (kind: PreviewKey, label: string): Record<string, string> => (on(kind) ? { 'data-fx': label } : {});
   /** Spacing tag that also tints the padding area. */
-  const pad = (multiplier: number, label = `p: ${spacingTokenName(multiplier)}`) =>
+  const pad = (multiplier: number, label = `p: ${spacingTokenName(multiplier)}`): PadProps =>
     on('spacing')
       ? { 'data-fx': label, 'data-fx-pad': '', style: { '--fx-pad': `${space(multiplier)}px` } as React.CSSProperties }
       : {};
@@ -300,17 +336,12 @@ export function FoundationPreview({
     style,
     tagged = true,
     children,
-  }: {
-    s: string;
-    /** Repeated items label only their first instance, so tags don't pile up. */
-    tagged?: boolean;
-    as?: React.ElementType;
-    className?: string;
-    style?: React.CSSProperties;
-    children: React.ReactNode;
-  }) => (
+  }: TextProps) => {
+    // Truncating clips the highlight label drawn above the box, so a tagged box truncates an inner span instead
+    const clips = tagged && /\btruncate\b/.test(className ?? '');
+    return (
     <Tag
-      className={className}
+      className={clips ? className?.replace(/\btruncate\b/, '') : className}
       style={{
         ...typeCss(t[s], mobile),
         // Headings balance their lines; running text avoids orphans
@@ -320,9 +351,10 @@ export function FoundationPreview({
       data-tokens={`text: ${stepOf(style?.color)}`}
       {...(tagged ? mark('typography', `text-${s}`) : {})}
     >
-      {children}
+      {clips ? <span className="block truncate">{children}</span> : children}
     </Tag>
-  );
+    );
+  };
   /** Names the accent and gray steps an element uses, for step tooltips. */
   const steps = (tokens: string) => ({ 'data-tokens': tokens });
   const MUTED = 'var(--g11)';
@@ -360,7 +392,7 @@ export function FoundationPreview({
   });
   const panelStyle: React.CSSProperties = { background: 'var(--bg)', border: HAIRLINE, borderRadius: radius.lg };
 
-  const mergeStyle = (a: ReturnType<typeof pad>, style: React.CSSProperties) => ({ ...a, style: { ...style, ...('style' in a ? a.style : {}) } });
+  const mergeStyle = (a: PadProps, style: React.CSSProperties): PadProps => ({ ...a, style: { ...style, ...a.style } });
 
   const container: React.CSSProperties = {
     maxWidth: foundations.grid.maxWidth > 0 ? foundations.grid.maxWidth + bp.margin * 2 : undefined,
@@ -497,7 +529,27 @@ export function FoundationPreview({
             </div>
           )}
 
-          {page === 'dashboard' ? (
+          {page === 'components' ? (
+            <ComponentGallery
+              kit={{
+                tokens,
+                mobile,
+                columns: contentWidth >= 1080 ? 3 : contentWidth >= 640 ? 2 : 1,
+                gutter: bp.gutter,
+                container,
+                typeCss: (s) => typeCss(s, mobile),
+                Text,
+                btn,
+                badge,
+                steps,
+                mark,
+                pad,
+                mergeStyle,
+                MUTED,
+                HAIRLINE,
+              }}
+            />
+          ) : page === 'dashboard' ? (
             <div className="flex" style={{ minHeight: mobile ? 0 : 880 }}>
               {/* Sidebar: workspace, search, navigation, account */}
               {appSidebar > 0 && (
@@ -1086,15 +1138,18 @@ export function FoundationPreview({
           <header style={{ borderBottom: HAIRLINE }} {...steps('header: background · rule: g6')}>
             <div style={{ ...container, paddingBlock: space(4) }} className="flex items-center justify-between">
               <div className="flex items-center" style={{ gap: space(2.5) }}>
+                {/* The tag sits on an outer box, since the clipping one would hide its label */}
                 <span
-                  className="grid grid-cols-2 overflow-hidden"
+                  className="shrink-0"
                   style={{ width: space(6), height: space(6), borderRadius: radius.sm }}
                   {...steps('mark: a6 · a9 · a11 · a12')}
                   {...mark('radius', 'radius-sm')}
                 >
-                  {['--a6', '--a9', '--a11', '--a12'].map((v) => (
-                    <span key={v} style={{ background: `var(${v})` }} />
-                  ))}
+                  <span className="grid size-full grid-cols-2 overflow-hidden" style={{ borderRadius: radius.sm }}>
+                    {['--a6', '--a9', '--a11', '--a12'].map((v) => (
+                      <span key={v} style={{ background: `var(${v})` }} />
+                    ))}
+                  </span>
                 </span>
                 <Text s="h5">Northwind</Text>
               </div>
