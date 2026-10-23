@@ -25,6 +25,8 @@ import {
   typeStyleFor,
 } from '../../lib/foundations';
 import { typeCss } from './FoundationSample';
+import { ProductSwitcher } from '../palette-generator/PalettePicker';
+import type { FontRole, Product } from '../../lib/tokens';
 import { CanvasHeading, NumberInput, Section, SegmentedField, SelectField, SliderField, SwitchField } from './inspector-controls';
 
 const DEFAULTS = DEFAULT_FOUNDATIONS.typography;
@@ -214,19 +216,74 @@ const weightOptions = (Object.keys(FONT_WEIGHTS) as FontWeightName[]).map((w) =>
   ),
 }));
 
+/** Select value for a font an extra product takes from the first product. */
+const INHERIT = '__inherit';
+
+const FONT_FIELDS: [FontRole, string, 'headingFamily' | 'bodyFamily' | 'monoFamily'][] = [
+  ['heading', 'Heading', 'headingFamily'],
+  ['body', 'Body', 'bodyFamily'],
+  ['mono', 'Mono', 'monoFamily'],
+];
+
+/** Products for the Fonts section: each can use its own fonts, inheriting the rest from the first. */
+export interface TypographyProducts {
+  products: Product[];
+  activeProductId: string;
+  onSelect: (id: string) => void;
+  onAdd: () => void;
+  onRename: (id: string, name: string) => void;
+  onRemove: (id: string) => void;
+  /** Sets the active extra product's font for a role; undefined inherits it again. */
+  onSetFont: (role: FontRole, family: string | undefined) => void;
+}
+
 export function TypographyInspector({
   config,
   onChange,
+  products,
 }: {
   config: TypographyConfig;
   onChange: (updates: Partial<TypographyConfig>) => void;
+  products?: TypographyProducts;
 }) {
+  const index = products ? Math.max(0, products.products.findIndex((p) => p.id === products.activeProductId)) : 0;
+  const product = products && index > 0 ? products.products[index] : undefined;
+  const first = products?.products[0];
+
   return (
     <div className="flex flex-col">
       <Section title="Fonts">
-        <SelectField label="Heading" value={config.headingFamily} options={textFonts} onChange={(headingFamily) => onChange({ headingFamily })} />
-        <SelectField label="Body" value={config.bodyFamily} options={textFonts} onChange={(bodyFamily) => onChange({ bodyFamily })} />
-        <SelectField label="Mono" value={config.monoFamily} options={monoFonts} onChange={(monoFamily) => onChange({ monoFamily })} />
+        {products && (
+          <ProductSwitcher
+            products={products.products}
+            activeId={products.products[index].id}
+            onSelect={products.onSelect}
+            onAdd={products.onAdd}
+            onRename={products.onRename}
+            onRemove={products.onRemove}
+          />
+        )}
+        {FONT_FIELDS.map(([role, label, field]) => {
+          const options = role === 'mono' ? monoFonts : textFonts;
+          if (!product || !first) {
+            return <SelectField key={role} label={label} value={config[field]} options={options} onChange={(v) => onChange({ [field]: v })} />;
+          }
+          // An extra product shows its own font, or the first product's as an inherited choice
+          return (
+            <SelectField
+              key={role}
+              label={label}
+              value={product.fonts?.[role] ?? INHERIT}
+              options={[{ value: INHERIT, label: `${config[field]} · ${first.name}` }, ...options]}
+              onChange={(v) => products!.onSetFont(role, v === INHERIT ? undefined : v)}
+            />
+          );
+        })}
+        {product && first && (
+          <p className="text-xs leading-snug text-muted-foreground">
+            Fonts for {product.name}. Leave one on {first.name} to inherit it. The scale, rhythm and styles are shared by every product.
+          </p>
+        )}
       </Section>
 
       <Section title="Scale">

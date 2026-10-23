@@ -1,8 +1,8 @@
 import chroma from 'chroma-js';
 import type { ColorFormat } from './color-utils';
 import type { GeneratedPalette } from './export-utils';
-import { type Foundations, type ShadowLayer, layerToCss } from './foundations';
-import { TIERS, type Token, type TokenGroup, buildTokens, resolveToken } from './tokens';
+import { type Foundations, type ShadowLayer, generateTypeScale, layerToCss } from './foundations';
+import { TIERS, type Token, type TokenGroup, buildTokens, productSlug, productsOf, resolveToken } from './tokens';
 
 export { typeBreakpoint } from './tokens';
 
@@ -82,6 +82,9 @@ function variablesCss(tokens: Token[], unit: LengthUnit) {
     const dark = inTier.filter((t) => t.darkRef);
     if (dark.length) css += `\n.dark {\n${dark.map((t) => `  --${t.name}: var(--${t.darkRef});`).join('\n')}\n}\n`;
 
+    // Put data-product on <html> to switch the roles an extra product fills itself
+    css += productCss(inTier.flatMap((t) => t.products?.map((o) => ({ name: t.name, ...o })) ?? []));
+
     const widths = [...new Set(inTier.flatMap((t) => t.responsive?.map((r) => r.minWidth) ?? []))].sort((a, b) => a - b);
     for (const w of widths) {
       const entries = inTier.flatMap((t) => t.responsive?.filter((r) => r.minWidth === w).map((r) => ({ t, r })) ?? []);
@@ -93,6 +96,19 @@ function variablesCss(tokens: Token[], unit: LengthUnit) {
     out.push(css);
   }
   return out.join('\n');
+}
+
+/** One block per extra product, plus its dark values when there are any. */
+function productCss(overrides: { name: string; product: string; ref: string; darkRef?: string }[]) {
+  let css = '';
+  for (const product of [...new Set(overrides.map((o) => o.product))]) {
+    const own = overrides.filter((o) => o.product === product);
+    const selector = `[data-product="${productSlug(product)}"]`;
+    css += `\n/* ${product} */\n${selector} {\n${own.map((o) => `  --${o.name}: var(--${o.ref});`).join('\n')}\n}\n`;
+    const dark = own.filter((o) => o.darkRef);
+    if (dark.length) css += `\n.dark${selector} {\n${dark.map((o) => `  --${o.name}: var(--${o.darkRef});`).join('\n')}\n}\n`;
+  }
+  return css;
 }
 
 /** Ready-made classes built only from semantic tokens. */
@@ -176,6 +192,11 @@ export function generateJson(palettes: GeneratedPalette[], f: Foundations, opts:
   for (const t of tokens) {
     const extensions: Record<string, unknown> = {};
     if (t.darkRef) extensions.modes = { dark: alias(t.darkRef) };
+    if (t.products) {
+      extensions['lumina.products'] = Object.fromEntries(
+        t.products.map((o) => [o.product, { $value: alias(o.ref), ...(o.darkRef && { dark: alias(o.darkRef) }) }]),
+      );
+    }
     if (t.responsive) {
       extensions['lumina.responsive'] = [
         ...(t.baseLabel ? [{ label: t.baseLabel, minWidth: 0, value: alias(t.ref!) }] : []),
@@ -239,7 +260,7 @@ interface ColorValue {
 interface ColorVariable {
   token: Token;
   path: string[];
-  /** Theme has a Light and a Dark value; Palette and Color have one, under Default. */
+  /** Theme has a Light and a Dark value; Palette has one, under Default; Color has one per product, or Default. */
   modes: Record<string, ColorValue>;
 }
 
@@ -253,6 +274,9 @@ function colorCollectionVariables(palettes: GeneratedPalette[], f: Foundations, 
   // Variable paths inside each collection, without the tier and `color` roots the collection already names
   const lightPaths = new Map(tokens.map((t) => [t.name, t.path.slice(1)]));
   const darkPaths = new Map(tokens.filter((t) => t.tier === 'base' && t.darkRef).map((t) => [t.name, darkPath(t.path.slice(1))]));
+  // Color gets a mode per product once there's more than one
+  const products = productsOf(f);
+  const productModes = products.length > 1 ? products.map((p) => p.name) : ['Default'];
 
   const out: ColorVariable[] = [];
   // Color lists each role's light group, then its -dark group, like the palettes below it
@@ -269,8 +293,16 @@ function colorCollectionVariables(palettes: GeneratedPalette[], f: Foundations, 
       out.push({ token: t, path, modes: { Default: { primitive: t } } });
     } else if (tier === 'base') {
       const to = (ref: string): ColorValue => ({ primitive: byName.get(ref)!, alias: { tier: 'primitive', path: lightPaths.get(ref)! } });
-      out.push({ token: t, path, modes: { Default: to(t.ref!) } });
-      if (t.darkRef) darkGroup.push({ token: t, path: darkPath(path), modes: { Default: to(t.darkRef) } });
+      /** Each product's alias, or the first product's when it doesn't refill this role. */
+      const modes = (isDark: boolean) =>
+        Object.fromEntries(
+          productModes.map((m, i) => {
+            const own = i === 0 ? undefined : t.products?.find((o) => o.product === m);
+            return [m, to(isDark ? (own?.darkRef ?? t.darkRef!) : (own?.ref ?? t.ref!))];
+          }),
+        );
+      out.push({ token: t, path, modes: modes(false) });
+      if (t.darkRef) darkGroup.push({ token: t, path: darkPath(path), modes: modes(true) });
     } else {
       const to = (isDark: boolean): ColorValue => ({
         primitive: resolveToken(t, byName, isDark)!,
@@ -293,7 +325,7 @@ const COLLECTION_TITLES: Record<ColorCollection, string> = {
 export function generateColorCollectionCss(palettes: GeneratedPalette[], f: Foundations, tier: ColorCollection, colorFormat: ColorFormat) {
   const variables = colorCollectionVariables(palettes, f, tier, colorFormat);
   const value = ({ primitive, alias }: ColorValue) => (alias ? `var(--${alias.path.join('-')})` : String(primitive.value));
-  const firstMode = tier === 'semantic' ? 'Light' : 'Default';
+  const [firstMode, ...otherModes] = Object.keys(variables[0]?.modes ?? { Default: null });
   let css = `/* ===== ${COLLECTION_TITLES[tier]} ===== */\n:root {\n`;
   css += variables.map((v) => `  --${v.path.join('-')}: ${value(v.modes[firstMode])};`).join('\n');
   css += '\n}\n';
@@ -304,6 +336,15 @@ export function generateColorCollectionCss(palettes: GeneratedPalette[], f: Foun
     css += `\n@supports (color: color(display-p3 1 1 1)) {\n  @media (color-gamut: p3) {\n    :root {\n`;
     css += p3.map((v) => `      --${v.path.join('-')}: ${v.token.p3};`).join('\n');
     css += '\n    }\n  }\n}\n';
+  }
+
+  // Put data-product on <html> to switch Color to another product's palettes
+  if (tier === 'base') {
+    for (const mode of otherModes) {
+      const own = variables.filter((v) => value(v.modes[mode]) !== value(v.modes[firstMode]));
+      if (!own.length) continue;
+      css += `\n/* ${mode} */\n[data-product="${productSlug(mode)}"] {\n${own.map((v) => `  --${v.path.join('-')}: ${value(v.modes[mode])};`).join('\n')}\n}\n`;
+    }
   }
 
   // Put .dark on <html> to switch Theme to the dark Color variables
@@ -323,12 +364,16 @@ export function generateColorCollectionJson(palettes: GeneratedPalette[], f: Fou
   const ref = (v: ColorValue) => (v.alias ? `{${[collectionSlug(v.alias.tier), ...v.alias.path].join('.')}}` : String(v.primitive.value));
   const out: Record<string, unknown> = {};
   for (const { token: t, path, modes } of variables) {
-    const light = modes.Light ?? modes.Default;
+    const [first, ...others] = Object.keys(modes);
+    // Theme's dark alias, and each product's alias in Color where it differs from the first product's
+    const extra = Object.fromEntries(
+      others.map((m) => [m === 'Dark' ? 'dark' : m, ref(modes[m])]).filter(([m, v]) => m === 'dark' || v !== ref(modes[first])),
+    );
     setPath(out, [collectionSlug(tier), ...path], {
       $type: 'color',
-      $value: ref(light),
+      $value: ref(modes[first]),
       ...(t.description && { $description: t.description }),
-      ...(modes.Dark && { $extensions: { modes: { dark: ref(modes.Dark) } } }),
+      ...(Object.keys(extra).length && { $extensions: { modes: extra } }),
     });
   }
   return JSON.stringify(out, null, 2);
@@ -368,6 +413,200 @@ export function generateColorCollectionCsv(palettes: GeneratedPalette[], f: Foun
       return alias ? `{${COLOR_COLLECTIONS[alias.tier]}:${alias.path.join('/')}}` : chroma(primitive.value as string).hex();
     });
     lines.push([collection, path.join('/'), 'COLOR', t.description ?? '', scopes.length ? scopes.join(', ') : 'No scope', ...cells, ...(oklch ? [t.p3 ?? ''] : [])].map(csvCell).join(','));
+  }
+  return `${lines.join('\n')}\n`;
+}
+
+// ============================================================
+// Other foundations for the Sheet Variable Importer plugin
+// ============================================================
+
+/** Foundations exported as variables. Shadow has no variable type in Figma, so it goes out as effect styles. */
+export type SheetGroup = Exclude<TokenGroup, 'color' | 'shadow'>;
+
+/** Like Color, each foundation splits into three collections, one per tier: raw scale, roles, purposes. */
+export const SHEET_COLLECTIONS: Record<SheetGroup, Record<Token['tier'], string>> = {
+  typography: { primitive: 'Type Scale', base: 'Typography', semantic: 'Text' },
+  spacing: { primitive: 'Space Scale', base: 'Spacing', semantic: 'Layout Spacing' },
+  radius: { primitive: 'Radius Scale', base: 'Radius', semantic: 'Shape' },
+  grid: { primitive: 'Breakpoints', base: 'Grid', semantic: 'Page Layout' },
+};
+
+/** What a foundation's Sheets export holds: its variables, or the styles built on them. */
+export type SheetKind = 'variables' | 'text-styles' | 'effect-styles';
+
+export const SHEET_FILENAMES: Record<Exclude<SheetKind, 'variables'>, string> = {
+  'text-styles': 'Text Styles.csv',
+  'effect-styles': 'Shadow Styles.csv',
+};
+
+export const sheetFilename = (group: SheetGroup, tier: Token['tier']) => `${SHEET_COLLECTIONS[group][tier]}.csv`;
+
+/** Variable paths inside a collection, without the root every token there shares (`font/size/md` → `size/md`). */
+function collectionPaths(tokens: Token[]) {
+  const roots = new Set(tokens.map((t) => t.path[0]));
+  const strip = roots.size === 1 && tokens.every((t) => t.path.length > 1);
+  return new Map(tokens.map((t) => [t.name, (strip ? t.path.slice(1) : t.path).join('/')]));
+}
+
+/** Only semantic tokens get a scope, so designers pick them in Figma, like Theme colors. */
+function sheetScopes(t: Token): string[] {
+  if (t.tier !== 'semantic') return [];
+  switch (t.group) {
+    case 'spacing':
+      return ['Gap'];
+    case 'radius':
+      return ['Corner radius'];
+    case 'typography': {
+      const prop = t.path[t.path.length - 1];
+      return ({ family: ['Font family'], size: ['Font size'], 'line-height': ['Line height'], weight: ['Font weight'] } as Record<string, string[]>)[prop] ?? [];
+    }
+    case 'grid':
+      return t.type === 'number' ? [] : t.name === 'page-gutter' || t.name === 'page-margin' ? ['Gap'] : ['Width and height'];
+    default:
+      return [];
+  }
+}
+
+/** `xs` → `XS`, `mobile` → `Mobile`. */
+const modeLabel = (label: string) => (label.length <= 3 ? label.toUpperCase() : label[0].toUpperCase() + label.slice(1));
+
+/** The first family in a stack, the name Figma knows the font by. */
+const firstFamily = (stack: string) => stack.split(',')[0].trim().replace(/^"|"$/g, '') || stack;
+
+/** Raw value as the plugin reads it. Letter spacing is in em, which Figma variables can't hold, so it's a percent. */
+function sheetValue(t: Token): string {
+  switch (t.type) {
+    case 'fontFamily':
+      return firstFamily(String(t.value));
+    case 'letterSpacing':
+      return trim((t.value as number) * 100, 2);
+    default:
+      return String(t.value);
+  }
+}
+
+const SHEET_TYPES: Partial<Record<Token['type'], string>> = { fontFamily: 'STRING' };
+
+/**
+ * One tier of a foundation as its own collection. Aliases point into the collection below
+ * (`{Space Scale:4}`), so import the scale, then the roles, then the purposes. Modes only appear where
+ * values change: responsive roles get a mode per breakpoint, and extra products' fonts a mode per product.
+ */
+export function generateSheetVariablesCsv(palettes: GeneratedPalette[], f: Foundations, group: SheetGroup, tier: Token['tier']) {
+  const all = buildTokens(palettes, f, { groups: [group], modes: 'light', colorFormat: 'hex' });
+  const byName = new Map(all.map((t) => [t.name, t]));
+  const paths = new Map(TIERS.flatMap((tr) => [...collectionPaths(all.filter((t) => t.tier === tr))]));
+  const tokens = all.filter((t) => t.tier === tier);
+  const ownPath = (t: Token) => paths.get(t.name)!;
+
+  // Breakpoints, smallest first, from the tokens that switch at them
+  const breakpoints = new Map<string, number>();
+  for (const t of tokens) {
+    if (!t.responsive) continue;
+    if (t.baseLabel) breakpoints.set(t.baseLabel, 0);
+    for (const r of t.responsive) breakpoints.set(r.label, r.minWidth);
+  }
+  const bpList = [...breakpoints].sort((a, b) => a[1] - b[1]);
+  const products = productsOf(f).map((p) => p.name);
+  const productList = tokens.some((t) => t.products?.length) ? products : [products[0]];
+
+  const modes = productList.flatMap((product, pi) =>
+    (bpList.length ? bpList : [[null, 0] as const]).map(([bp, minWidth]) => ({
+      name: [productList.length > 1 ? product : '', bp ? modeLabel(bp) : ''].filter(Boolean).join(' ') || 'Default',
+      product: pi === 0 ? undefined : product,
+      minWidth,
+    })),
+  );
+
+  /** The alias that applies in a mode: the product's own, else the widest breakpoint at or below it, else the default. */
+  const refIn = (t: Token, mode: (typeof modes)[number]) =>
+    (mode.product && t.products?.find((o) => o.product === mode.product)?.ref) ??
+    [...(t.responsive ?? [])].reverse().find((r) => r.minWidth <= mode.minWidth && bpList.length)?.ref ??
+    t.ref;
+
+  const collection = SHEET_COLLECTIONS[group][tier];
+  const lines = [['Collection Name', 'Name', 'Type', 'Description', 'Scope', ...modes.map((m) => `Mode: ${m.name}`)].join(',')];
+  for (const t of tokens) {
+    const cells = modes.map((m) => {
+      const ref = refIn(t, m);
+      const target = ref ? byName.get(ref) : undefined;
+      return target ? `{${SHEET_COLLECTIONS[group][target.tier]}:${ownPath(target)}}` : sheetValue(t);
+    });
+    const description = t.type === 'letterSpacing' ? [t.description, 'Percent of font size'].filter(Boolean).join('. ') : (t.description ?? '');
+    const scopes = sheetScopes(t);
+    lines.push([collection, ownPath(t), SHEET_TYPES[t.type] ?? 'FLOAT', description, scopes.length ? scopes.join(', ') : 'No scope', ...cells].map(csvCell).join(','));
+  }
+  return `${lines.join('\n')}\n`;
+}
+
+const FONT_STYLE_NAMES: Record<number, string> = { 300: 'Light', 400: 'Regular', 500: 'Medium', 600: 'Semi Bold', 700: 'Bold', 800: 'Extra Bold' };
+
+/**
+ * One text style per semantic style, bound to the Text collection, so sizes follow Typography's
+ * Mobile and Desktop modes. Letter spacing is a raw percent, since Figma reads bound letter spacing as px.
+ */
+export function generateTextStylesCsv(palettes: GeneratedPalette[], f: Foundations) {
+  const tokens = buildTokens(palettes, f, { groups: ['typography'], modes: 'light', colorFormat: 'hex' });
+  const byName = new Map(tokens.map((t) => [t.name, t]));
+  const collection = SHEET_COLLECTIONS.typography.semantic;
+  const paths = collectionPaths(tokens.filter((t) => t.tier === 'semantic'));
+  const labels = new Map(generateTypeScale(f.typography).map((s) => [s.name, s]));
+  const alias = (t: Token) => `{${collection}:${paths.get(t.name)}}`;
+
+  const lines = [['Name', 'Type', 'Description', 'Property', 'Value'].join(',')];
+  const styles = [...new Set(tokens.filter((t) => t.tier === 'semantic').map((t) => t.path[1]))];
+  for (const s of styles) {
+    const prop = (p: string) => byName.get(`text-${s}-${p}`);
+    const style = labels.get(s);
+    const name = style?.label ?? s;
+    const description = style?.usage ?? '';
+    const rows: [string, string][] = [];
+    const family = prop('family');
+    if (family) rows.push(['Font Family', alias(family)]);
+    const weight = prop('weight');
+    if (weight) {
+      const value = resolveToken(weight, byName)?.value as number | undefined;
+      // The style keeps its weight in Font Style; the bound weight variable takes over when it resolves
+      if (value !== undefined) rows.push(['Font Style', FONT_STYLE_NAMES[value] ?? 'Regular']);
+      rows.push(['Font Weight', alias(weight)]);
+    }
+    const size = prop('size');
+    if (size) rows.push(['Font Size', alias(size)]);
+    const lineHeight = prop('line-height');
+    if (lineHeight) rows.push(['Line Height', alias(lineHeight)]);
+    const tracking = prop('tracking');
+    const em = tracking ? resolveToken(tracking, byName)?.value : undefined;
+    if (typeof em === 'number') rows.push(['Letter Spacing', `${trim(em * 100, 2)}%`]);
+    for (const [property, value] of rows) lines.push([name, 'TYPOGRAPHY', description, property, value].map(csvCell).join(','));
+  }
+  return `${lines.join('\n')}\n`;
+}
+
+/** `rgb(r g b / a)` → `#RRGGBBAA`, which the plugin reads. */
+function hexColor(css: string) {
+  const m = css.match(/rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)(?:\s*[/,]\s*([\d.]+%?))?\s*\)/);
+  if (!m) return chroma(css).hex();
+  const alpha = m[4] === undefined ? 1 : m[4].endsWith('%') ? parseFloat(m[4]) / 100 : parseFloat(m[4]);
+  return chroma(+m[1], +m[2], +m[3]).alpha(alpha).hex().toUpperCase();
+}
+
+/**
+ * One effect style per semantic shadow, one row per layer. Effect styles have no modes, so dark
+ * shadows are their own styles under `Shadow Dark/`, like the -dark color variables.
+ */
+export function generateEffectStylesCsv(palettes: GeneratedPalette[], f: Foundations) {
+  const tokens = buildTokens(palettes, f, { groups: ['shadow'], modes: 'both', colorFormat: 'hex' });
+  const byName = new Map(tokens.map((t) => [t.name, t]));
+  const lines = [['Name', 'Type', 'Description', 'Shadow Type', 'Color', 'Offset X', 'Offset Y', 'Radius', 'Spread'].join(',')];
+  for (const isDark of [false, true]) {
+    for (const t of tokens.filter((x) => x.tier === 'semantic')) {
+      const layers = (resolveToken(t, byName, isDark)?.value as ShadowLayer[] | undefined) ?? [];
+      const name = `${isDark ? 'Shadow Dark' : 'Shadow'}/${t.path.slice(1).join('/')}`;
+      for (const l of layers) {
+        lines.push([name, 'EFFECT', t.description ?? '', 'Drop Shadow', hexColor(l.color), String(l.x), String(l.y), String(l.blur), String(l.spread)].map(csvCell).join(','));
+      }
+    }
   }
   return `${lines.join('\n')}\n`;
 }

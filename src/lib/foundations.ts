@@ -1,5 +1,5 @@
 import chroma from 'chroma-js';
-import type { CustomToken } from './tokens';
+import type { CustomToken, FontRole, Product } from './tokens';
 
 /*
  * Non-color foundations: typography, spacing, radius, shadow (elevation) and layout grid.
@@ -553,6 +553,8 @@ export interface Foundations {
   aliases?: Record<string, string>;
   /** Base and semantic tokens the user added. */
   customTokens?: CustomToken[];
+  /** Products, exported as modes of the Color collection. The first is the default; missing means one. */
+  products?: Product[];
 }
 
 export const DEFAULT_FOUNDATIONS: Foundations = {
@@ -581,7 +583,7 @@ export const DEFAULT_FOUNDATIONS: Foundations = {
   },
 };
 
-export type FoundationKey = 'color' | Exclude<keyof Foundations, 'aliases' | 'customTokens'>;
+export type FoundationKey = 'color' | Exclude<keyof Foundations, 'aliases' | 'customTokens' | 'products'>;
 
 /** Fills gaps in saved or imported foundations so older saves keep working. */
 export function normalizeFoundations(raw: unknown): Foundations {
@@ -600,7 +602,31 @@ export function normalizeFoundations(raw: unknown): Foundations {
     grid,
     aliases: normalizeAliases(r.aliases),
     customTokens: normalizeCustomTokens(r.customTokens),
+    products: normalizeProducts(r.products),
   };
+}
+
+const FONT_FIELDS = { heading: 'headingFamily', body: 'bodyFamily', mono: 'monoFamily' } as const satisfies Record<FontRole, keyof TypographyConfig>;
+
+/** Foundations as a product sees them: its own fonts over the first product's. */
+export function foundationsForProduct(f: Foundations, productId: string | undefined): Foundations {
+  const fonts = f.products?.slice(1).find((p) => p.id === productId)?.fonts;
+  if (!fonts || !Object.keys(fonts).length) return f;
+  const typography = { ...f.typography };
+  for (const role of Object.keys(FONT_FIELDS) as FontRole[]) if (fonts[role]) typography[FONT_FIELDS[role]] = fonts[role]!;
+  return { ...f, typography };
+}
+
+/** Every font family any product uses, so all of them load. */
+export function allFontFamilies(f: Foundations): string[] {
+  const { headingFamily, bodyFamily, monoFamily } = f.typography;
+  return [...new Set([headingFamily, bodyFamily, monoFamily, ...(f.products ?? []).flatMap((p) => Object.values(p.fonts ?? {}))])];
+}
+
+function normalizeProducts(raw: unknown): Product[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const list = raw.filter((p): p is Product => !!p && typeof p.id === 'string' && typeof p.name === 'string');
+  return list.length ? list : undefined;
 }
 
 function normalizeCustomTokens(raw: unknown): CustomToken[] {

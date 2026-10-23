@@ -47,13 +47,24 @@ import {
   generateShadowScale,
   generateSpacingScale,
   generateTypeScale,
+  allFontFamilies,
+  foundationsForProduct,
   normalizeFoundations,
   resolveFoundations,
 } from '../../lib/foundations';
 import { FOUNDATION_META, NAV_ORDER, type NavKey, FoundationNav } from '../foundations/FoundationNav';
 import { FoundationSample } from '../foundations/FoundationSample';
 import { FoundationDocs } from '../foundations/FoundationDocs';
-import { type ColorRole, type CustomToken, colorTokenInfo, resolveColorRoles } from '../../lib/tokens';
+import {
+  type ColorRole,
+  type CustomToken,
+  type FontRole,
+  DEFAULT_PRODUCT,
+  colorTokenInfo,
+  productsOf,
+  resolveColorRoles,
+  resolveProductRoles,
+} from '../../lib/tokens';
 import { PreviewSection } from '../foundations/PreviewSection';
 import { TokenTiers } from '../foundations/TokenTiers';
 import { TypographyCanvas, TypographyInspector } from '../foundations/TypographyFoundation';
@@ -264,8 +275,8 @@ export function PaletteGenerator({
     }
   }, [foundations, section]);
 
-  const { headingFamily, bodyFamily, monoFamily } = foundations.typography;
-  useGoogleFonts([headingFamily, bodyFamily, monoFamily]);
+  // Every product's fonts, so switching products doesn't wait on a download
+  useGoogleFonts(allFontFamilies(foundations));
 
   useEffect(() => {
     const el = mainRef.current;
@@ -289,6 +300,101 @@ export function PaletteGenerator({
 
   const paletteTokens = useMemo(() => colorTokenInfo(generatedPalettes), [generatedPalettes]);
 
+  // --- Products: modes of the Color collection, each refilling roles of the first ---
+  const products = useMemo(() => productsOf(foundations), [foundations]);
+  const [activeProductId, setActiveProductId] = useState(DEFAULT_PRODUCT.id);
+  const activeProduct = products.find((p) => p.id === activeProductId) ?? products[0];
+  const isExtraProduct = activeProduct.id !== products[0].id;
+  const productRoles = useMemo(() => resolveProductRoles(palettes, products), [palettes, products]);
+  const activeProductRoles = productRoles.get(activeProduct.id) ?? new Map();
+
+  /** The role each palette fills itself in the active product. */
+  const activeRoles = useMemo(() => {
+    if (!isExtraProduct) return paletteTokens;
+    const own = new Map<string, { primitive: string; role?: ColorRole }>();
+    for (const [id, info] of paletteTokens) own.set(id, { primitive: info.primitive });
+    for (const [role, h] of activeProductRoles) if (!h.inherited) own.set(h.paletteId, { ...own.get(h.paletteId)!, role });
+    return own;
+  }, [isExtraProduct, paletteTokens, activeProductRoles]);
+
+  const inheritance = useMemo(() => {
+    if (!isExtraProduct) return undefined;
+    const byId = new Map(generatedPalettes.map((p) => [p.id, p]));
+    const holders = new Map<ColorRole, GeneratedPalette>();
+    for (const [role, h] of activeProductRoles) if (h.inherited && byId.has(h.paletteId)) holders.set(role, byId.get(h.paletteId)!);
+    return { roles: [...activeProductRoles.keys()], holders, from: products[0].name };
+  }, [isExtraProduct, generatedPalettes, activeProductRoles, products]);
+
+  const setProducts = useCallback((update: (list: ReturnType<typeof productsOf>) => ReturnType<typeof productsOf>) => {
+    setFoundations((prev) => ({ ...prev, products: update(productsOf(prev)) }));
+  }, []);
+
+  const addProduct = useCallback(() => {
+    const names = new Set(products.map((p) => p.name.toLowerCase()));
+    let n = products.length + 1;
+    while (names.has(`product ${n}`)) n++;
+    const product = { id: newId(), name: `Product ${n}` };
+    setProducts((list) => [...list, product]);
+    setActiveProductId(product.id);
+  }, [products, setProducts]);
+
+  const renameProduct = useCallback(
+    (id: string, name: string) => {
+      // Names become mode names and data-product values, so they stay unique
+      if (products.some((p) => p.id !== id && p.name.toLowerCase() === name.toLowerCase())) {
+        toast.error(`There's already a product named “${name}”.`);
+        return;
+      }
+      setProducts((list) => list.map((p) => (p.id === id ? { ...p, name } : p)));
+    },
+    [products, setProducts],
+  );
+
+  const removeProduct = useCallback(
+    (id: string) => {
+      const product = products.find((p) => p.id === id);
+      if (!product || id === products[0].id) return;
+      setProducts((list) => list.filter((p) => p.id !== id));
+      setPalettes((prev) =>
+        prev.map(({ productRoles, ...p }) => {
+          const { [id]: _, ...rest } = productRoles ?? {};
+          return Object.keys(rest).length ? { ...p, productRoles: rest } : p;
+        }),
+      );
+      setActiveProductId(products[0].id);
+      toast.success(`Deleted “${product.name}”`);
+    },
+    [products, setProducts],
+  );
+
+  /** Sets the active extra product's font for a role; undefined inherits the first product's again. */
+  const setProductFont = useCallback(
+    (role: FontRole, family: string | undefined) =>
+      setProducts((list) =>
+        list.map((p) => {
+          if (p.id !== activeProduct.id) return p;
+          const { [role]: _, ...rest } = p.fonts ?? {};
+          const fonts = family ? { ...rest, [role]: family } : rest;
+          return { ...p, fonts: Object.keys(fonts).length ? fonts : undefined };
+        }),
+      ),
+    [activeProduct.id, setProducts],
+  );
+
+  /** Fills a role in an extra product, taking it from the palette that filled it there before. */
+  const setProductRole = useCallback((productId: string, id: string, role: ColorRole | 'none' | undefined) => {
+    setPalettes((prev) =>
+      prev.map((p) => {
+        const current = p.productRoles?.[productId];
+        const keep = p.id === id ? role && role !== 'none' && role : current !== role && current;
+        const { [productId]: _, ...rest } = p.productRoles ?? {};
+        const productRoles = keep ? { ...rest, [productId]: keep } : rest;
+        if (current === (keep || undefined)) return p;
+        return { ...p, productRoles: Object.keys(productRoles).length ? productRoles : undefined };
+      }),
+    );
+  }, []);
+
   /** Brand palette steps used to color the foundation previews. */
   const accent: Accent = useMemo(() => {
     const primary =
@@ -299,7 +405,9 @@ export function PaletteGenerator({
     return { solid: c[8], contrast: primary.scale.contrast, subtle: c[2], text: c[10] };
   }, [generatedPalettes, paletteTokens]);
 
-  const resolved = useMemo(() => resolveFoundations(foundations, isDarkMode), [foundations, isDarkMode]);
+  /** Foundations with the active product's fonts, for the canvases and samples. */
+  const productFoundations = useMemo(() => foundationsForProduct(foundations, activeProduct.id), [foundations, activeProduct.id]);
+  const resolved = useMemo(() => resolveFoundations(productFoundations, isDarkMode), [productFoundations, isDarkMode]);
 
   const summaries: Record<NavKey, string> = useMemo(
     () => ({
@@ -394,27 +502,35 @@ export function PaletteGenerator({
     });
   }, []);
 
+  /** Sets a role in whichever product is active. */
+  const setActiveRole = useCallback(
+    (id: string, role: ColorRole | 'none' | undefined) =>
+      isExtraProduct ? setProductRole(activeProduct.id, id, role) : setTokenRole(id, role),
+    [isExtraProduct, activeProduct.id, setProductRole, setTokenRole],
+  );
+
   const addPalette = useCallback(() => {
     const used = new Set(palettes.map((p) => p.baseColor.toLowerCase()));
     const suggestion = SUGGESTIONS.find((s) => !used.has(s.baseColor)) ?? SUGGESTIONS[0];
     const id = newId();
     setPalettes((prev) => [
       ...prev,
-      { id, ...suggestion, isDark: isDarkMode, hueShift: 0, saturationScale: 1, lockStep9: false },
+      // Added for an extra product, it shouldn't take a role in the first one by its name
+      { id, ...suggestion, isDark: isDarkMode, hueShift: 0, saturationScale: 1, lockStep9: false, ...(isExtraProduct && { tokenRole: 'none' as const }) },
     ]);
     setActivePaletteId(id);
     setActiveView('editor');
     setSection('color');
     setMobileNavOpen(false);
     scrollToPalette(id);
-  }, [palettes, isDarkMode, scrollToPalette]);
+  }, [palettes, isDarkMode, isExtraProduct, scrollToPalette]);
 
   const duplicatePalette = useCallback(
     (id: string) => {
       const source = palettes.find((p) => p.id === id);
       if (!source) return;
       // The copy can't hold the same role, so it starts unassigned
-      const copy = { ...source, id: newId(), name: `${source.name} copy`, tokenRole: undefined };
+      const copy = { ...source, id: newId(), name: `${source.name} copy`, tokenRole: undefined, productRoles: undefined };
       setPalettes((prev) => {
         const index = prev.findIndex((p) => p.id === id);
         return [...prev.slice(0, index + 1), copy, ...prev.slice(index + 1)];
@@ -477,7 +593,8 @@ export function PaletteGenerator({
         usedNames.add(name.toLowerCase());
         // Roles the current list already fills stay with it
         const tokenRole = p.tokenRole && p.tokenRole !== 'none' && takenRoles.has(p.tokenRole) ? undefined : p.tokenRole;
-        added.push({ ...p, id: newId(), name, tokenRole });
+        // Products aren't merged, so roles in the preset's products are dropped
+        added.push({ ...p, id: newId(), name, tokenRole, productRoles: undefined });
       }
       if (added.length > 0) {
         setPalettes((prev) => [...prev, ...added]);
@@ -508,8 +625,9 @@ export function PaletteGenerator({
     onMove: movePalette,
     onDuplicate: duplicatePalette,
     onRemove: removePalette,
-    roles: paletteTokens,
-    onSetRole: setTokenRole,
+    roles: activeRoles,
+    onSetRole: setActiveRole,
+    inheritance,
   };
 
   const inspector = isColor ? (
@@ -517,13 +635,32 @@ export function PaletteGenerator({
       <PaletteInspector
         key={activePalette.id}
         palette={activePalette}
-        tokens={paletteTokens.get(activePalette.id)}
+        tokens={activeRoles.get(activePalette.id)}
         onChange={(updates) => updatePalette(activePalette.id, updates)}
-        onSetRole={(role) => setTokenRole(activePalette.id, role)}
+        onSetRole={(role) => setActiveRole(activePalette.id, role)}
+        product={
+          inheritance && {
+            name: activeProduct.name,
+            from: inheritance.from,
+            roles: inheritance.roles.filter((r) => (r === 'neutral') === (activePalette.role === 'gray')),
+          }
+        }
       />
     )
   ) : foundation === 'typography' ? (
-    <TypographyInspector config={foundations.typography} onChange={(u) => updateFoundation('typography', u)} />
+    <TypographyInspector
+      config={foundations.typography}
+      onChange={(u) => updateFoundation('typography', u)}
+      products={{
+        products,
+        activeProductId: activeProduct.id,
+        onSelect: setActiveProductId,
+        onAdd: addProduct,
+        onRename: renameProduct,
+        onRemove: removeProduct,
+        onSetFont: setProductFont,
+      }}
+    />
   ) : foundation === 'spacing' ? (
     <SpacingInspector config={foundations.spacing} onChange={(u) => updateFoundation('spacing', u)} />
   ) : foundation === 'radius' ? (
@@ -535,7 +672,16 @@ export function PaletteGenerator({
   );
 
   const inspectorHeader = isColor ? (
-    <PalettePicker {...sidebarProps} />
+    <PalettePicker
+      {...sidebarProps}
+      products={products}
+      activeProductId={activeProduct.id}
+      onSelectProduct={setActiveProductId}
+      onAddProduct={addProduct}
+      onRenameProduct={renameProduct}
+      onRemoveProduct={removeProduct}
+      productRoles={activeProductRoles}
+    />
   ) : (
     <FoundationInspectorHeader foundation={foundation as Exclude<FoundationKey, 'color'>} onReset={resetFoundation} />
   );
@@ -763,6 +909,7 @@ export function PaletteGenerator({
               <PreviewSection
                 palettes={generatedPalettes}
                 activePaletteId={activePalette?.id}
+                activeProductId={activeProduct.id}
                 foundations={foundations}
                 isDark={isDarkMode}
               />
@@ -789,7 +936,7 @@ export function PaletteGenerator({
                 />
               </>
             ) : !isColor && activeView === 'docs' ? (
-              <FoundationDocs foundation={foundation} foundations={foundations} isDark={isDarkMode} accent={accent} />
+              <FoundationDocs foundation={foundation} foundations={productFoundations} isDark={isDarkMode} accent={accent} />
             ) : !isColor ? (
               <>
                 <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
@@ -804,7 +951,7 @@ export function PaletteGenerator({
                   )}
                 </div>
                 {foundation === 'typography' ? (
-                  <TypographyCanvas config={foundations.typography} />
+                  <TypographyCanvas config={productFoundations.typography} />
                 ) : foundation === 'spacing' ? (
                   <SpacingCanvas config={foundations.spacing} accent={accent} />
                 ) : foundation === 'radius' ? (

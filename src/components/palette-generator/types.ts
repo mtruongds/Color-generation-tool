@@ -18,6 +18,8 @@ export interface PaletteConfig {
    * "guess" by name, then brand and neutral go to the first free accent and gray. 'none' keeps it primitive only.
    */
   tokenRole?: ColorRole | 'none';
+  /** Role this palette fills in each extra product, by product id. Roles a product leaves out come from the first product. */
+  productRoles?: Record<string, ColorRole>;
 }
 
 export interface SavedPreset {

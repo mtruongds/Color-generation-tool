@@ -63,6 +63,8 @@ export interface Token {
   pair?: string;
   /** Added by the user rather than the generator. */
   custom?: boolean;
+  /** Base color tokens: the alias in each extra product that points somewhere else. */
+  products?: { product: string; ref: string; darkRef?: string }[];
 }
 
 /** A base or semantic token the user added. Its type and dark alias follow the token it points to. */
@@ -94,6 +96,66 @@ export const ROLE_LABELS: Record<ColorRole, string> = {
   danger: 'Danger',
 };
 
+// ============================================================
+// Products
+// ============================================================
+
+/** A product is a mode of the Color collection: the same roles, filled by other palettes. */
+export interface Product {
+  id: string;
+  name: string;
+  /** Fonts this product uses instead of the first product's, by font role. */
+  fonts?: Partial<Record<FontRole, string>>;
+}
+
+export type FontRole = 'heading' | 'body' | 'mono';
+
+export const DEFAULT_PRODUCT: Product = { id: 'default', name: 'Product 1' };
+
+/** The products, the default first. A missing list means just the default one. */
+export const productsOf = (f: { products?: Product[] }): Product[] => (f.products?.length ? f.products : [DEFAULT_PRODUCT]);
+
+export const productSlug = (name: string) =>
+  name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'product';
+
+/**
+ * The palette filling each role in every product, by product id. The first product's roles decide
+ * which roles exist; another product can refill any of them, and the rest inherit from the first.
+ */
+export function resolveProductRoles(palettes: PaletteConfig[], products: Product[]) {
+  const base = resolveColorRoles(palettes);
+  const baseHolders = new Map([...base].map(([id, role]) => [role, id]));
+  const out = new Map<string, Map<ColorRole, { paletteId: string; inherited: boolean }>>();
+  products.forEach((product, i) => {
+    const roles = new Map<ColorRole, { paletteId: string; inherited: boolean }>();
+    for (const role of COLOR_ROLES) {
+      const baseId = baseHolders.get(role);
+      if (!baseId) continue;
+      const own = i === 0 ? undefined : palettes.find((p) => p.productRoles?.[product.id] === role);
+      roles.set(role, own ? { paletteId: own.id, inherited: false } : { paletteId: baseId, inherited: i > 0 });
+    }
+    out.set(product.id, roles);
+  });
+  return out;
+}
+
+const BRAND_ROLES: ColorRole[] = ['brand', 'brand-secondary'];
+
+/** Brand roles an extra product still takes from the first product, usually an oversight. */
+export function inheritedBrandRoles(palettes: PaletteConfig[], products: Product[]) {
+  const resolved = resolveProductRoles(palettes, products);
+  return products.slice(1).flatMap((product) =>
+    BRAND_ROLES.flatMap((role) => {
+      const holder = resolved.get(product.id)?.get(role);
+      return holder?.inherited ? [{ product, role, paletteId: holder.paletteId }] : [];
+    }),
+  );
+}
+
 const ROLE_HINTS: [RegExp, ColorRole][] = [
   [/green|grass|emerald|jade|teal|mint|lime/i, 'success'],
   [/amber|yellow|orange|gold/i, 'warning'],
@@ -114,13 +176,15 @@ export function resolveColorRoles(palettes: PaletteConfig[]): Map<string, ColorR
     taken.add(role);
   };
   for (const p of palettes) if (p.tokenRole && p.tokenRole !== 'none') assign(p, p.tokenRole);
-  const free = (gray: boolean) => palettes.find((p) => (p.role === 'gray') === gray && !p.tokenRole && !roles.has(p.id));
+  // Palettes picked for another product only fill the first product's roles when asked to
+  const guessable = (p: PaletteConfig) => !p.tokenRole && !Object.keys(p.productRoles ?? {}).length;
+  const free = (gray: boolean) => palettes.find((p) => (p.role === 'gray') === gray && guessable(p) && !roles.has(p.id));
   for (const [role, gray] of [['brand', false], ['neutral', true]] as const) {
     const p = taken.has(role) ? undefined : free(gray);
     if (p) assign(p, role);
   }
   for (const p of palettes) {
-    if (p.tokenRole) continue;
+    if (!guessable(p)) continue;
     const hint = ROLE_HINTS.find(([re]) => re.test(p.name))?.[1];
     if (hint) assign(p, hint);
   }
@@ -207,10 +271,11 @@ const roleRank = (role: ColorRole | undefined) => {
   return i === -1 ? LEADING_ROLES.length : i;
 };
 
-function colorTokens(palettes: GeneratedPalette[], modes: TokenModes, format: ColorFormat): Token[] {
+function colorTokens(palettes: GeneratedPalette[], modes: TokenModes, format: ColorFormat, products: Product[]): Token[] {
   const tokens: Token[] = [];
   const primitives = primitiveColorNames(palettes);
   const roles = resolveColorRoles(palettes);
+  const productRoles = resolveProductRoles(palettes, products);
   const modeList = modes === 'both' ? [false, true] : [modes === 'dark'];
   /** Dark primitives carry a suffix only when both modes share one file. */
   const prim = (id: string, isDark: boolean) => `${primitives.get(id)}${modes === 'both' && isDark ? '-dark' : ''}`;
@@ -252,6 +317,11 @@ function colorTokens(palettes: GeneratedPalette[], modes: TokenModes, format: Co
   for (const p of ordered) {
     const role = roles.get(p.id);
     if (!role) continue;
+    // Extra products that fill this role with their own palette
+    const overrides = products.slice(1).flatMap((product) => {
+      const holder = productRoles.get(product.id)?.get(role);
+      return holder && !holder.inherited && holder.paletteId !== p.id ? [{ product, paletteId: holder.paletteId }] : [];
+    });
     for (const step of steps) {
       tokens.push({
         tier: 'base',
@@ -262,6 +332,13 @@ function colorTokens(palettes: GeneratedPalette[], modes: TokenModes, format: Co
         ref: `${prim(p.id, modes === 'dark')}-${step}`,
         darkRef: modes === 'both' ? `${prim(p.id, true)}-${step}` : undefined,
         tw: `color-${role}-${step}`,
+        products: overrides.length
+          ? overrides.map(({ product, paletteId }) => ({
+              product: product.name,
+              ref: `${prim(paletteId, modes === 'dark')}-${step}`,
+              darkRef: modes === 'both' ? `${prim(paletteId, true)}-${step}` : undefined,
+            }))
+          : undefined,
       });
     }
   }
@@ -325,6 +402,31 @@ function typographyTokens(f: Foundations): Token[] {
   for (const [slot, family, kind] of FAMILY_SLOTS) {
     tokens.push({ tier: 'primitive', group: 'typography', name: `font-family-${slot}`, path: ['font', 'family', slot], type: 'fontFamily', value: fontStack(family, kind) });
   }
+  // An extra product's own fonts get the slot plus the product's position (primary-2), never the font's name
+  const products = productsOf(f);
+  const FONT_ROLE_SLOTS = [
+    ['heading', 'primary', c.headingFamily],
+    ['body', 'secondary', c.bodyFamily],
+    ['mono', 'mono', c.monoFamily],
+  ] as const;
+  const productFonts = new Map<FontRole, { product: string; ref: string }[]>();
+  products.slice(1).forEach((product, i) => {
+    for (const [role, slot, base] of FONT_ROLE_SLOTS) {
+      const family = product.fonts?.[role];
+      if (!family || family === base) continue;
+      const name = `font-family-${slot}-${i + 2}`;
+      tokens.push({
+        tier: 'primitive',
+        group: 'typography',
+        name,
+        path: ['font', 'family', `${slot}-${i + 2}`],
+        type: 'fontFamily',
+        value: fontStack(family, role === 'mono' ? 'mono' : fontKind(family)),
+        description: `${product.name} ${role} font`,
+      });
+      productFonts.set(role, [...(productFonts.get(role) ?? []), { product: product.name, ref: name }]);
+    }
+  });
   for (const [prop, desktop, mobile] of [
     ['size', (s: TypeStyle) => s.size, (s: TypeStyle) => s.mobileSize],
     ['line-height', (s: TypeStyle) => s.lineHeight, (s: TypeStyle) => s.mobileLineHeight],
@@ -347,10 +449,10 @@ function typographyTokens(f: Foundations): Token[] {
   }
 
   // Base: roles. `code` rather than `mono`, which names the primitive; Tailwind keeps its familiar font-mono.
-  for (const [role, slot, tw] of [
-    ['heading', 'primary', 'font-heading'],
-    ['body', 'secondary', 'font-body'],
-    ['code', 'mono', 'font-mono'],
+  for (const [role, slot, tw, fontRole] of [
+    ['heading', 'primary', 'font-heading', 'heading'],
+    ['body', 'secondary', 'font-body', 'body'],
+    ['code', 'mono', 'font-mono', 'mono'],
   ] as const) {
     tokens.push({
       tier: 'base',
@@ -360,6 +462,7 @@ function typographyTokens(f: Foundations): Token[] {
       type: 'fontFamily',
       ref: `font-family-${slot}`,
       tw,
+      products: productFonts.get(fontRole),
     });
   }
   // Base: emphasis levels, so each style's weight aliases a purpose rather than a primitive
@@ -755,7 +858,7 @@ export function buildTokens(
 ): Token[] {
   const has = (g: TokenGroup) => opts.groups.includes(g);
   const generated = applyAliases([
-    ...(has('color') ? colorTokens(palettes, opts.modes, opts.colorFormat) : []),
+    ...(has('color') ? colorTokens(palettes, opts.modes, opts.colorFormat, productsOf(f)) : []),
     ...(has('typography') ? typographyTokens(f) : []),
     ...(has('spacing') ? spacingTokens(f) : []),
     ...(has('radius') ? radiusTokens(f) : []),

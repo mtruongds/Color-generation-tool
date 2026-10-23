@@ -57,6 +57,8 @@ interface PaletteSidebarProps {
   roles: Map<string, { role?: ColorRole }>;
   /** Gives a palette a token role, swapping with the palette that holds it. */
   onSetRole: (id: string, role: ColorRole | 'none') => void;
+  /** Set for an extra product: the roles it can fill, the palettes it takes the rest from, and that product's name. */
+  inheritance?: { roles: ColorRole[]; holders: Map<ColorRole, GeneratedPalette>; from: string };
 }
 
 export function PaletteSidebar({
@@ -70,6 +72,7 @@ export function PaletteSidebar({
   onRemove,
   roles,
   onSetRole,
+  inheritance,
 }: PaletteSidebarProps) {
   const sensors = useSensors(
     // A small distance keeps a click on the handle from starting a drag.
@@ -168,6 +171,7 @@ export function PaletteSidebar({
                 canRemove={palettes.length > 1}
                 role={roles.get(p.id)?.role}
                 roleHolders={roleHolders}
+                inheritance={inheritance}
                 onSetRole={(role) => onSetRole(p.id, role)}
               />
             ))}
@@ -204,6 +208,7 @@ interface SortablePaletteItemProps {
   role?: ColorRole;
   /** Palette currently holding each role. */
   roleHolders: Map<ColorRole, GeneratedPalette>;
+  inheritance?: PaletteSidebarProps['inheritance'];
   onSetRole: (role: ColorRole | 'none') => void;
 }
 
@@ -220,10 +225,12 @@ function SortablePaletteItem({
   canRemove,
   role,
   roleHolders,
+  inheritance,
   onSetRole,
 }: SortablePaletteItemProps) {
   const badge = role && ROLE_BADGES[role];
-  const menuRoles = p.role === 'gray' ? GRAY_ROLES : ACCENT_ROLES;
+  // An extra product can only fill the roles its first product has
+  const menuRoles = (p.role === 'gray' ? GRAY_ROLES : ACCENT_ROLES).filter((r) => !inheritance || inheritance.roles.includes(r));
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({
     id: p.id,
   });
@@ -311,9 +318,13 @@ function SortablePaletteItem({
                 <Tag /> Token role
               </DropdownMenuSubTrigger>
               <DropdownMenuSubContent className="w-72">
-                <DropdownMenuRadioGroup value={role ?? ''} onValueChange={(v) => onSetRole(v as ColorRole | 'none')}>
+                {inheritance && menuRoles.length === 0 && (
+                  <p className="px-2 py-1.5 text-xs text-muted-foreground">{inheritance.from} has no {p.role === 'gray' ? 'neutral' : 'accent'} roles to fill.</p>
+                )}
+                <DropdownMenuRadioGroup value={role ?? (inheritance ? 'none' : '')} onValueChange={(v) => onSetRole(v as ColorRole | 'none')}>
                   {menuRoles.map((r) => {
-                    const holder = roleHolders.get(r);
+                    const inherited = !roleHolders.has(r) ? inheritance?.holders.get(r) : undefined;
+                    const holder = roleHolders.get(r) ?? inherited;
                     return (
                       <DropdownMenuRadioItem key={r} value={r}>
                         <span
@@ -325,8 +336,10 @@ function SortablePaletteItem({
                           style={holder ? { backgroundColor: holder.baseColor } : undefined}
                         />
                         <span className="flex-1">{ROLE_LABELS[r]}</span>
-                        {holder && holder.id !== p.id && (
-                          <span className="ml-6 max-w-24 truncate pr-1 text-xs text-muted-foreground">{holder.name}</span>
+                        {holder && (holder.id !== p.id || inherited) && (
+                          <span className="ml-6 max-w-24 truncate pr-1 text-xs text-muted-foreground">
+                            {inherited ? `↳ ${holder.name}` : holder.name}
+                          </span>
                         )}
                       </DropdownMenuRadioItem>
                     );
@@ -334,7 +347,7 @@ function SortablePaletteItem({
                   <DropdownMenuSeparator />
                   <DropdownMenuRadioItem value="none">
                     <span aria-hidden className="size-3 shrink-0" />
-                    None
+                    {inheritance ? `Inherit from ${inheritance.from}` : 'None'}
                   </DropdownMenuRadioItem>
                 </DropdownMenuRadioGroup>
               </DropdownMenuSubContent>

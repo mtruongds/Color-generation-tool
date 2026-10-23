@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   AppWindow,
+  Boxes,
   Highlighter,
   LayoutDashboard,
   Monitor,
@@ -20,6 +21,8 @@ import { cn } from '../ui/utils';
 import type { Accent, Foundations } from '../../lib/foundations';
 import type { GeneratedPalette } from '../../lib/export-utils';
 import { openPreviewWindow } from '../../lib/preview-window';
+import { productsOf, resolveProductRoles } from '../../lib/tokens';
+import { foundationsForProduct } from '../../lib/foundations';
 import {
   PreviewPaletteControls,
   TOOLTIPS_KEY,
@@ -38,6 +41,17 @@ import {
 
 const PAGE_KEY = 'lumina_preview_page';
 const VIEW_KEY = 'lumina_preview_view';
+const PRODUCT_KEY = 'lumina_preview_product';
+/** Product select value for palettes picked by hand. */
+const CUSTOM = 'custom';
+
+function loadProduct(): string | null {
+  try {
+    return localStorage.getItem(PRODUCT_KEY);
+  } catch {
+    return null;
+  }
+}
 
 type PreviewPage = 'dashboard' | 'landing' | 'article';
 
@@ -100,12 +114,15 @@ function loadView(): ViewSettings {
 export function PreviewSection({
   palettes,
   activePaletteId,
+  activeProductId,
   foundations,
   isDark,
   popout = false,
 }: {
   palettes: GeneratedPalette[];
   activePaletteId?: string;
+  /** The product selected in the editor, which the preview starts on. */
+  activeProductId?: string;
   foundations: Foundations;
   isDark: boolean;
   /** Rendered in its own window, which follows the editor live. */
@@ -116,6 +133,15 @@ export function PreviewSection({
   const [accentId, setAccentId] = useState(() => defaultPreviewPalettes(palettes, activePaletteId).accentId);
   const [grayId, setGrayId] = useState(() => defaultPreviewPalettes(palettes, activePaletteId).grayId);
   const [tooltipsOn, setTooltipsOn] = useState(loadTooltipsOn);
+  const products = useMemo(() => productsOf(foundations), [foundations]);
+  const rolesByProduct = useMemo(() => resolveProductRoles(palettes, products), [palettes, products]);
+  const hasProducts = products.length > 1;
+  /** The product whose brand and neutral paint the page, or custom when they were picked by hand. */
+  const [productId, setProductId] = useState<string>(() => activeProductId ?? loadProduct() ?? products[0].id);
+  const product = hasProducts && productId !== CUSTOM ? products.find((p) => p.id === productId) : undefined;
+  const productRoles = product && rolesByProduct.get(product.id);
+  // The product's fonts too; custom palettes keep the first product's type
+  const shownFoundations = useMemo(() => foundationsForProduct(foundations, product?.id), [foundations, product?.id]);
   const updateView = (updates: Partial<ViewSettings>) => setView((v) => ({ ...v, ...updates }));
 
   useEffect(() => {
@@ -123,13 +149,24 @@ export function PreviewSection({
       localStorage.setItem(TOOLTIPS_KEY, tooltipsOn ? 'on' : 'off');
       localStorage.setItem(PAGE_KEY, page);
       localStorage.setItem(VIEW_KEY, JSON.stringify(view));
+      localStorage.setItem(PRODUCT_KEY, productId);
     } catch {
       // Blocked storage only forgets these between visits.
     }
-  }, [tooltipsOn, page, view]);
+  }, [tooltipsOn, page, view, productId]);
 
-  const accentPalette = palettes.find((p) => p.id === accentId) ?? palettes[0];
-  const grayPalette = palettes.find((p) => p.id === grayId) ?? palettes.find((p) => p.role === 'gray') ?? accentPalette;
+  // A product paints with its own brand and neutral, live as its roles change; roles it lacks keep the picks
+  const shownAccentId = productRoles?.get('brand')?.paletteId ?? accentId;
+  const shownGrayId = productRoles?.get('neutral')?.paletteId ?? grayId;
+  const accentPalette = palettes.find((p) => p.id === shownAccentId) ?? palettes[0];
+  const grayPalette = palettes.find((p) => p.id === shownGrayId) ?? palettes.find((p) => p.role === 'gray') ?? accentPalette;
+
+  /** Picking a palette by hand leaves the product, keeping the other palette where it was. */
+  const pickByHand = (accent: string, gray: string) => {
+    setAccentId(accent);
+    setGrayId(gray);
+    setProductId(CUSTOM);
+  };
 
   /** The picked accent's steps, in the shape the foundation pages read. */
   const accent: Accent = useMemo(() => {
@@ -190,12 +227,41 @@ export function PreviewSection({
         className="sticky top-0 z-30 -mx-4 mt-4 mb-5 flex flex-wrap items-center gap-2 border-b bg-background px-4 py-2.5 sm:-mx-6 sm:px-6 md:-mx-8 md:px-8"
       >
         {/* What the page is painted with */}
+        {hasProducts && (
+          <Select
+            value={product?.id ?? CUSTOM}
+            onValueChange={(v) => (v === CUSTOM ? pickByHand(accentPalette.id, grayPalette.id) : setProductId(v))}
+          >
+            <SelectTrigger size="sm" className="w-auto min-w-36 gap-1.5 bg-card" aria-label="Product">
+              <Boxes className="size-3.5 text-muted-foreground" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {products.map((p) => {
+                const brand = palettes.find((x) => x.id === rolesByProduct.get(p.id)?.get('brand')?.paletteId);
+                return (
+                  <SelectItem key={p.id} value={p.id}>
+                    <span
+                      className="size-3 shrink-0 rounded-full shadow-[inset_0_0_0_1px_rgb(0_0_0/0.1)]"
+                      style={{ backgroundColor: brand?.scale.colors[8] ?? 'transparent' }}
+                    />
+                    {p.name}
+                  </SelectItem>
+                );
+              })}
+              <SelectItem value={CUSTOM}>
+                <span className="size-3 shrink-0 rounded-full border border-dashed border-muted-foreground/50" />
+                Custom palettes
+              </SelectItem>
+            </SelectContent>
+          </Select>
+        )}
         <PreviewPaletteControls
           palettes={palettes}
           accentId={accentPalette.id}
           grayId={grayPalette.id}
-          onAccentChange={setAccentId}
-          onGrayChange={setGrayId}
+          onAccentChange={(id) => pickByHand(id, grayPalette.id)}
+          onGrayChange={(id) => pickByHand(accentPalette.id, id)}
         />
 
         <span className="mx-1 hidden h-5 w-px bg-border sm:block" aria-hidden />
@@ -245,7 +311,7 @@ export function PreviewSection({
 
       <FoundationPreview
         page={page}
-        foundations={foundations}
+        foundations={shownFoundations}
         isDark={isDark}
         accent={accent}
         accentScale={accentPalette.scale}

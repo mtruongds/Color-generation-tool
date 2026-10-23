@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { generatePaletteScale, getScaleContext } from '../../lib/export-utils';
 import { useGoogleFonts } from '../../lib/fonts';
+import { allFontFamilies } from '../../lib/foundations';
 import {
   BACKGROUNDS_KEY,
   FOUNDATIONS_KEY,
@@ -32,8 +33,7 @@ export function PreviewWindow({ isDarkMode }: { isDarkMode: boolean }) {
     return () => window.removeEventListener('storage', onStorage);
   }, []);
 
-  const { headingFamily, bodyFamily, monoFamily } = foundations.typography;
-  useGoogleFonts([headingFamily, bodyFamily, monoFamily]);
+  useGoogleFonts(allFontFamilies(foundations));
 
   const generatedPalettes = useMemo(() => {
     const context = getScaleContext(palettes, backgrounds);

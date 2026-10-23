@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Check, Copy, Download } from 'lucide-react';
+import { Check, Copy, Download, TriangleAlert } from 'lucide-react';
 import { Button } from '../ui/button';
 import { IconSwap } from '../ui/icon-swap';
 import {
@@ -25,9 +25,17 @@ import {
   generateColorCollectionCsv,
   generateColorCollectionJson,
   generateCss,
+  generateEffectStylesCsv,
   generateJson,
+  generateSheetVariablesCsv,
+  generateTextStylesCsv,
+  SHEET_COLLECTIONS,
+  SHEET_FILENAMES,
+  type SheetGroup,
+  sheetFilename,
 } from '../../lib/foundation-export';
 import type { Foundations } from '../../lib/foundations';
+import { ROLE_LABELS, TIERS, inheritedBrandRoles, productSlug, productsOf } from '../../lib/tokens';
 import { FOUNDATION_META, FOUNDATION_ORDER } from '../foundations/FoundationNav';
 
 type ExportKind = 'css' | 'json' | 'csv';
@@ -52,10 +60,10 @@ const EXPORTS: Record<
   },
   csv: {
     label: 'Sheets CSV',
-    hint: 'One color collection per sheet, for the Sheet Variable Importer plugin.',
+    hint: 'One collection or style set per sheet, for the Sheet Variable Importer plugin.',
     mime: 'text/csv;charset=utf-8',
     ext: 'csv',
-    scopes: ['color'],
+    scopes: FOUNDATION_ORDER,
   },
 };
 
@@ -88,8 +96,33 @@ const COLLECTION_HINTS: Record<ExportKind, Record<ColorCollection, string>> = {
   },
 };
 
-function filenameFor(kind: ExportKind, scope: ExportScope, colorTier: ColorCollection) {
+/** Sheets CSV for the foundations that split into collections like Color. */
+const SHEET_GROUPS: ExportScope[] = ['typography', 'spacing', 'radius', 'grid'];
+const isSheetGroup = (scope: ExportScope): scope is SheetGroup => SHEET_GROUPS.includes(scope);
+
+/** A tier's collection, or Typography's text styles built on the Text collection. */
+type SheetPart = ColorCollection | 'text-styles';
+
+/** Where a collection's modes come from, when it has any. */
+const SHEET_MODES: Partial<Record<SheetGroup, string>> = {
+  typography: ' Sizes switch between Mobile and Desktop modes.',
+  grid: ' Columns, gutter and margin get a mode per breakpoint.',
+};
+
+function sheetHint(group: SheetGroup, part: SheetPart) {
+  const names = SHEET_COLLECTIONS[group];
+  if (part === 'text-styles') return `One text style per role for the Text Styles tab, bound to ${names.semantic}. Import ${names.semantic} first.`;
+  if (part === 'primitive') return 'Raw values in one mode, with no scope. Import this first.';
+  if (part === 'base') return `Roles aliasing ${names.primitive}, with no scope. Import ${names.primitive} first.${SHEET_MODES[group] ?? ''}`;
+  return `Purposes aliasing ${names.base}, scoped for Figma's pickers. Import ${names.base} first.`;
+}
+
+function filenameFor(kind: ExportKind, scope: ExportScope, colorTier: ColorCollection, sheetPart: SheetPart) {
   if (scope === 'color') return colorCollectionFilename(colorTier, kind);
+  if (kind === 'csv') {
+    if (scope === 'shadow') return SHEET_FILENAMES['effect-styles'];
+    if (isSheetGroup(scope)) return sheetPart === 'text-styles' ? SHEET_FILENAMES['text-styles'] : sheetFilename(scope, sheetPart);
+  }
   const base = scope === 'all' ? 'tokens' : scope;
   return `${base}.${EXPORTS[kind].ext}`;
 }
@@ -114,6 +147,7 @@ export function ExportDialog({
   const [scope, setScope] = useState<ExportScope>(initialScope);
   const [unit, setUnit] = useState<LengthUnit>('rem');
   const [colorTier, setColorTier] = useState<ColorCollection>('primitive');
+  const [chosenSheetPart, setSheetPart] = useState<SheetPart>('primitive');
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
@@ -128,7 +162,11 @@ export function ExportDialog({
   const activeKind = supports(kind, scope) ? kind : 'css';
   const meta = EXPORTS[activeKind];
   const colorTierKind = scope === 'color' ? activeKind : null;
-  const filename = filenameFor(activeKind, scope, colorTier);
+  const sheetGroup = activeKind === 'csv' && isSheetGroup(scope) ? scope : null;
+  // Only Typography has text styles; the rest fall back to their scale
+  const sheetPart: SheetPart = chosenSheetPart === 'text-styles' && scope !== 'typography' ? 'primitive' : chosenSheetPart;
+  const sheetParts: SheetPart[] = sheetGroup ? [...TIERS, ...(sheetGroup === 'typography' ? (['text-styles'] as const) : [])] : [];
+  const filename = filenameFor(activeKind, scope, colorTier, sheetPart);
   const usesColorFormat = (scope === 'all' || scope === 'color') && ['css', 'json'].includes(activeKind);
   const usesUnit = scope !== 'color' && ['css', 'json'].includes(activeKind);
 
@@ -141,9 +179,20 @@ export function ExportDialog({
       case 'json':
         return scope === 'color' ? generateColorCollectionJson(palettes, foundations, colorTier, colorFormat) : generateJson(palettes, foundations, opts);
       case 'csv':
-        return generateColorCollectionCsv(palettes, foundations, colorTier);
+        if (scope === 'color' || scope === 'all') return generateColorCollectionCsv(palettes, foundations, colorTier);
+        if (scope === 'shadow') return generateEffectStylesCsv(palettes, foundations);
+        if (sheetPart === 'text-styles') return generateTextStylesCsv(palettes, foundations);
+        return generateSheetVariablesCsv(palettes, foundations, scope, sheetPart);
     }
-  }, [open, activeKind, scope, unit, palettes, colorFormat, foundations, colorTier]);
+  }, [open, activeKind, scope, unit, palettes, colorFormat, foundations, colorTier, sheetPart]);
+
+  // Products only change the Color collection, so the notes show where that is exported
+  const products = productsOf(foundations);
+  const showsProducts = products.length > 1 && (scope === 'all' || (scope === 'color' && colorTier === 'base'));
+  const inheritedBrand = useMemo(
+    () => (showsProducts ? inheritedBrandRoles(palettes, products) : []),
+    [showsProducts, palettes, products],
+  );
 
   const lineCount = useMemo(() => content.split('\n').length, [content]);
 
@@ -223,13 +272,55 @@ export function ExportDialog({
             ))}
           </div>
         )}
+        {sheetGroup && (
+          <div className="flex flex-wrap gap-1.5 px-6 pb-3" role="group" aria-label="Collection">
+            {sheetParts.map((p) => (
+              <button
+                key={p}
+                type="button"
+                onClick={() => setSheetPart(p)}
+                aria-pressed={sheetPart === p}
+                className={cn(
+                  'rounded-full border px-2.5 py-1 text-xs transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                  sheetPart === p ? 'border-foreground/40 bg-accent text-foreground' : 'text-muted-foreground',
+                )}
+              >
+                {p === 'text-styles' ? 'Text Styles' : SHEET_COLLECTIONS[sheetGroup][p]}
+              </button>
+            ))}
+          </div>
+        )}
         <p className="px-6 pb-3 text-xs text-muted-foreground">
-          {colorTierKind ? COLLECTION_HINTS[colorTierKind][colorTier] : meta.hint}
+          {colorTierKind
+            ? COLLECTION_HINTS[colorTierKind][colorTier]
+            : activeKind === 'csv' && scope === 'shadow'
+              ? 'Semantic shadows as effect styles for the Shadow Styles tab, light under Shadow/ and dark under Shadow Dark/.'
+              : sheetGroup
+                ? sheetHint(sheetGroup, sheetPart)
+                : meta.hint}
           {usesColorFormat && <span className="ml-1 font-mono uppercase">({colorFormat})</span>}
           {activeKind === 'css' && (scope === 'all' || scope === 'shadow' || (scope === 'color' && colorTier === 'semantic')) && (
             <> Put the <code className="font-mono">dark</code> class on &lt;html&gt;.</>
           )}
+          {showsProducts && activeKind === 'css' && (
+            <>
+              {' '}Switch products with <code className="font-mono">data-product="{productSlug(products[1].name)}"</code> on &lt;html&gt;.
+            </>
+          )}
+          {showsProducts && activeKind === 'csv' && <> One mode per product: {products.map((p) => p.name).join(', ')}.</>}
         </p>
+        {inheritedBrand.length > 0 && (
+          <ul className="mx-6 mb-3 flex flex-col gap-1 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+            {inheritedBrand.map(({ product, role, paletteId }) => (
+              <li key={`${product.id}-${role}`} className="flex items-start gap-1.5">
+                <TriangleAlert className="mt-px size-3.5 shrink-0" />
+                <span>
+                  {product.name} uses {products[0].name}'s {ROLE_LABELS[role]} ({palettes.find((p) => p.id === paletteId)?.name}).
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
 
         <div className="relative mx-6 rounded-lg border bg-zinc-950 text-zinc-100 dark:bg-black/40">
           <pre className="scrollbar-thin max-h-[22rem] overflow-auto p-4 font-mono text-[0.75rem] leading-relaxed">

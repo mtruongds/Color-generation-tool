@@ -25,6 +25,7 @@ export function PaletteInspector({
   tokens,
   onChange,
   onSetRole,
+  product,
 }: {
   palette: GeneratedPalette;
   /** Primitive name and resolved base role of this palette in the export. */
@@ -32,6 +33,8 @@ export function PaletteInspector({
   onChange: (updates: Partial<PaletteConfig>) => void;
   /** Sets the token role, swapping with the palette that holds it. */
   onSetRole: (role: ColorRole | 'none' | undefined) => void;
+  /** Set when an extra product is active: roles are picked for it, from the ones the first product has. */
+  product?: { name: string; from: string; roles: ColorRole[] };
 }) {
   const wantedRole = palette.tokenRole && palette.tokenRole !== 'none' ? palette.tokenRole : undefined;
   const roleTaken = wantedRole && tokens?.role !== wantedRole;
@@ -150,12 +153,24 @@ export function PaletteInspector({
       </Section>
 
       <Section title="Tokens">
-        <SelectField
-          label="Token role"
-          value={palette.tokenRole ?? 'auto'}
-          options={ROLE_OPTIONS}
-          onChange={(v) => onSetRole(v === 'auto' ? undefined : (v as ColorRole | 'none'))}
-        />
+        {product ? (
+          <SelectField
+            label={`Role in ${product.name}`}
+            value={tokens?.role ?? 'none'}
+            options={[
+              { value: 'none', label: `Inherit from ${product.from}` },
+              ...product.roles.map((r) => ({ value: r, label: ROLE_LABELS[r] })),
+            ]}
+            onChange={(v) => onSetRole(v as ColorRole | 'none')}
+          />
+        ) : (
+          <SelectField
+            label="Token role"
+            value={palette.tokenRole ?? 'auto'}
+            options={ROLE_OPTIONS}
+            onChange={(v) => onSetRole(v === 'auto' ? undefined : (v as ColorRole | 'none'))}
+          />
+        )}
         {tokens && (
           <div className="flex flex-wrap items-center gap-1.5 font-mono text-[0.6875rem] text-muted-foreground">
             <span className="rounded bg-muted px-1.5 py-0.5">{tokens.primitive}-*</span>
@@ -163,12 +178,14 @@ export function PaletteInspector({
             {tokens.role ? (
               <span className="rounded bg-muted px-1.5 py-0.5 text-foreground">{tokens.role}-*</span>
             ) : (
-              <span className="font-sans">no role, exported as primitives only</span>
+              <span className="font-sans">{product ? `no role in ${product.name}` : 'no role, exported as primitives only'}</span>
             )}
           </div>
         )}
         <p className="text-xs leading-snug text-muted-foreground">
-          {roleTaken
+          {product
+            ? `Fills this role in ${product.name} only. Roles ${product.name} leaves alone use ${product.from}'s palettes.`
+            : roleTaken
             ? `${ROLE_LABELS[wantedRole]} is already used by another palette, so this one has no role.`
             : 'Picking a role another palette holds swaps the two. Brand · Primary drives bg-brand and focus-ring; Brand · Secondary drives bg-brand-secondary.'}
         </p>
