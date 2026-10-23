@@ -252,8 +252,8 @@ export function TypographyInspector({
 
   return (
     <div className="flex flex-col">
-      <Section title="Fonts">
-        {products && (
+      {products && (
+        <div className="border-b px-5 py-4">
           <ProductSwitcher
             products={products.products}
             activeId={products.products[index].id}
@@ -262,7 +262,9 @@ export function TypographyInspector({
             onRename={products.onRename}
             onRemove={products.onRemove}
           />
-        )}
+        </div>
+      )}
+      <Section title="Fonts">
         {FONT_FIELDS.map(([role, label, field]) => {
           const options = role === 'mono' ? monoFonts : textFonts;
           if (!product || !first) {

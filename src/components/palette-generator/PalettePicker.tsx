@@ -52,7 +52,7 @@ export function PalettePicker({
   const isExtra = productIndex > 0;
 
   return (
-    <div className="sticky top-0 z-10 border-b bg-sidebar/95 px-3 py-3 backdrop-blur">
+    <div className="border-b px-5 py-4">
       <ProductSwitcher
         products={products}
         activeId={product.id}
@@ -62,7 +62,8 @@ export function PalettePicker({
         onRemove={onRemoveProduct}
       />
 
-      <div className="mt-3 mb-1.5 px-2 text-[0.6875rem] font-medium tracking-wide text-muted-foreground uppercase">
+      <div className="-mx-5 my-4 border-t" />
+      <div className="mb-2 flex h-5 items-center text-xs font-medium tracking-wide text-muted-foreground uppercase">
         Palette <span className="ml-0.5 tabular text-muted-foreground/70">{palettes.length}</span>
       </div>
       <Popover open={open} onOpenChange={setOpen}>
@@ -77,7 +78,7 @@ export function PalettePicker({
           >
             {active && (
               <>
-                <span className="swatch-outline size-8 shrink-0 rounded-sm" style={{ backgroundColor: active.baseColor }} />
+                <span className="swatch-outline size-8 shrink-0 rounded-md" style={{ backgroundColor: active.baseColor }} />
                 <span className="min-w-0 flex-1">
                   <span className="flex items-baseline justify-between gap-2">
                     <span className="flex min-w-0 items-center gap-1.5">
@@ -168,15 +169,15 @@ export function ProductSwitcher({
 
   return (
     <div>
-      <div className="mb-1.5 flex items-center justify-between px-2">
-        <span className="text-[0.6875rem] font-medium tracking-wide text-muted-foreground uppercase">Product</span>
+      <div className="mb-2 flex h-5 items-center justify-between">
+        <span className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Product</span>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
               variant="ghost"
               size="icon"
               aria-label={`${active?.name} options`}
-              className="relative -my-1 size-6 text-muted-foreground after:absolute after:-inset-1 hover:text-foreground"
+              className="-my-1 -mr-1.5 size-7 text-muted-foreground hover:text-foreground"
             >
               <MoreHorizontal />
             </Button>
@@ -224,7 +225,7 @@ export function ProductSwitcher({
                 if (e.key === 'Enter') commit();
                 if (e.key === 'Escape') setEditing(null);
               }}
-              className="h-7 w-32 rounded-full px-2.5 text-xs"
+              className="h-7 w-32 rounded-full px-3 text-xs md:text-xs"
             />
           ) : (
             <button
@@ -236,7 +237,7 @@ export function ProductSwitcher({
               aria-pressed={p.id === activeId}
               title={p.id === activeId ? 'Click to rename' : `Switch to ${p.name} · double-click to rename`}
               className={cn(
-                'max-w-36 truncate rounded-full border px-2.5 py-1 text-xs transition-colors hover:bg-sidebar-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                'h-7 max-w-36 truncate rounded-full border px-3 text-xs leading-6.5 transition-colors hover:bg-sidebar-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                 p.id === activeId ? 'border-foreground/40 bg-sidebar-accent font-medium text-foreground' : 'text-muted-foreground',
               )}
             >

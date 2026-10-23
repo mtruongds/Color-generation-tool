@@ -612,10 +612,25 @@ export function PaletteGenerator({
   }, []);
 
   const resetFoundation = useCallback(() => {
-    if (foundation === 'color') return;
+    if (foundation === 'color') {
+      // Back to Brand and Neutral, dropping every palette, so it can be undone. Products stay, they hold the fonts too.
+      const previous = { palettes, activeId: activePaletteId };
+      setPalettes(DEFAULT_PALETTES);
+      setActivePaletteId(DEFAULT_PALETTES[0].id);
+      toast.success('Reset color to defaults', {
+        action: {
+          label: 'Undo',
+          onClick: () => {
+            setPalettes(previous.palettes);
+            setActivePaletteId(previous.activeId);
+          },
+        },
+      });
+      return;
+    }
     setFoundations((prev) => ({ ...prev, [foundation]: DEFAULT_FOUNDATIONS[foundation] }));
     toast.success(`Reset ${FOUNDATION_META[foundation].label.toLowerCase()} to defaults`);
-  }, [foundation]);
+  }, [foundation, palettes, activePaletteId]);
 
   const sidebarProps = {
     palettes: generatedPalettes,
@@ -672,16 +687,19 @@ export function PaletteGenerator({
   );
 
   const inspectorHeader = isColor ? (
-    <PalettePicker
-      {...sidebarProps}
-      products={products}
-      activeProductId={activeProduct.id}
-      onSelectProduct={setActiveProductId}
-      onAddProduct={addProduct}
-      onRenameProduct={renameProduct}
-      onRemoveProduct={removeProduct}
-      productRoles={activeProductRoles}
-    />
+    <>
+      <FoundationInspectorHeader foundation="color" onReset={resetFoundation} />
+      <PalettePicker
+        {...sidebarProps}
+        products={products}
+        activeProductId={activeProduct.id}
+        onSelectProduct={setActiveProductId}
+        onAddProduct={addProduct}
+        onRenameProduct={renameProduct}
+        onRemoveProduct={removeProduct}
+        productRoles={activeProductRoles}
+      />
+    </>
   ) : (
     <FoundationInspectorHeader foundation={foundation as Exclude<FoundationKey, 'color'>} onReset={resetFoundation} />
   );
@@ -1066,7 +1084,7 @@ export function PaletteGenerator({
   );
 }
 
-function FoundationInspectorHeader({ foundation, onReset }: { foundation: Exclude<FoundationKey, 'color'>; onReset: () => void }) {
+function FoundationInspectorHeader({ foundation, onReset }: { foundation: FoundationKey; onReset?: () => void }) {
   const { label, icon: Icon } = FOUNDATION_META[foundation];
   return (
     <div className="sticky top-0 z-10 flex items-center justify-between gap-2 border-b bg-sidebar/95 px-5 py-3.5 backdrop-blur">
@@ -1077,14 +1095,22 @@ function FoundationInspectorHeader({ foundation, onReset }: { foundation: Exclud
           {label}
         </div>
       </div>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button variant="ghost" size="icon" className="size-8 text-muted-foreground" onClick={onReset} aria-label={`Reset ${label}`}>
-            <RotateCcw />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>Reset to defaults</TooltipContent>
-      </Tooltip>
+      {onReset && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="-mr-1.5 size-7 text-muted-foreground hover:text-foreground"
+              onClick={onReset}
+              aria-label={`Reset ${label}`}
+            >
+              <RotateCcw />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Reset to defaults</TooltipContent>
+        </Tooltip>
+      )}
     </div>
   );
 }
