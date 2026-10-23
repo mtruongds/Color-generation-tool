@@ -379,8 +379,7 @@ export function PaletteGenerator({
 
   /**
    * Gives a palette a token role and takes it from the palette that held it. Roles of a kind swap
-   * (the two brand roles, or two status roles); a palette losing Brand · Primary otherwise steps
-   * down to Brand · Secondary when it's free.
+   * (the two brand roles, or two status roles); otherwise the previous holder is left with no role.
    */
   const setTokenRole = useCallback((id: string, tokenRole: ColorRole | 'none' | undefined) => {
     setPalettes((prev) => {
@@ -390,13 +389,7 @@ export function PaletteGenerator({
       const kind = (r: ColorRole) =>
         r === 'brand' || r === 'brand-secondary' ? 'brand' : r === 'neutral' ? 'neutral' : 'status';
       const given = roles.get(id);
-      const secondaryFree = ![...roles].some(([pid, r]) => r === 'brand-secondary' && pid !== id);
-      const demoted: ColorRole | 'none' =
-        given && kind(given) === kind(tokenRole as ColorRole)
-          ? given
-          : tokenRole === 'brand' && secondaryFree
-            ? 'brand-secondary'
-            : 'none';
+      const demoted: ColorRole | 'none' = given && kind(given) === kind(tokenRole as ColorRole) ? given : 'none';
       return prev.map((p) => (p.id === id ? { ...p, tokenRole } : p === holder ? { ...p, tokenRole: demoted } : p));
     });
   }, []);
@@ -920,7 +913,6 @@ export function PaletteGenerator({
         palettes={generatedPalettes}
         colorFormat={colorFormat}
         foundations={foundations}
-        isDark={isDarkMode}
         initialScope={isPreview ? 'all' : foundation}
       />
     </div>

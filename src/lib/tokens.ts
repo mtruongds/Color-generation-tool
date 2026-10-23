@@ -201,6 +201,12 @@ const SEMANTIC_COLORS: SemanticColor[] = [
   ...(['info', 'success', 'warning', 'danger'] as const).flatMap(statusColors),
 ];
 
+const LEADING_ROLES: ColorRole[] = ['brand', 'brand-secondary'];
+const roleRank = (role: ColorRole | undefined) => {
+  const i = role ? LEADING_ROLES.indexOf(role) : -1;
+  return i === -1 ? LEADING_ROLES.length : i;
+};
+
 function colorTokens(palettes: GeneratedPalette[], modes: TokenModes, format: ColorFormat): Token[] {
   const tokens: Token[] = [];
   const primitives = primitiveColorNames(palettes);
@@ -208,7 +214,6 @@ function colorTokens(palettes: GeneratedPalette[], modes: TokenModes, format: Co
   const modeList = modes === 'both' ? [false, true] : [modes === 'dark'];
   /** Dark primitives carry a suffix only when both modes share one file. */
   const prim = (id: string, isDark: boolean) => `${primitives.get(id)}${modes === 'both' && isDark ? '-dark' : ''}`;
-
   for (const p of palettes) {
     for (const isDark of modeList) {
       const scale = generatePaletteScale(p, isDark, p.context);
@@ -242,7 +247,9 @@ function colorTokens(palettes: GeneratedPalette[], modes: TokenModes, format: Co
     'contrast',
     'surface',
   ];
-  for (const p of palettes) {
+  // Brand and brand secondary lead the roles; primitives and the other roles keep the app's palette order
+  const ordered = [...palettes].sort((a, b) => roleRank(roles.get(a.id)) - roleRank(roles.get(b.id)));
+  for (const p of ordered) {
     const role = roles.get(p.id);
     if (!role) continue;
     for (const step of steps) {
@@ -261,7 +268,7 @@ function colorTokens(palettes: GeneratedPalette[], modes: TokenModes, format: Co
 
   // Semantic: purposes on top of roles, skipped when the role isn't assigned
   const present = new Set(roles.values());
-  for (const s of SEMANTIC_COLORS) {
+  for (const s of [...SEMANTIC_COLORS].sort((a, b) => roleRank(a.role) - roleRank(b.role))) {
     if (!present.has(s.role)) continue;
     tokens.push({
       tier: 'semantic',

@@ -1,14 +1,9 @@
 import {
-  AlphaColor,
   ColorScale,
   DEFAULT_BACKGROUNDS,
   DEFAULT_GRAY,
   ScaleOptions,
-  generateAlphaScale,
   generateScale,
-  getStepDescription,
-  getSurfaceColor,
-  hexToOklch,
 } from './color-utils';
 import type { PaletteConfig } from '../components/palette-generator/types';
 
@@ -63,61 +58,6 @@ export function downloadFile(content: string, filename: string, type: string) {
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
-}
-
-function alphaToOklch(alpha: AlphaColor): string {
-  const hex = `#${[alpha.r, alpha.g, alpha.b].map((v) => v.toString(16).padStart(2, '0')).join('')}`;
-  const alphaValue =
-    alpha.alpha === 1 ? '1' : alpha.alpha.toFixed(3).replace(/0+$/, '').replace(/\.$/, '');
-  return hexToOklch(hex).replace(')', ` / ${alphaValue})`);
-}
-
-const escapeCsv = (field: string) =>
-  /[",\n]/.test(field) ? `"${field.replace(/"/g, '""')}"` : field;
-
-/**
- * Primitive color rows, light then `-dark`, one value per row — ready to paste into Google Sheets.
- * `primitiveName` maps a palette to its primitive token name (e.g. indigo).
- */
-export function generateSheetCsv(palettes: GeneratedPalette[], primitiveName: (p: GeneratedPalette) => string) {
-  const headers = ['Name', 'Mode: Base', 'OKLCH', 'Palette Name', 'Step', 'Type', 'Description', 'Collection Name'];
-  let csv = headers.join(',') + '\n';
-  const row = (fields: string[]) => [...fields, 'Color'].map(escapeCsv).join(',') + '\n';
-
-  palettes.forEach((p) => {
-    const context = p.context ?? DEFAULT_SCALE_CONTEXT;
-    [false, true].forEach((isDark) => {
-      const scale = generatePaletteScale(p, isDark, context);
-      const alpha = generateAlphaScale(scale, isDark);
-      const surface = getSurfaceColor(scale);
-      const tokenBase = `${primitiveName(p)}${isDark ? '-dark' : ''}`;
-
-      scale.colors.forEach((color, i) => {
-        const step = i + 1;
-        csv += row([
-          `${tokenBase}/${step}`, color, scale.wideGamut[i],
-          p.name, `${step}`, 'Color', getStepDescription(step, p.name, false),
-        ]);
-      });
-      alpha.colors.forEach((a, i) => {
-        const step = i + 1;
-        csv += row([
-          `${tokenBase}/a${step}`, a.rgba, alphaToOklch(a),
-          p.name, `a${step}`, 'Color', getStepDescription(step, p.name, true),
-        ]);
-      });
-      csv += row([
-        `${tokenBase}/contrast`, scale.contrast, hexToOklch(scale.contrast),
-        p.name, 'contrast', 'Color', CONTRAST_USAGE,
-      ]);
-      csv += row([
-        `${tokenBase}/surface`, surface.rgba, alphaToOklch(surface),
-        p.name, 'surface', 'Color', SURFACE_USAGE,
-      ]);
-    });
-  });
-
-  return csv;
 }
 
 export const CONTRAST_USAGE = 'Text and icons on step 9 solid backgrounds';

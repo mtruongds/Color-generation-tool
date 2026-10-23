@@ -11,24 +11,26 @@ import {
 } from '../ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { Tabs, TabsList, TabsTrigger } from '../ui/tabs';
+import { cn } from '../ui/utils';
 import { ColorFormat } from '../../lib/color-utils';
 import { copyToClipboard } from '../../lib/clipboard';
-import { GeneratedPalette, downloadFile, generateSheetCsv } from '../../lib/export-utils';
+import { GeneratedPalette, downloadFile } from '../../lib/export-utils';
 import {
+  COLOR_COLLECTIONS,
+  type ColorCollection,
   type ExportScope,
-  type FigmaScope,
   type LengthUnit,
-  figmaFilename,
+  colorCollectionFilename,
+  generateColorCollectionCss,
+  generateColorCollectionCsv,
+  generateColorCollectionJson,
   generateCss,
-  generateFigma,
   generateJson,
-  generateTailwind,
 } from '../../lib/foundation-export';
-import { primitiveColorNames } from '../../lib/tokens';
 import type { Foundations } from '../../lib/foundations';
 import { FOUNDATION_META, FOUNDATION_ORDER } from '../foundations/FoundationNav';
 
-type ExportKind = 'css' | 'tailwind' | 'json' | 'figma' | 'csv';
+type ExportKind = 'css' | 'json' | 'csv';
 
 const EXPORTS: Record<
   ExportKind,
@@ -41,13 +43,6 @@ const EXPORTS: Record<
     ext: 'css',
     scopes: 'any',
   },
-  tailwind: {
-    label: 'Tailwind',
-    hint: 'The same tiers, with base and semantic tokens exposed as Tailwind v4 utilities.',
-    mime: 'text/css',
-    ext: 'css',
-    scopes: 'any',
-  },
   json: {
     label: 'JSON',
     hint: 'W3C design tokens grouped by tier, with aliases and dark-mode values.',
@@ -55,15 +50,13 @@ const EXPORTS: Record<
     ext: 'json',
     scopes: 'any',
   },
-  figma: {
-    label: 'Figma',
-    hint: 'One Figma collection with primitive, base and semantic groups.',
-    mime: 'application/json',
-    ext: 'json',
-    // Shadows are effect styles in Figma, not variables
-    scopes: ['color', 'typography', 'spacing', 'radius', 'grid'],
+  csv: {
+    label: 'Sheets CSV',
+    hint: 'One color collection per sheet, for the Sheet Variable Importer plugin.',
+    mime: 'text/csv;charset=utf-8',
+    ext: 'csv',
+    scopes: ['color'],
   },
-  csv: { label: 'Sheets CSV', hint: 'Primitive colors, light rows then dark rows, for Google Sheets.', mime: 'text/csv;charset=utf-8', ext: 'csv', scopes: ['color'] },
 };
 
 const supports = (kind: ExportKind, scope: ExportScope) => {
@@ -76,11 +69,29 @@ const SCOPE_LABEL: Record<ExportScope, string> = {
   ...(Object.fromEntries(FOUNDATION_ORDER.map((k) => [k, FOUNDATION_META[k].label])) as Record<Exclude<ExportScope, 'all'>, string>),
 };
 
-function filenameFor(kind: ExportKind, scope: ExportScope, isDark: boolean) {
-  if (kind === 'figma') return figmaFilename(scope as FigmaScope, isDark);
-  if (kind === 'csv') return 'color.csv';
+/** Color exports as CSS, JSON and Sheets split into the Color Palette, Color and Theme collections. */
+const COLLECTION_HINTS: Record<ExportKind, Record<ColorCollection, string>> = {
+  css: {
+    primitive: 'Raw palette steps, light and -dark side by side.',
+    base: 'Roles aliasing Color Palette, light and -dark side by side. Load color-palette.css first.',
+    semantic: 'Purposes aliasing Color, with dark values under .dark. Load color.css first.',
+  },
+  json: {
+    primitive: 'Raw palette steps, light and -dark side by side, as W3C design tokens.',
+    base: 'Roles aliasing {color-palette.…}, light and -dark side by side. Merge with color-palette.json.',
+    semantic: 'Purposes aliasing {color.…}, with the dark alias in $extensions. Merge with color.json.',
+  },
+  csv: {
+    primitive: 'Raw palette steps, light and -dark side by side, in one mode. _OKLCH is for reference; the plugin skips it.',
+    base: 'Roles aliasing Color Palette, light and -dark side by side. Import Color Palette first.',
+    semantic: 'Purposes aliasing Color, with Light and Dark modes. Import Color first.',
+  },
+};
+
+function filenameFor(kind: ExportKind, scope: ExportScope, colorTier: ColorCollection) {
+  if (scope === 'color') return colorCollectionFilename(colorTier, kind);
   const base = scope === 'all' ? 'tokens' : scope;
-  return kind === 'tailwind' ? `${base}.theme.css` : `${base}.${EXPORTS[kind].ext}`;
+  return `${base}.${EXPORTS[kind].ext}`;
 }
 
 export function ExportDialog({
@@ -89,7 +100,6 @@ export function ExportDialog({
   palettes,
   colorFormat,
   foundations,
-  isDark,
   initialScope,
 }: {
   open: boolean;
@@ -97,13 +107,13 @@ export function ExportDialog({
   palettes: GeneratedPalette[];
   colorFormat: ColorFormat;
   foundations: Foundations;
-  isDark: boolean;
   /** The foundation on screen when the dialog opens. */
   initialScope: ExportScope;
 }) {
   const [kind, setKind] = useState<ExportKind>('css');
   const [scope, setScope] = useState<ExportScope>(initialScope);
   const [unit, setUnit] = useState<LengthUnit>('rem');
+  const [colorTier, setColorTier] = useState<ColorCollection>('primitive');
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
@@ -117,28 +127,23 @@ export function ExportDialog({
 
   const activeKind = supports(kind, scope) ? kind : 'css';
   const meta = EXPORTS[activeKind];
-  const filename = filenameFor(activeKind, scope, isDark);
-  const usesColorFormat = (scope === 'all' || scope === 'color') && ['css', 'json', 'tailwind'].includes(activeKind);
-  const usesUnit = scope !== 'color' && ['css', 'json', 'tailwind'].includes(activeKind);
+  const colorTierKind = scope === 'color' ? activeKind : null;
+  const filename = filenameFor(activeKind, scope, colorTier);
+  const usesColorFormat = (scope === 'all' || scope === 'color') && ['css', 'json'].includes(activeKind);
+  const usesUnit = scope !== 'color' && ['css', 'json'].includes(activeKind);
 
   const content = useMemo(() => {
     if (!open) return '';
     const opts = { scope, unit, colorFormat };
     switch (activeKind) {
       case 'css':
-        return generateCss(palettes, foundations, opts);
-      case 'tailwind':
-        return generateTailwind(palettes, foundations, opts);
+        return scope === 'color' ? generateColorCollectionCss(palettes, foundations, colorTier, colorFormat) : generateCss(palettes, foundations, opts);
       case 'json':
-        return generateJson(palettes, foundations, opts);
-      case 'figma':
-        return generateFigma(palettes, foundations, scope as FigmaScope, { isDark, colorFormat });
-      case 'csv': {
-        const names = primitiveColorNames(palettes);
-        return generateSheetCsv(palettes, (p) => names.get(p.id)!);
-      }
+        return scope === 'color' ? generateColorCollectionJson(palettes, foundations, colorTier, colorFormat) : generateJson(palettes, foundations, opts);
+      case 'csv':
+        return generateColorCollectionCsv(palettes, foundations, colorTier);
     }
-  }, [open, activeKind, scope, unit, palettes, colorFormat, foundations, isDark]);
+  }, [open, activeKind, scope, unit, palettes, colorFormat, foundations, colorTier]);
 
   const lineCount = useMemo(() => content.split('\n').length, [content]);
 
@@ -200,13 +205,28 @@ export function ExportDialog({
             </Tabs>
           )}
         </div>
+        {colorTierKind && (
+          <div className="flex flex-wrap gap-1.5 px-6 pb-3" role="group" aria-label="Collection">
+            {(Object.keys(COLOR_COLLECTIONS) as ColorCollection[]).map((t) => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => setColorTier(t)}
+                aria-pressed={colorTier === t}
+                className={cn(
+                  'rounded-full border px-2.5 py-1 text-xs transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                  colorTier === t ? 'border-foreground/40 bg-accent text-foreground' : 'text-muted-foreground',
+                )}
+              >
+                {COLOR_COLLECTIONS[t]}
+              </button>
+            ))}
+          </div>
+        )}
         <p className="px-6 pb-3 text-xs text-muted-foreground">
-          {meta.hint}
+          {colorTierKind ? COLLECTION_HINTS[colorTierKind][colorTier] : meta.hint}
           {usesColorFormat && <span className="ml-1 font-mono uppercase">({colorFormat})</span>}
-          {activeKind === 'figma' && scope === 'color' && (
-            <> {isDark ? 'Dark' : 'Light'} mode — switch the theme and export again to add the other mode.</>
-          )}
-          {(activeKind === 'css' || activeKind === 'tailwind') && (scope === 'all' || scope === 'color' || scope === 'shadow') && (
+          {activeKind === 'css' && (scope === 'all' || scope === 'shadow' || (scope === 'color' && colorTier === 'semantic')) && (
             <> Put the <code className="font-mono">dark</code> class on &lt;html&gt;.</>
           )}
         </p>

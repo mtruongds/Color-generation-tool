@@ -2,7 +2,7 @@ import chroma from 'chroma-js';
 import type { ColorFormat } from './color-utils';
 import type { GeneratedPalette } from './export-utils';
 import { type Foundations, type ShadowLayer, layerToCss } from './foundations';
-import { TIERS, type Token, type TokenGroup, buildTokens } from './tokens';
+import { TIERS, type Token, type TokenGroup, buildTokens, resolveToken } from './tokens';
 
 export { typeBreakpoint } from './tokens';
 
@@ -127,28 +127,6 @@ export function generateCss(palettes: GeneratedPalette[], f: Foundations, opts: 
 }
 
 // ============================================================
-// Tailwind v4
-// ============================================================
-
-/**
- * The same tiered variables as the CSS export, plus a `@theme inline` block that turns base and
- * semantic tokens into utilities (bg-bg-brand, text-h1, p-card, rounded-control, shadow-dialog).
- */
-export function generateTailwind(palettes: GeneratedPalette[], f: Foundations, opts: ExportOptions) {
-  const tokens = buildTokens(palettes, f, { groups: groupsFor(opts.scope), modes: 'both', colorFormat: opts.colorFormat });
-  const themed = tokens.filter((t) => t.tw);
-  let css = '@import "tailwindcss";\n\n';
-  if (tokens.some((t) => t.darkRef)) css += '@custom-variant dark (&:where(.dark, .dark *));\n\n';
-  css += variablesCss(tokens, opts.unit);
-  if (themed.length) {
-    const lines = themed.map((t) => `  --${t.tw}: ${t.twLiteral ? formatLength(t.value as number, 'rem') : `var(--${t.name})`};`);
-    // `reference` creates the utilities without redeclaring the variables, which already live in :root above
-    css += `\n/* ===== Tailwind utilities from base and semantic tokens ===== */\n@theme inline reference {\n${lines.join('\n')}\n}\n`;
-  }
-  return css;
-}
-
-// ============================================================
 // JSON (W3C design tokens)
 // ============================================================
 
@@ -197,7 +175,7 @@ export function generateJson(palettes: GeneratedPalette[], f: Foundations, opts:
   const out: Record<string, unknown> = {};
   for (const t of tokens) {
     const extensions: Record<string, unknown> = {};
-    if (t.darkRef) extensions['lumina.modes'] = { dark: alias(t.darkRef) };
+    if (t.darkRef) extensions.modes = { dark: alias(t.darkRef) };
     if (t.responsive) {
       extensions['lumina.responsive'] = [
         ...(t.baseLabel ? [{ label: t.baseLabel, minWidth: 0, value: alias(t.ref!) }] : []),
@@ -215,113 +193,181 @@ export function generateJson(palettes: GeneratedPalette[], f: Foundations, opts:
 }
 
 // ============================================================
-// Figma variables
+// Color collections
 // ============================================================
 
-/** Shadows are effect styles in Figma, not variables, so they have no Figma export. */
-export type FigmaScope = Exclude<TokenGroup, 'shadow'>;
+/** Color splits into three collections, one per tier, each exported on its own. */
+export type ColorCollection = Token['tier'];
 
-const COLLECTION_NAMES: Record<FigmaScope, string> = {
-  color: 'Color',
-  typography: 'Typography',
-  spacing: 'Spacing',
-  radius: 'Radius',
-  grid: 'Layout',
+export const COLOR_COLLECTIONS: Record<ColorCollection, string> = {
+  primitive: 'Color Palette',
+  base: 'Color',
+  semantic: 'Theme',
 };
 
-/** Figma's importer names the mode after the file and ignores `com.figma.modeName`, so color files are named by mode. */
-export const figmaFilename = (scope: FigmaScope, isDark: boolean) =>
-  `${scope === 'color' ? (isDark ? 'Dark' : 'Light') : COLLECTION_NAMES[scope]}.tokens.json`;
+/** `Color Palette` → `color-palette`, for filenames and JSON roots. */
+const collectionSlug = (tier: ColorCollection) => COLOR_COLLECTIONS[tier].toLowerCase().replace(/\s+/g, '-');
+
+export const colorCollectionFilename = (tier: ColorCollection, ext: 'css' | 'json' | 'csv') =>
+  ext === 'csv' ? `${COLOR_COLLECTIONS[tier]}.csv` : `${collectionSlug(tier)}.${ext}`;
 
 /**
  * Where each variable can be applied in Figma. Primitives and base tokens get none, so they stay
  * out of the pickers and designers only apply semantic tokens, each where its usage says.
- * The empty list is written out on purpose: Figma reads a missing key as all scopes.
  */
 function figmaScopes(t: Token): string[] {
-  if (t.tier !== 'semantic') return [];
-  const leaf = t.path.at(-1)!;
-  switch (t.group) {
-    case 'color':
-      if (t.name.startsWith('bg')) return ['FRAME_FILL', 'SHAPE_FILL'];
-      // Text and icons, which are vector shapes
-      if (t.name.startsWith('fg')) return ['TEXT_FILL', 'SHAPE_FILL'];
-      // Figma's JSON names the stroke scope STROKE, and drops STROKE_COLOR on import
-      if (t.name.startsWith('border')) return ['STROKE'];
-      // Focus rings are drawn as strokes or spread shadows
-      if (t.name.startsWith('focus')) return ['STROKE', 'EFFECT_COLOR'];
-      return ['ALL_FILLS', 'STROKE'];
-    case 'typography':
-      if (t.type === 'fontFamily') return ['FONT_FAMILY'];
-      // Figma's JSON names the "Font weight" property FONT_STYLE, and drops FONT_WEIGHT on import
-      if (t.type === 'fontWeight') return ['FONT_STYLE'];
-      if (t.type === 'letterSpacing') return ['LETTER_SPACING'];
-      return leaf.startsWith('line-height') ? ['LINE_HEIGHT'] : ['FONT_SIZE'];
-    case 'radius':
-      return ['CORNER_RADIUS'];
-    // Figma's gap scope covers auto layout padding too
-    case 'spacing':
-      return ['GAP'];
-    case 'grid':
-      if (t.name === 'page-gutter' || t.name === 'page-margin') return ['GAP'];
-      if (t.name === 'page-max-width' || t.name === 'page-sidebar') return ['WIDTH_HEIGHT'];
-      // Column count has no Figma scope of its own, so it stays out of the pickers
-      return t.type === 'number' ? [] : ['WIDTH_HEIGHT', 'GAP'];
-    default:
-      return [];
-  }
+  if (t.tier !== 'semantic' || t.group !== 'color') return [];
+  if (t.name.startsWith('bg')) return ['FRAME_FILL', 'SHAPE_FILL'];
+  // Text and icons, which are vector shapes
+  if (t.name.startsWith('fg')) return ['TEXT_FILL', 'SHAPE_FILL'];
+  if (t.name.startsWith('border')) return ['STROKE'];
+  // Focus rings are drawn as strokes or spread shadows
+  if (t.name.startsWith('focus')) return ['STROKE', 'EFFECT_COLOR'];
+  return ['ALL_FILLS', 'STROKE'];
 }
 
-function figmaRawValue(t: Token): unknown {
-  if (t.type === 'color') {
-    const c = chroma(t.value as string);
-    const [r, g, b] = c.rgb();
-    return { colorSpace: 'srgb', components: [r / 255, g / 255, b / 255], alpha: c.alpha(), hex: c.hex('rgb') };
-  }
-  return t.value;
+/** `brand/9` → `brand-dark/9`, matching how dark primitives are named (`gray-dark/9`). */
+const darkPath = (path: string[]) => [`${path[0]}-dark`, ...path.slice(1)];
+
+interface ColorValue {
+  /** The primitive the value resolves to, for raw colors. */
+  primitive: Token;
+  /** The variable it aliases in the collection below, if any. */
+  alias?: { tier: ColorCollection; path: string[] };
+}
+
+interface ColorVariable {
+  token: Token;
+  path: string[];
+  /** Theme has a Light and a Dark value; Palette and Color have one, under Default. */
+  modes: Record<string, ColorValue>;
 }
 
 /**
- * One collection per file, with the three tiers as root groups. Aliases use the W3C `{path}` syntax.
- * Color exports one mode per file — export light and dark to get both modes.
+ * The variables of one color collection. Palette and Color hold light and `-dark` variables side by
+ * side in a single mode; Theme aliases the light Color variables in Light and the `-dark` ones in Dark.
  */
-export function generateFigma(palettes: GeneratedPalette[], f: Foundations, scope: FigmaScope, opts: { isDark: boolean; colorFormat: ColorFormat }) {
-  const tokens = buildTokens(palettes, f, { groups: [scope], modes: opts.isDark ? 'dark' : 'light', colorFormat: 'hex' });
+function colorCollectionVariables(palettes: GeneratedPalette[], f: Foundations, tier: ColorCollection, colorFormat: ColorFormat = 'hex'): ColorVariable[] {
+  const tokens = buildTokens(palettes, f, { groups: ['color'], modes: 'both', colorFormat });
   const byName = new Map(tokens.map((t) => [t.name, t]));
-  const alias = (name: string) => {
-    const t = byName.get(name);
-    return t ? `{${[t.tier, ...t.path].join('.')}}` : `{${name}}`;
+  // Variable paths inside each collection, without the tier and `color` roots the collection already names
+  const lightPaths = new Map(tokens.map((t) => [t.name, t.path.slice(1)]));
+  const darkPaths = new Map(tokens.filter((t) => t.tier === 'base' && t.darkRef).map((t) => [t.name, darkPath(t.path.slice(1))]));
+
+  const out: ColorVariable[] = [];
+  // Color lists each role's light group, then its -dark group, like the palettes below it
+  let darkGroup: ColorVariable[] = [];
+  const flushDark = () => {
+    out.push(...darkGroup);
+    darkGroup = [];
   };
-  const collection: Record<string, unknown> = {};
-
-  const write = (t: Token, path: string[], ref: string | undefined, value: unknown) =>
-    setPath(collection, [t.tier, ...path], {
-      $type: t.type === 'letterSpacing' || t.type === 'fontWeight' ? 'number' : t.type === 'fontFamily' ? 'string' : t.type === 'dimension' ? 'number' : t.type,
-      $value: ref ? alias(ref) : value,
-      ...(t.description && { $description: t.description }),
-      $extensions: { 'com.figma.scopes': figmaScopes(t) },
-    });
-
   for (const t of tokens) {
-    // Figma letter spacing is in px or %, never em; percent of the font size matches em × 100
-    if (t.type === 'letterSpacing' && !t.ref) {
-      write(t, t.path, undefined, Math.round((t.value as number) * 1000) / 10);
-      continue;
+    if (t.tier !== tier) continue;
+    const path = lightPaths.get(t.name)!;
+    if (tier === 'base' && darkGroup.length && darkGroup[0].token.path[1] !== t.path[1]) flushDark();
+    if (tier === 'primitive') {
+      out.push({ token: t, path, modes: { Default: { primitive: t } } });
+    } else if (tier === 'base') {
+      const to = (ref: string): ColorValue => ({ primitive: byName.get(ref)!, alias: { tier: 'primitive', path: lightPaths.get(ref)! } });
+      out.push({ token: t, path, modes: { Default: to(t.ref!) } });
+      if (t.darkRef) darkGroup.push({ token: t, path: darkPath(path), modes: { Default: to(t.darkRef) } });
+    } else {
+      const to = (isDark: boolean): ColorValue => ({
+        primitive: resolveToken(t, byName, isDark)!,
+        alias: { tier: 'base', path: (isDark && darkPaths.get(t.ref!)) || lightPaths.get(t.ref!)! },
+      });
+      out.push({ token: t, path, modes: { Light: to(false), Dark: to(true) } });
     }
-    if (!t.responsive?.length) {
-      write(t, t.path, t.ref, t.ref ? undefined : figmaRawValue(t));
-      continue;
-    }
-    // No breakpoints in Figma: the widest value takes the plain name, the others get a suffix
-    const entries = [{ label: t.baseLabel ?? 'base', ref: t.ref! }, ...t.responsive.map((r) => ({ label: r.label, ref: r.ref }))];
-    const widest = entries.at(-1)!;
-    write(t, t.path, widest.ref, undefined);
-    for (const e of entries.slice(0, -1)) write(t, [...t.path.slice(0, -1), `${t.path.at(-1)}-${e.label}`], e.ref, undefined);
+  }
+  flushDark();
+  return out;
+}
+
+const COLLECTION_TITLES: Record<ColorCollection, string> = {
+  primitive: 'Color Palette — raw steps, light and -dark side by side. Reference these only from Color.',
+  base: 'Color — roles aliasing Color Palette, light and -dark side by side. Load color-palette.css first.',
+  semantic: 'Theme — purposes aliasing Color, with dark values under .dark. Use these in components. Load color.css first.',
+};
+
+/** One color collection as custom properties. Variable names are the collection paths joined with `-`. */
+export function generateColorCollectionCss(palettes: GeneratedPalette[], f: Foundations, tier: ColorCollection, colorFormat: ColorFormat) {
+  const variables = colorCollectionVariables(palettes, f, tier, colorFormat);
+  const value = ({ primitive, alias }: ColorValue) => (alias ? `var(--${alias.path.join('-')})` : String(primitive.value));
+  const firstMode = tier === 'semantic' ? 'Light' : 'Default';
+  let css = `/* ===== ${COLLECTION_TITLES[tier]} ===== */\n:root {\n`;
+  css += variables.map((v) => `  --${v.path.join('-')}: ${value(v.modes[firstMode])};`).join('\n');
+  css += '\n}\n';
+
+  // Wide-gamut colors for P3 displays
+  const p3 = variables.filter((v) => !v.modes[firstMode].alias && v.token.p3);
+  if (p3.length) {
+    css += `\n@supports (color: color(display-p3 1 1 1)) {\n  @media (color-gamut: p3) {\n    :root {\n`;
+    css += p3.map((v) => `      --${v.path.join('-')}: ${v.token.p3};`).join('\n');
+    css += '\n    }\n  }\n}\n';
   }
 
-  // Tiers sit at the file root, as Figma exports them: aliases resolve from the root, so wrapping
-  // them in a collection key breaks every base and semantic reference. Figma names the collection
-  // from the import dialog (the filename suggests it).
-  const modeName = scope === 'color' ? (opts.isDark ? 'Dark' : 'Light') : 'Default';
-  return JSON.stringify({ ...collection, $extensions: { 'com.figma.modeName': modeName } }, null, 2);
+  // Put .dark on <html> to switch Theme to the dark Color variables
+  if (tier === 'semantic') {
+    css += `\n.dark {\n${variables.map((v) => `  --${v.path.join('-')}: ${value(v.modes.Dark)};`).join('\n')}\n}\n`;
+  }
+  return css;
+}
+
+/**
+ * One color collection as W3C design tokens, rooted at the collection (`color-palette`, `color`,
+ * `theme`) so aliases into another collection's file (`{color-palette.indigo.9}`) resolve once the
+ * files are merged. Theme keeps its dark alias in `$extensions`, like the full JSON export.
+ */
+export function generateColorCollectionJson(palettes: GeneratedPalette[], f: Foundations, tier: ColorCollection, colorFormat: ColorFormat) {
+  const variables = colorCollectionVariables(palettes, f, tier, colorFormat);
+  const ref = (v: ColorValue) => (v.alias ? `{${[collectionSlug(v.alias.tier), ...v.alias.path].join('.')}}` : String(v.primitive.value));
+  const out: Record<string, unknown> = {};
+  for (const { token: t, path, modes } of variables) {
+    const light = modes.Light ?? modes.Default;
+    setPath(out, [collectionSlug(tier), ...path], {
+      $type: 'color',
+      $value: ref(light),
+      ...(t.description && { $description: t.description }),
+      ...(modes.Dark && { $extensions: { modes: { dark: ref(modes.Dark) } } }),
+    });
+  }
+  return JSON.stringify(out, null, 2);
+}
+
+// ============================================================
+// Color collections for the Sheet Variable Importer plugin
+// ============================================================
+
+/** The plugin's scope labels, as Figma's variable picker names them. */
+const SCOPE_LABELS: Record<string, string> = {
+  ALL_FILLS: 'Fill',
+  FRAME_FILL: 'Frame',
+  SHAPE_FILL: 'Shape',
+  TEXT_FILL: 'Text',
+  STROKE: 'Stroke',
+  EFFECT_COLOR: 'Effects',
+};
+
+const csvCell = (field: string) => (/[",\n]/.test(field) ? `"${field.replace(/"/g, '""')}"` : field);
+
+/**
+ * One collection as a Sheet Variable Importer CSV. The plugin links aliases into other collections
+ * (`{Color Palette:indigo/9}`), so import Color Palette, then Color, then Theme. Theme carries Light and Dark in one file. Color Palette adds an `_OKLCH` column for
+ * reference in Sheets, which the plugin skips like any header starting with `_`.
+ */
+export function generateColorCollectionCsv(palettes: GeneratedPalette[], f: Foundations, tier: ColorCollection) {
+  const variables = colorCollectionVariables(palettes, f, tier);
+  const modeNames = Object.keys(variables[0]?.modes ?? { Default: null });
+  const collection = COLOR_COLLECTIONS[tier];
+  const oklch = tier === 'primitive';
+  const lines = [['Collection Name', 'Name', 'Type', 'Description', 'Scope', ...modeNames.map((m) => `Mode: ${m}`), ...(oklch ? ['_OKLCH'] : [])].join(',')];
+  for (const { token: t, path, modes } of variables) {
+    const scopes = figmaScopes(t).map((s) => SCOPE_LABELS[s] ?? s);
+    const cells = modeNames.map((m) => {
+      const { primitive, alias } = modes[m];
+      return alias ? `{${COLOR_COLLECTIONS[alias.tier]}:${alias.path.join('/')}}` : chroma(primitive.value as string).hex();
+    });
+    lines.push([collection, path.join('/'), 'COLOR', t.description ?? '', scopes.length ? scopes.join(', ') : 'No scope', ...cells, ...(oklch ? [t.p3 ?? ''] : [])].map(csvCell).join(','));
+  }
+  return `${lines.join('\n')}\n`;
 }

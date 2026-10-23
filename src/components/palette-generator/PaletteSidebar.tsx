@@ -77,6 +77,13 @@ export function PaletteSidebar({
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
+  // Which palette holds each role, for the color dots in the role menu
+  const roleHolders = new Map<ColorRole, GeneratedPalette>();
+  for (const p of palettes) {
+    const r = roles.get(p.id)?.role;
+    if (r) roleHolders.set(r, p);
+  }
+
   const handleDragEnd = ({ active, over }: DragEndEvent) => {
     if (!over || active.id === over.id) return;
     const toIndex = palettes.findIndex((p) => p.id === over.id);
@@ -160,6 +167,7 @@ export function PaletteSidebar({
                 onRemove={() => onRemove(p.id)}
                 canRemove={palettes.length > 1}
                 role={roles.get(p.id)?.role}
+                roleHolders={roleHolders}
                 onSetRole={(role) => onSetRole(p.id, role)}
               />
             ))}
@@ -194,6 +202,8 @@ interface SortablePaletteItemProps {
   onRemove: () => void;
   canRemove: boolean;
   role?: ColorRole;
+  /** Palette currently holding each role. */
+  roleHolders: Map<ColorRole, GeneratedPalette>;
   onSetRole: (role: ColorRole | 'none') => void;
 }
 
@@ -209,6 +219,7 @@ function SortablePaletteItem({
   onRemove,
   canRemove,
   role,
+  roleHolders,
   onSetRole,
 }: SortablePaletteItemProps) {
   const badge = role && ROLE_BADGES[role];
@@ -299,15 +310,32 @@ function SortablePaletteItem({
               <DropdownMenuSubTrigger>
                 <Tag /> Token role
               </DropdownMenuSubTrigger>
-              <DropdownMenuSubContent className="w-48">
+              <DropdownMenuSubContent className="w-72">
                 <DropdownMenuRadioGroup value={role ?? ''} onValueChange={(v) => onSetRole(v as ColorRole | 'none')}>
-                  {menuRoles.map((r) => (
-                    <DropdownMenuRadioItem key={r} value={r}>
-                      {ROLE_LABELS[r]}
-                    </DropdownMenuRadioItem>
-                  ))}
+                  {menuRoles.map((r) => {
+                    const holder = roleHolders.get(r);
+                    return (
+                      <DropdownMenuRadioItem key={r} value={r}>
+                        <span
+                          aria-hidden
+                          className={cn(
+                            'size-3 shrink-0 rounded-full',
+                            holder ? 'swatch-outline' : 'border border-dashed border-muted-foreground/50',
+                          )}
+                          style={holder ? { backgroundColor: holder.baseColor } : undefined}
+                        />
+                        <span className="flex-1">{ROLE_LABELS[r]}</span>
+                        {holder && holder.id !== p.id && (
+                          <span className="ml-6 max-w-24 truncate pr-1 text-xs text-muted-foreground">{holder.name}</span>
+                        )}
+                      </DropdownMenuRadioItem>
+                    );
+                  })}
                   <DropdownMenuSeparator />
-                  <DropdownMenuRadioItem value="none">None</DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem value="none">
+                    <span aria-hidden className="size-3 shrink-0" />
+                    None
+                  </DropdownMenuRadioItem>
                 </DropdownMenuRadioGroup>
               </DropdownMenuSubContent>
             </DropdownMenuSub>
