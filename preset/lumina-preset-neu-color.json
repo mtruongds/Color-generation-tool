@@ -2,13 +2,24 @@
   "_meta": {
     "app": "Lumina",
     "version": 1,
-    "exportedAt": "2026-10-21T06:50:23.335Z"
+    "exportedAt": "2026-10-24T04:19:55.630Z"
   },
   "presets": [
     {
-      "id": "4wj8vidat",
-      "name": "Radix Palatte",
+      "id": "arvqav3yq",
+      "name": "Neu Color",
       "palettes": [
+        {
+          "id": "brand0001",
+          "name": "Brand",
+          "baseColor": "#607ac3",
+          "isDark": false,
+          "hueShift": 0,
+          "saturationScale": 1,
+          "lockStep9": false,
+          "tokenRole": "brand",
+          "role": "accent"
+        },
         {
           "id": "l7dlonl66",
           "name": "Tomato",
@@ -16,8 +27,7 @@
           "isDark": false,
           "hueShift": 0,
           "saturationScale": 1,
-          "lockStep9": false,
-          "locked": true
+          "lockStep9": false
         },
         {
           "id": "gynxb4lpo",
@@ -170,7 +180,8 @@
           "isDark": false,
           "hueShift": 0,
           "saturationScale": 1,
-          "lockStep9": false
+          "lockStep9": false,
+          "tokenRole": "none"
         },
         {
           "id": "kvl5jhvmt",
@@ -197,7 +208,8 @@
           "isDark": false,
           "hueShift": 0,
           "saturationScale": 1,
-          "lockStep9": false
+          "lockStep9": false,
+          "tokenRole": "warning"
         },
         {
           "id": "ppi9fwsxh",
@@ -245,17 +257,6 @@
           "lockStep9": false
         },
         {
-          "id": "xsfh7wrb8",
-          "name": "Neutral",
-          "baseColor": "#71717a",
-          "isDark": false,
-          "hueShift": 0,
-          "saturationScale": 1,
-          "lockStep9": false,
-          "role": "gray",
-          "locked": true
-        },
-        {
           "id": "thqmh5md2",
           "name": "Grays",
           "baseColor": "#7d7d7d",
@@ -264,7 +265,7 @@
           "saturationScale": 1,
           "lockStep9": false,
           "description": "Used for all colors",
-          "locked": false
+          "role": "gray"
         },
         {
           "id": "39i8vr56a",
@@ -275,7 +276,7 @@
           "saturationScale": 1,
           "lockStep9": false,
           "description": "Used for warning colors: red, pink, purple...",
-          "locked": false
+          "role": "gray"
         },
         {
           "id": "rihnos2hm",
@@ -286,7 +287,7 @@
           "saturationScale": 1,
           "lockStep9": false,
           "description": "Used for cool colors: blue, indigo, cyan...",
-          "locked": false
+          "role": "gray"
         },
         {
           "id": "50nbvhhmm",
@@ -297,7 +298,7 @@
           "saturationScale": 1,
           "lockStep9": true,
           "description": "Used for green colors",
-          "locked": false
+          "role": "gray"
         },
         {
           "id": "1jbwozdnp",
@@ -308,7 +309,7 @@
           "saturationScale": 1,
           "lockStep9": true,
           "description": "Used for light green colors",
-          "locked": false
+          "role": "gray"
         },
         {
           "id": "1h67bz49x",
@@ -319,10 +320,178 @@
           "saturationScale": 1,
           "lockStep9": false,
           "description": "Used for light warning colors: yellow, amber, orange...",
-          "locked": false
+          "role": "gray"
         }
       ],
-      "createdAt": 1791633902746
+      "foundations": {
+        "typography": {
+          "headingFamily": "Inter",
+          "bodyFamily": "Inter",
+          "monoFamily": "JetBrains Mono",
+          "baseSize": 16,
+          "ratio": 1.25,
+          "mobileRatio": 1.2,
+          "lineHeightGrid": 4,
+          "headingLineHeight": 1.2,
+          "bodyLineHeight": 1.5,
+          "opticalTracking": true,
+          "steps": [
+            {
+              "name": "display",
+              "label": "Display",
+              "step": 6,
+              "role": "heading",
+              "weight": "semibold",
+              "usage": "Hero and marketing headlines"
+            },
+            {
+              "name": "h1",
+              "label": "Heading 1",
+              "step": 5,
+              "role": "heading",
+              "weight": "semibold",
+              "usage": "Page titles"
+            },
+            {
+              "name": "h2",
+              "label": "Heading 2",
+              "step": 4,
+              "role": "heading",
+              "weight": "semibold",
+              "usage": "Section titles"
+            },
+            {
+              "name": "h3",
+              "label": "Heading 3",
+              "step": 3,
+              "role": "heading",
+              "weight": "semibold",
+              "usage": "Subsection titles"
+            },
+            {
+              "name": "h4",
+              "label": "Heading 4",
+              "step": 2,
+              "role": "heading",
+              "weight": "semibold",
+              "usage": "Card and dialog titles"
+            },
+            {
+              "name": "h5",
+              "label": "Heading 5",
+              "step": 1,
+              "role": "heading",
+              "weight": "semibold",
+              "usage": "Group labels, small titles"
+            },
+            {
+              "name": "body-lg",
+              "label": "Body large",
+              "step": 1,
+              "role": "body",
+              "weight": "regular",
+              "usage": "Lead paragraphs"
+            },
+            {
+              "name": "body",
+              "label": "Body",
+              "step": 0,
+              "role": "body",
+              "weight": "regular",
+              "usage": "Default text"
+            },
+            {
+              "name": "body-sm",
+              "label": "Body small",
+              "step": -1,
+              "role": "body",
+              "weight": "regular",
+              "usage": "Secondary text, dense UI"
+            },
+            {
+              "name": "caption",
+              "label": "Caption",
+              "step": -2,
+              "role": "body",
+              "weight": "regular",
+              "usage": "Labels, metadata, footnotes"
+            }
+          ],
+          "sizeOverrides": {}
+        },
+        "spacing": {
+          "base": 4,
+          "progression": "linear"
+        },
+        "radius": {
+          "base": 8
+        },
+        "shadow": {
+          "style": "soft",
+          "intensity": 1,
+          "tint": "#3e63dd",
+          "tintStrength": 0.15,
+          "lightAngle": 0
+        },
+        "grid": {
+          "breakpoints": [
+            {
+              "name": "xs",
+              "minWidth": 0,
+              "columns": 4,
+              "gutter": 16,
+              "margin": 16
+            },
+            {
+              "name": "sm",
+              "minWidth": 576,
+              "columns": 8,
+              "gutter": 16,
+              "margin": 24
+            },
+            {
+              "name": "md",
+              "minWidth": 768,
+              "columns": 8,
+              "gutter": 24,
+              "margin": 32
+            },
+            {
+              "name": "lg",
+              "minWidth": 992,
+              "columns": 12,
+              "gutter": 24,
+              "margin": 32
+            },
+            {
+              "name": "xl",
+              "minWidth": 1200,
+              "columns": 12,
+              "gutter": 24,
+              "margin": 40
+            },
+            {
+              "name": "xxl",
+              "minWidth": 1400,
+              "columns": 12,
+              "gutter": 32,
+              "margin": 48
+            }
+          ],
+          "maxWidth": 1280,
+          "sidebar": 240,
+          "sidebarFrom": "lg"
+        },
+        "aliases": {},
+        "customTokens": [],
+        "products": [
+          {
+            "id": "default",
+            "name": "Main"
+          }
+        ]
+      },
+      "createdAt": 1792815573641
     }
   ]
 }
