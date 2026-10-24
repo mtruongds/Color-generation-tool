@@ -294,11 +294,11 @@ export function PreviewSection({
           <TooltipTrigger asChild>
             <label className="flex h-8 cursor-pointer items-center gap-2 rounded-md border bg-card pr-2 pl-2.5 text-xs">
               <MousePointer2 className="size-3.5 text-muted-foreground" />
-              Step tooltips
-              <Switch checked={tooltipsOn} onCheckedChange={setTooltipsOn} aria-label="Step tooltips" />
+              Token tooltips
+              <Switch checked={tooltipsOn} onCheckedChange={setTooltipsOn} aria-label="Token tooltips" />
             </label>
           </TooltipTrigger>
-          <TooltipContent>Hover any element to see which accent and gray steps it uses</TooltipContent>
+          <TooltipContent>Hover any element to see its accent and gray steps, text style, spacing, radius, elevation and grid columns</TooltipContent>
         </Tooltip>
 
         {/* How big to show it */}

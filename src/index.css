@@ -186,15 +186,23 @@
     box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.1);
   }
 
-  /* Foundation preview highlights: elements tagged with data-fx get an outline and a token label */
-  .fx-preview [data-fx] {
+  /*
+   * Foundation preview highlights: elements carry one data-fx-<foundation> tag per foundation they
+   * use (the hover tooltip reads them all); the picked highlight outlines its tags and labels them
+   */
+  .fx-preview[data-highlight="typography"] [data-fx-typography]:not([data-fx-quiet]),
+  .fx-preview[data-highlight="spacing"] [data-fx-spacing]:not([data-fx-quiet]),
+  .fx-preview[data-highlight="radius"] [data-fx-radius]:not([data-fx-quiet]),
+  .fx-preview[data-highlight="shadow"] [data-fx-shadow]:not([data-fx-quiet]) {
     position: relative;
     outline: 1.5px dashed var(--fx-accent);
     outline-offset: 2px;
   }
 
-  .fx-preview [data-fx]::after {
-    content: attr(data-fx);
+  .fx-preview[data-highlight="typography"] [data-fx-typography]:not([data-fx-quiet])::after,
+  .fx-preview[data-highlight="spacing"] [data-fx-spacing]:not([data-fx-quiet])::after,
+  .fx-preview[data-highlight="radius"] [data-fx-radius]:not([data-fx-quiet])::after,
+  .fx-preview[data-highlight="shadow"] [data-fx-shadow]:not([data-fx-quiet])::after {
     position: absolute;
     top: -0.625rem;
     left: 0.25rem;
@@ -210,8 +218,36 @@
     pointer-events: none;
   }
 
+  .fx-preview[data-highlight="typography"] [data-fx-typography]::after {
+    content: attr(data-fx-typography);
+  }
+
+  .fx-preview[data-highlight="spacing"] [data-fx-spacing]::after {
+    content: attr(data-fx-spacing);
+  }
+
+  .fx-preview[data-highlight="radius"] [data-fx-radius]::after {
+    content: attr(data-fx-radius);
+  }
+
+  /* Spacing and radius labels also give the resolved px, e.g. "radius-lg · 12px" */
+  .fx-preview[data-highlight="spacing"] [data-fx-spacing][data-fx-spacing-value]::after {
+    content: attr(data-fx-spacing) " · " attr(data-fx-spacing-value);
+  }
+
+  .fx-preview[data-highlight="radius"] [data-fx-radius][data-fx-radius-value]::after {
+    content: attr(data-fx-radius) " · " attr(data-fx-radius-value);
+  }
+
+  .fx-preview[data-highlight="shadow"] [data-fx-shadow]::after {
+    content: attr(data-fx-shadow);
+  }
+
   /* A box that clips its overflow would hide a label drawn above it, so the label sits just inside */
-  .fx-preview [data-fx].overflow-hidden::after {
+  .fx-preview[data-highlight="typography"] [data-fx-typography]:not([data-fx-quiet]).overflow-hidden::after,
+  .fx-preview[data-highlight="spacing"] [data-fx-spacing]:not([data-fx-quiet]).overflow-hidden::after,
+  .fx-preview[data-highlight="radius"] [data-fx-radius]:not([data-fx-quiet]).overflow-hidden::after,
+  .fx-preview[data-highlight="shadow"] [data-fx-shadow]:not([data-fx-quiet]).overflow-hidden::after {
     top: 0.375rem;
     left: 0.375rem;
   }
@@ -235,7 +271,7 @@
   }
 
   /* Inset shadow as wide as the padding tints exactly the padding area */
-  .fx-preview [data-fx-pad] {
+  .fx-preview[data-highlight="spacing"] [data-fx-pad] {
     box-shadow: inset 0 0 0 var(--fx-pad) color-mix(in oklab, var(--fx-accent) 18%, transparent) !important;
   }
 

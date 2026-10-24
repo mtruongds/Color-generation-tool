@@ -351,7 +351,7 @@ export function ComponentGallery({ kit }: { kit: PreviewKit }) {
           >
             Asia/Ho Chi Minh <ChevronsUpDown className="size-4" style={{ color: MUTED }} />
           </div>
-          <div style={{ ...floating, marginTop: space(1) }} {...steps('popover: gray surface · border g6 · shadow-md')} {...mark('shadow', 'shadow-md')}>
+          <div style={{ ...floating, marginTop: space(1) }} {...steps('popover: gray surface · border g6')} {...mark('shadow', 'shadow-md')}>
             <Text s="caption" tagged={false} style={{ color: MUTED, fontWeight: 500, padding: `${space(1.5)}px ${space(2)}px` }}>
               Asia
             </Text>
@@ -441,7 +441,7 @@ export function ComponentGallery({ kit }: { kit: PreviewKit }) {
         </Showcase>
 
         <Showcase name="Card">
-          <div style={{ border: HAIRLINE, borderRadius: radius.lg, background: 'var(--g-surface)', boxShadow: shadow.sm }} {...steps('card: gray surface · border g6 · shadow-sm')} {...mark('shadow', 'shadow-sm')}>
+          <div style={{ border: HAIRLINE, borderRadius: radius.lg, background: 'var(--g-surface)', boxShadow: shadow.sm }} {...steps('card: gray surface · border g6')} {...mark('shadow', 'shadow-sm')}>
             <div style={{ padding: space(5) }}>
               <Text s="h4" as="h3" tagged={false}>
                 Create project
@@ -587,7 +587,7 @@ export function ComponentGallery({ kit }: { kit: PreviewKit }) {
           <span {...btn('neutral')}>
             My account <ChevronDown className="size-4" />
           </span>
-          <div style={{ ...floating, marginTop: space(1), maxWidth: 240 }} {...steps('menu: gray surface · border g6 · shadow-md')}>
+          <div style={{ ...floating, marginTop: space(1), maxWidth: 240 }} {...steps('menu: gray surface · border g6')}>
             <Text s="caption" tagged={false} style={{ fontWeight: 600, padding: `${space(1.5)}px ${space(2)}px` }}>
               My account
             </Text>
@@ -635,7 +635,7 @@ export function ComponentGallery({ kit }: { kit: PreviewKit }) {
 
         <Showcase name="Dialog">
           <div className="relative overflow-hidden" style={{ borderRadius: radius.md, background: 'color-mix(in oklab, var(--g12) 40%, transparent)', padding: space(mobile ? 3 : 5) }} {...steps('overlay: g12 at 40%')}>
-            <div style={{ background: 'var(--bg)', borderRadius: radius.lg, boxShadow: shadow.xl, padding: space(5) }} {...steps('dialog: background · shadow-xl')} {...mark('shadow', 'shadow-xl')}>
+            <div style={{ background: 'var(--bg)', borderRadius: radius.lg, boxShadow: shadow.xl, padding: space(5) }} {...steps('dialog: background')} {...mark('shadow', 'shadow-xl')}>
               <div className="flex items-start justify-between" style={{ gap: space(3) }}>
                 <Text s="h5" as="h3" tagged={false}>
                   Share link
@@ -770,7 +770,7 @@ export function ComponentGallery({ kit }: { kit: PreviewKit }) {
           <div
             className="flex items-start"
             style={{ gap: space(3), padding: space(4), background: 'var(--g-surface)', border: HAIRLINE, borderRadius: radius.lg, boxShadow: shadow.lg }}
-            {...steps('toast: gray surface · border g6 · shadow-lg')}
+            {...steps('toast: gray surface · border g6')}
             {...mark('shadow', 'shadow-lg')}
           >
             <Calendar className="mt-0.5 size-4 shrink-0" style={{ color: 'var(--a11)' }} />

@@ -33,14 +33,16 @@ import {
   type GridConfig,
   type ResolvedFoundations,
   type TypeStyle,
+  RADIUS_FULL,
   computeGridLayout,
+  generateSpacingScale,
   resolveFoundations,
   sortedBreakpoints,
   spacingTokenName,
 } from '../../lib/foundations';
 import { typeCss } from './FoundationSample';
 import type { ColorScale } from '../../lib/color-utils';
-import { StepTokenLayer, scaleVars } from '../palette-generator/PalettePreview';
+import { type FoundationRow, StepTokenLayer, scaleVars } from '../palette-generator/PalettePreview';
 import { ComponentGallery } from './ComponentGallery';
 
 export type PreviewKey = Exclude<FoundationKey, 'color'>;
@@ -137,7 +139,7 @@ export interface TextProps {
   children: React.ReactNode;
 }
 
-type PadProps = { 'data-fx'?: string; 'data-fx-pad'?: string; style?: React.CSSProperties };
+type PadProps = { 'data-fx-spacing'?: string; 'data-fx-spacing-value'?: string; 'data-fx-pad'?: string; style?: React.CSSProperties };
 
 /** What a page drawn outside this file needs: the resolved tokens and the shared element styles. */
 export interface PreviewKit {
@@ -152,7 +154,7 @@ export interface PreviewKit {
   btn: (kind: ButtonKind, size?: 'sm' | 'md' | 'lg' | 'icon') => { className: string; style: React.CSSProperties; 'data-tokens': string };
   badge: (kind: BadgeKind) => { className: string; style: React.CSSProperties; 'data-tokens': string };
   steps: (tokens: string) => { 'data-tokens': string };
-  mark: (kind: PreviewKey, label: string) => Record<string, string>;
+  mark: (kind: PreviewKey, label: string, value?: string) => Record<string, string>;
   pad: (multiplier: number, label?: string) => PadProps;
   mergeStyle: (a: PadProps, style: React.CSSProperties) => PadProps;
   MUTED: string;
@@ -305,6 +307,16 @@ export function FoundationPreview({
   );
   const tokens = useMemo(() => resolveFoundations(foundations, isDark), [foundations, isDark]);
   const { type: t, space, radius, shadow, mono } = tokens;
+  // Lookups from a resolved px value or shadow back to its token, for reading tokens off styles
+  const tokenLookup = useMemo(() => {
+    const probe = document.createElement('div').style;
+    const normalize = (css: string) => ((probe.boxShadow = css), probe.boxShadow);
+    return {
+      space: new Map(generateSpacingScale(foundations.spacing).map((s) => [s.value, s.name])),
+      radius: new Map(Object.entries(radius).map(([name, px]) => [px, `radius-${name}`])),
+      shadow: new Map(Object.entries(shadow).map(([name, css]) => [normalize(css), `shadow-${name}`])),
+    };
+  }, [foundations.spacing, radius, shadow]);
   // Landing and article are full-width sites, so only the dashboard takes the grid's sidebar
   const layout = computeGridLayout(page === 'dashboard' ? dashboardGrid(foundations.grid) : { ...foundations.grid, sidebar: 0 }, frameWidth);
   const { breakpoint: bp } = layout;
@@ -313,13 +325,72 @@ export function FoundationPreview({
   const on = (kind: PreviewKey) => highlight === kind;
   const shadowName = (name: string) => `shadow-${name}`;
 
-  /** Tags an element for the active highlight. Only the current foundation's tags show. */
-  const mark = (kind: PreviewKey, label: string): Record<string, string> => (on(kind) ? { 'data-fx': label } : {});
-  /** Spacing tag that also tints the padding area. */
-  const pad = (multiplier: number, label = `p: ${spacingTokenName(multiplier)}`): PadProps =>
-    on('spacing')
-      ? { 'data-fx': label, 'data-fx-pad': '', style: { '--fx-pad': `${space(multiplier)}px` } as React.CSSProperties }
-      : {};
+  /**
+   * Tags an element with a foundation token. Every tag shows in the hover tooltip; only the
+   * highlighted foundation's tags are outlined (see .fx-preview[data-highlight] in index.css).
+   */
+  const mark = (kind: PreviewKey, label: string, value?: string): Record<string, string> => {
+    const radiusName = kind === 'radius' ? label.match(/^radius-(.+)$/)?.[1] : undefined;
+    // Pill radii resolve to 9999px, which says nothing useful, so they go without a value
+    const px = radiusName ? radius[radiusName] : undefined;
+    const resolved = value ?? (px !== undefined && px !== RADIUS_FULL ? `${px}px` : undefined);
+    return { [`data-fx-${kind}`]: label, ...(resolved ? { [`data-fx-${kind}-value`]: resolved } : {}) };
+  };
+  /** Spacing tag for a gap. */
+  const gapMark = (multiplier: number) => mark('spacing', `gap: ${spacingTokenName(multiplier)}`, `${space(multiplier)}px`);
+  /** Spacing tag that also tints the padding area while spacing is highlighted. */
+  const pad = (multiplier: number, label = `p: ${spacingTokenName(multiplier)}`): PadProps => ({
+    'data-fx-spacing': label,
+    'data-fx-spacing-value': `${space(multiplier)}px`,
+    'data-fx-pad': '',
+    style: { '--fx-pad': `${space(multiplier)}px` } as React.CSSProperties,
+  });
+
+  /** Reads radius, padding, gap and elevation tokens off an element's own styles, for the hover tooltip. */
+  const inspect = (el: HTMLElement): FoundationRow[] => {
+    const cs = getComputedStyle(el);
+    const px = (v: string) => Math.round(parseFloat(v) * 100) / 100 || 0;
+    const spaceName = (v: number) => (v === 0 ? '0' : (tokenLookup.space.get(v) ?? `${v}px`));
+    /** CSS shorthand of four sides: "a", "a b", "a b c" or "a b c d". */
+    const shorthand = ([top, right, bottom, left]: string[]) =>
+      right !== left ? [top, right, bottom, left] : top !== bottom ? [top, right, bottom] : top !== right ? [top, right] : [top];
+    const rows: FoundationRow[] = [];
+
+    const corners = [cs.borderTopLeftRadius, cs.borderTopRightRadius, cs.borderBottomRightRadius, cs.borderBottomLeftRadius].map(px);
+    if (corners.some(Boolean)) {
+      const name = (v: number) => (v === 0 ? '0' : (tokenLookup.radius.get(v) ?? `${v}px`));
+      const values = shorthand(corners.map(String));
+      rows.push({
+        label: 'Radius',
+        token: values.map((v) => name(Number(v))).join(' '),
+        value: values.some((v) => Number(v) === RADIUS_FULL) ? undefined : values.map((v) => `${v}px`).join(' '),
+      });
+    }
+
+    const sides = [cs.paddingTop, cs.paddingRight, cs.paddingBottom, cs.paddingLeft].map(px);
+    if (sides.some(Boolean)) {
+      const values = shorthand(sides.map(String));
+      rows.push({ label: 'Padding', token: values.map((v) => spaceName(Number(v))).join(' '), value: values.map((v) => `${v}px`).join(' ') });
+    }
+
+    if (/flex|grid/.test(cs.display)) {
+      const row = px(cs.rowGap);
+      const col = px(cs.columnGap);
+      // A page grid's column gap is the breakpoint gutter, not a spacing step
+      const colName = cs.display.includes('grid') && col === bp.gutter && col > 0 ? 'gutter' : spaceName(col);
+      if (row || col) {
+        rows.push(
+          row === col
+            ? { label: 'Gap', token: spaceName(row), value: `${row}px` }
+            : { label: 'Gap', token: `${spaceName(row)} ${colName}`, value: `${row}px ${col}px` },
+        );
+      }
+    }
+
+    const elevation = el.style.boxShadow && tokenLookup.shadow.get(el.style.boxShadow);
+    if (elevation) rows.push({ label: 'Elevation', token: elevation });
+    return rows;
+  };
 
   /** Which step a text color reads from, for step tooltips. */
   const stepOf = (color?: string) => {
@@ -339,17 +410,20 @@ export function FoundationPreview({
   }: TextProps) => {
     // Truncating clips the highlight label drawn above the box, so a tagged box truncates an inner span instead
     const clips = tagged && /\btruncate\b/.test(className ?? '');
+    const css = typeCss(t[s], mobile);
     return (
     <Tag
       className={clips ? className?.replace(/\btruncate\b/, '') : className}
       style={{
-        ...typeCss(t[s], mobile),
+        ...css,
         // Headings balance their lines; running text avoids orphans
         textWrap: s === 'display' || /^h\d$/.test(s) ? 'balance' : 'pretty',
         ...style,
       } as React.CSSProperties}
       data-tokens={`text: ${stepOf(style?.color)}`}
-      {...(tagged ? mark('typography', `text-${s}`) : {})}
+      // Untagged repeats still report their style on hover, they just aren't outlined
+      {...mark('typography', `text-${s}`, `${css.fontSize}px / ${css.lineHeight} · ${css.fontWeight}`)}
+      {...(tagged ? {} : { 'data-fx-quiet': '' })}
     >
       {clips ? <span className="block truncate">{children}</span> : children}
     </Tag>
@@ -492,11 +566,13 @@ export function FoundationPreview({
         accent={accentScale}
         gray={gray}
         showTokens={showTokens && !dragging}
+        inspect={inspect}
         style={{ width, transform: scale < 1 ? `scale(${scale})` : undefined, transformOrigin: 'top left' }}
       >
         <div
           ref={frameRef}
           className="fx-preview relative w-full overflow-hidden bg-background text-foreground"
+          data-highlight={highlight}
           style={
             {
               // Re-skin the page with the picked gray, so cards, borders and muted text follow it
@@ -590,7 +666,7 @@ export function FoundationPreview({
                     </kbd>
                   </label>
 
-                  <nav className="flex flex-col" style={{ gap: space(0.5) }} {...mark('spacing', `gap: ${spacingTokenName(0.5)}`)}>
+                  <nav className="flex flex-col" style={{ gap: space(0.5) }} {...gapMark(0.5)}>
                     {[
                       { icon: LayoutDashboard, label: 'Overview', count: null },
                       { icon: FolderKanban, label: 'Projects', count: 24 },
@@ -694,7 +770,7 @@ export function FoundationPreview({
                         Deploys and project health across your workspace.
                       </Text>
                     </div>
-                    <div className="flex flex-wrap items-center" style={{ gap: space(2) }} {...mark('spacing', `gap: ${spacingTokenName(2)}`)}>
+                    <div className="flex flex-wrap items-center" style={{ gap: space(2) }} {...gapMark(2)}>
                       <div className="flex" style={{ padding: 2, gap: 2, borderRadius: radius.md, background: 'var(--g3)' }} {...steps('track: g3 · active: background · text: g12 / g11')}>
                         {['7d', '30d', '90d'].map((r) => (
                           <span
@@ -708,7 +784,7 @@ export function FoundationPreview({
                               borderRadius: Math.max(0, radius.md - 2),
                               ...(range === r && { background: 'var(--bg)', boxShadow: shadow.xs }),
                             }}
-                            {...(range === r && on('shadow') ? { 'data-fx': shadowName('xs') } : {})}
+                            {...(range === r ? mark('shadow', shadowName('xs')) : {})}
                           >
                             {r}
                           </span>
@@ -1013,7 +1089,7 @@ export function FoundationPreview({
                             Use a webhook instead
                           </span>
                         </Text>
-                        <div style={{ display: 'grid', gridTemplateColumns: roomy ? 'repeat(2, minmax(0, 1fr))' : '1fr', gap: space(4), marginTop: space(5) }} {...mark('spacing', `gap: ${spacingTokenName(4)}`)}>
+                        <div style={{ display: 'grid', gridTemplateColumns: roomy ? 'repeat(2, minmax(0, 1fr))' : '1fr', gap: space(4), marginTop: space(5) }} {...gapMark(4)}>
                           {[
                             { label: 'Email', node: <input placeholder="you@company.com" defaultValue="mai@northwind.co" className="w-full bg-transparent outline-none placeholder:text-(--g10)" style={typeCss(t['body-sm'], mobile)} />, disabled: false },
                             { label: 'Digest', node: <span className="flex w-full items-center justify-between">Daily, 9:00 <ChevronDown className="size-4" style={{ color: MUTED }} /></span>, disabled: false },
@@ -1115,7 +1191,7 @@ export function FoundationPreview({
                     boxShadow: shadow.lg,
                   }}
                   {...steps('toast: background · border: g6 · icon: a9 · action: a11')}
-                  {...(on('shadow') ? { 'data-fx': shadowName('lg') } : on('radius') ? { 'data-fx': 'radius-lg' } : {})}
+                  {...mark('shadow', shadowName('lg'))} {...mark('radius', 'radius-lg')}
                 >
                   <CheckCircle2 className="mt-0.5 size-4 shrink-0" style={{ color: 'var(--a9)' }} />
                   <div className="min-w-0 flex-1">
@@ -1199,7 +1275,7 @@ export function FoundationPreview({
                     <div
                       className="flex flex-wrap items-stretch"
                       style={{ gap: space(2), marginTop: space(8) }}
-                      {...mark('spacing', `gap: ${spacingTokenName(2)}`)}
+                      {...gapMark(2)}
                     >
                       <div
                         className="flex min-w-0 flex-1 items-center"
@@ -1212,7 +1288,7 @@ export function FoundationPreview({
                           boxShadow: `inset 0 0 0 1px var(--g7), ${shadow.xs}`,
                         }}
                         {...steps('field: background · border: g7 · swatch: a9')}
-                        {...(on('radius') ? { 'data-fx': 'radius-md' } : on('shadow') ? { 'data-fx': shadowName('xs') } : {})}
+                        {...mark('radius', 'radius-md')} {...mark('shadow', shadowName('xs'))}
                       >
                         <span className="shrink-0" style={{ width: space(5), height: space(5), borderRadius: radius.sm, background: 'var(--a9)' }} />
                         <span style={{ ...typeCss(t.body, mobile), fontFamily: mono, color: 'var(--g12)' }}>{hex(accent.solid)}</span>
@@ -1237,7 +1313,7 @@ export function FoundationPreview({
                     boxShadow: `inset 0 0 0 1px var(--g6), ${shadow.xl}`,
                   })}
                   {...steps('panel: g2 · border: g6')}
-                  {...(on('radius') ? { 'data-fx': 'radius-xl' } : on('shadow') ? { 'data-fx': shadowName('xl') } : {})}
+                  {...mark('radius', 'radius-xl')} {...mark('shadow', shadowName('xl'))}
                 >
                   <div style={{ ...grid, rowGap: space(8), alignItems: 'start' }}>
                     <div style={at(1, 8)}>
@@ -1273,7 +1349,7 @@ export function FoundationPreview({
                         overflow: 'hidden',
                       }}
                       {...steps('code: background · border: g6')}
-                      {...(on('radius') ? { 'data-fx': 'radius-lg' } : {})}
+                      {...mark('radius', 'radius-lg')}
                     >
                       <div className="flex items-center justify-between" style={{ padding: `${space(2.5)}px ${space(4)}px`, borderBottom: HAIRLINE }}>
                         <Text s="caption" tagged={false} style={{ fontFamily: mono, color: MUTED }}>
@@ -1396,7 +1472,7 @@ export function FoundationPreview({
                     background: 'var(--g-surface)',
                   }}
                   {...steps('panel: gray surface · border: g6')}
-                  {...(on('radius') ? { 'data-fx': 'radius-xl' } : on('shadow') ? { 'data-fx': shadowName('lg') } : {})}
+                  {...mark('radius', 'radius-xl')} {...mark('shadow', shadowName('lg'))}
                 >
                   {[
                     { name: 'Personal', price: '$0', per: 'forever', items: ['All six foundations', 'CSS and JSON export', 'Light and dark themes'], primary: false },
@@ -1463,7 +1539,7 @@ export function FoundationPreview({
                     color: 'var(--a-contrast)',
                   })}
                   {...steps(`band: a9 · text: contrast · steps: ${isDark ? 'a8 → a6' : 'a10 → a12'}`)}
-                  {...(on('radius') ? { 'data-fx': 'radius-2xl' } : {})}
+                  {...mark('radius', 'radius-2xl')}
                 >
                   {/* The accent's own steps, deepening toward the page background in either theme */}
                   {!mobile && (
@@ -1625,7 +1701,7 @@ export function FoundationPreview({
                         boxShadow: shadow.sm,
                       })}
                       {...steps('figure: g2')}
-                      {...(on('radius') ? { 'data-fx': 'radius-lg' } : on('shadow') ? { 'data-fx': shadowName('sm') } : {})}
+                      {...mark('radius', 'radius-lg')} {...mark('shadow', shadowName('sm'))}
                     >
                       <ScaleStrip scale={accentScale} prefix="a" height={space(mobile ? 8 : 14)} />
                       {!mobile && <StepJobs />}
@@ -1720,7 +1796,7 @@ export function FoundationPreview({
                     className="overflow-hidden"
                     style={{ marginTop: space(6), borderRadius: radius.md, background: 'var(--g2)', boxShadow: 'inset 0 0 0 1px var(--g6)' }}
                     {...steps('code block: g2 · border: g6 · text: g12')}
-                    {...(on('radius') ? { 'data-fx': 'radius-md' } : {})}
+                    {...mark('radius', 'radius-md')}
                   >
                     <div style={{ padding: `${space(2)}px ${space(4)}px`, borderBottom: HAIRLINE, ...typeCss(t.caption, mobile), fontFamily: mono, color: MUTED }}>
                       button.css
@@ -1751,7 +1827,7 @@ export function FoundationPreview({
                       background: 'var(--a3)',
                     })}
                     {...steps('callout: a3 · icon: a11 · text: a12')}
-                    {...(on('radius') ? { 'data-fx': 'radius-lg' } : {})}
+                    {...mark('radius', 'radius-lg')}
                   >
                     <Info className="mt-0.5 size-4 shrink-0" style={{ color: 'var(--a11)' }} />
                     <div>

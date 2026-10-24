@@ -1,7 +1,8 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type React from 'react';
 import { createPortal } from 'react-dom';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '../ui/select';
+import { cn } from '../ui/utils';
 import { resolveColorRoles } from '../../lib/tokens';
 import { type ColorScale, getSurfaceColor } from '../../lib/color-utils';
 import type { GeneratedPalette } from '../../lib/export-utils';
@@ -111,12 +112,13 @@ function PaletteSelect({
 
 /**
  * Wraps a preview so hovering any element tagged with `data-tokens` outlines it and shows
- * which accent and gray steps it uses.
+ * which accent and gray steps it uses, plus any foundation tokens it carries (`data-fx-*`).
  */
 export function StepTokenLayer({
   accent,
   gray,
   showTokens,
+  inspect,
   className,
   style,
   children,
@@ -124,6 +126,8 @@ export function StepTokenLayer({
   accent: ColorScale;
   gray: ColorScale;
   showTokens: boolean;
+  /** Reads foundation tokens off an element's own styles, for elements nobody tagged. */
+  inspect?: (el: HTMLElement) => FoundationRow[];
   className?: string;
   style?: React.CSSProperties;
   children: React.ReactNode;
@@ -153,9 +157,9 @@ export function StepTokenLayer({
 
   const onMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!showTokens) return;
-    const el = (e.target as HTMLElement).closest<HTMLElement>('[data-tokens]');
+    const el = (e.target as HTMLElement).closest<HTMLElement>(HOVER_SELECTOR);
     if (!el || !e.currentTarget.contains(el)) return setHover(null);
-    setHover({ el, tokens: el.dataset.tokens ?? '', x: e.clientX, y: e.clientY });
+    setHover({ el, tokens: el.dataset.tokens ?? '', foundations: foundationRows(el, e.currentTarget, inspect), x: e.clientX, y: e.clientY });
   };
 
   return (
@@ -169,8 +173,56 @@ export function StepTokenLayer({
 interface HoverState {
   el: HTMLElement;
   tokens: string;
+  foundations: FoundationRow[];
   x: number;
   y: number;
+}
+
+/** Foundation tags a preview element can carry: `data-fx-<key>` and `data-fx-<key>-value`. */
+const FOUNDATION_TAGS = ['typography', 'spacing', 'radius', 'shadow'] as const;
+
+/** Tooltip rows, in order. */
+const FOUNDATION_LABELS = ['Text style', 'Padding', 'Gap', 'Radius', 'Elevation', 'Grid'] as const;
+
+const HOVER_SELECTOR = ['[data-tokens]', ...FOUNDATION_TAGS.map((key) => `[data-fx-${key}]`)].join(', ');
+
+export interface FoundationRow {
+  label: (typeof FOUNDATION_LABELS)[number];
+  token: string;
+  value?: string;
+}
+
+/** What the element's styles resolve to, filled in by its tags where the styles say nothing. */
+function foundationRows(el: HTMLElement, root: HTMLElement, inspect?: (el: HTMLElement) => FoundationRow[]): FoundationRow[] {
+  const rows = inspect?.(el) ?? [];
+  for (const key of FOUNDATION_TAGS) {
+    const token = el.getAttribute(`data-fx-${key}`);
+    if (!token) continue;
+    const label =
+      key === 'typography' ? 'Text style' : key === 'radius' ? 'Radius' : key === 'shadow' ? 'Elevation' : token.startsWith('gap') ? 'Gap' : 'Padding';
+    if (!rows.some((r) => r.label === label)) rows.push({ label, token, value: el.getAttribute(`data-fx-${key}-value`) ?? undefined });
+  }
+  const grid = gridPlacement(el, root);
+  if (grid) rows.push({ label: 'Grid', ...grid });
+  return rows.sort((a, b) => FOUNDATION_LABELS.indexOf(a.label) - FOUNDATION_LABELS.indexOf(b.label));
+}
+
+/** The columns the nearest grid-placed block around `el` spans, e.g. "cols 1–8" of 12. */
+function gridPlacement(el: HTMLElement, root: HTMLElement): { token: string; value: string } | null {
+  for (let node: HTMLElement | null = el; node && node !== root; node = node.parentElement) {
+    const placement = node.style.gridColumn;
+    const parent = node.parentElement;
+    if (!placement || !parent) continue;
+    const total = getComputedStyle(parent).gridTemplateColumns.split(' ').filter(Boolean).length;
+    if (!total) continue;
+    const [startRaw, endRaw = ''] = placement.split('/').map((p) => p.trim());
+    const span = (startRaw.match(/^span (\d+)$/) ?? endRaw.match(/^span (\d+)$/))?.[1];
+    const start = Number(startRaw) || 1;
+    const end = span ? start + Number(span) : endRaw === '-1' ? total + 1 : Number(endRaw) || start + 1;
+    const cols = end - start;
+    return { token: cols >= total ? 'full width' : `cols ${start}–${end - 1}`, value: `${cols} of ${total}` };
+  }
+  return null;
 }
 
 // Step references inside a data-tokens description, e.g. "solid: a9 → a10 · text: contrast"
@@ -195,7 +247,7 @@ function StepTooltip({ hover, accent, gray }: { hover: HoverState; accent: Color
   // Measure before paint so the first frame isn't placed with a 0×0 size and then jump
   useLayoutEffect(() => {
     if (ref.current) setSize({ width: ref.current.offsetWidth, height: ref.current.offsetHeight });
-  }, [hover.tokens]);
+  }, [hover.tokens, hover.foundations]);
 
   // Follow the cursor, flipping to stay inside the viewport
   const gap = 14;
@@ -207,11 +259,11 @@ function StepTooltip({ hover, accent, gray }: { hover: HoverState; accent: Color
     <div
       ref={ref}
       role="tooltip"
-      className="pointer-events-none fixed z-50 max-w-[24rem] space-y-1.5 rounded-lg border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-lg"
+      className="pointer-events-none fixed z-50 w-max max-w-[calc(100vw-1rem)] whitespace-nowrap space-y-1.5 rounded-lg border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-lg"
       style={{ left: Math.max(8, left), top: Math.max(8, top) }}
     >
-      {hover.tokens.split(' · ').map((row, i) => (
-        <div key={i} className="flex flex-wrap items-center gap-1">
+      {hover.tokens && hover.tokens.split(' · ').map((row, i) => (
+        <div key={i} className="flex items-center gap-1">
           {row.split(TOKEN_RE).map((part, j) => {
             if (j % 2 === 0) return part ? <span key={j} className="text-muted-foreground">{part}</span> : null;
             const { label, color } = resolveToken(part, accent, gray);
@@ -227,6 +279,19 @@ function StepTooltip({ hover, accent, gray }: { hover: HoverState; accent: Color
           })}
         </div>
       ))}
+      {hover.foundations.length > 0 && (
+        <div className={cn('grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-1', hover.tokens && 'border-t pt-1.5')}>
+          {hover.foundations.map((row) => (
+            <Fragment key={row.label}>
+              <span className="text-muted-foreground">{row.label}</span>
+              <span className="flex items-center gap-1.5">
+                <span className="rounded bg-muted px-1 py-0.5 font-mono text-[0.625rem] font-medium">{row.token}</span>
+                {row.value && <span className="font-mono text-[0.625rem] text-muted-foreground">{row.value}</span>}
+              </span>
+            </Fragment>
+          ))}
+        </div>
+      )}
     </div>,
     document.body,
   );
