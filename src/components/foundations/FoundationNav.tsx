@@ -24,9 +24,13 @@ export const NAV_META: Record<NavKey, { label: string; icon: LucideIcon; title: 
 
 export const NAV_ORDER: NavKey[] = [...FOUNDATION_ORDER, 'preview'];
 
+/** Shorter names for the rail, where each label sits under its icon. */
+const RAIL_LABELS: Partial<Record<NavKey, string>> = { typography: 'Type', grid: 'Grid' };
+
 /**
- * Switches between foundations. `rail` is the always-visible icon column on desktop;
- * `list` is the labelled version used in the mobile drawer.
+ * Switches between foundations. `rail` is the always-visible labelled column on desktop;
+ * `list` is the wider version used in the mobile drawer. Preview sits apart from the six
+ * foundations because it shows them all, rather than editing one.
  */
 export function FoundationNav({
   active,
@@ -45,39 +49,51 @@ export function FoundationNav({
 }) {
   if (variant === 'rail') {
     return (
-      <nav aria-label="Foundations" className="flex h-full w-14 shrink-0 flex-col items-center gap-1 border-r bg-sidebar py-3">
-        {NAV_ORDER.map((key) => {
+      <nav aria-label="Foundations" className="flex h-full w-[4.5rem] shrink-0 flex-col items-center gap-0.5 border-r bg-sidebar py-2.5">
+        {NAV_ORDER.map((key, i) => {
           const { label, icon: Icon } = NAV_META[key];
           const isActive = key === active;
           return (
-            <Tooltip key={key}>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  aria-label={label}
-                  aria-current={isActive ? 'page' : undefined}
-                  onClick={() => onSelect(key)}
-                  className={cn(
-                    'relative flex size-10 items-center justify-center rounded-xl text-muted-foreground transition-[background-color,color,scale] hover:bg-sidebar-accent/70 hover:text-foreground active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                    isActive && 'bg-sidebar-accent text-foreground',
-                  )}
-                >
-                  {/* Indicator sits on the rail's left edge, like a tab underline turned sideways */}
-                  <span
-                    aria-hidden
+            <div key={key} className="contents">
+              {key === 'preview' && <span aria-hidden className="my-1.5 h-px w-8 bg-border" />}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label={label}
+                    aria-current={isActive ? 'page' : undefined}
+                    onClick={() => onSelect(key)}
                     className={cn(
-                      'absolute top-1/2 -left-2 h-5 w-[3px] -translate-y-1/2 rounded-r-full bg-foreground transition-opacity',
-                      isActive ? 'opacity-100' : 'opacity-0',
+                      'group relative flex w-16 flex-col items-center gap-1 rounded-xl px-1 pt-2 pb-1.5 text-muted-foreground transition-[background-color,color,scale] hover:text-foreground active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                      isActive && 'text-foreground',
                     )}
-                  />
-                  <Icon className="size-[1.125rem]" />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="right">
-                {label}
-                <span className="ml-1.5 font-mono opacity-60 tabular">{summaries[key]}</span>
-              </TooltipContent>
-            </Tooltip>
+                  >
+                    {/* Indicator sits on the rail's left edge, like a tab underline turned sideways */}
+                    <span
+                      aria-hidden
+                      className={cn(
+                        'absolute top-3 -left-1 h-5 w-[3px] rounded-r-full bg-foreground transition-opacity',
+                        isActive ? 'opacity-100' : 'opacity-0',
+                      )}
+                    />
+                    <span
+                      className={cn(
+                        'relative flex h-7 w-10 items-center justify-center rounded-lg transition-colors group-hover:bg-sidebar-accent/70',
+                        isActive && 'bg-sidebar-accent group-hover:bg-sidebar-accent',
+                      )}
+                    >
+                      <Icon className="size-[1.125rem]" />
+                    </span>
+                    <span className={cn('text-[0.6875rem] leading-none', isActive && 'font-medium')}>{RAIL_LABELS[key] ?? label}</span>
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="right">
+                  {label}
+                  <span className="ml-1.5 font-mono opacity-60 tabular">{summaries[key]}</span>
+                  <span className="ml-2 rounded border border-current/20 px-1 font-mono text-[0.625rem] opacity-60">{i + 1}</span>
+                </TooltipContent>
+              </Tooltip>
+            </div>
           );
         })}
         {footer && <div className="mt-auto">{footer}</div>}
@@ -93,7 +109,7 @@ export function FoundationNav({
           const { label, icon: Icon } = NAV_META[key];
           const isActive = key === active;
           return (
-            <li key={key}>
+            <li key={key} className={cn(key === 'preview' && 'mt-1.5 border-t pt-1.5')}>
               <button
                 type="button"
                 aria-current={isActive ? 'page' : undefined}

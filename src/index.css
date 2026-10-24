@@ -3,10 +3,47 @@
 
 @source not "../dist";
 
-@custom-variant dark (&:is(.dark *));
+/* A `.light` scope inside a dark page (the canvas editing light tokens) opts back out of dark styles. */
+@custom-variant dark (&:is(.dark *):not(.light *));
 
 /* Neutral chrome so the generated palettes are the only color on screen. */
 :root {
+  --background: #f6f6f7;
+  --foreground: #18181b;
+  --card: #ffffff;
+  --card-foreground: #18181b;
+  --popover: #ffffff;
+  --popover-foreground: #18181b;
+  --primary: #18181b;
+  --primary-foreground: #fafafa;
+  --secondary: #f4f4f5;
+  --secondary-foreground: #18181b;
+  --muted: #f1f1f3;
+  --muted-foreground: #6b6b76;
+  --accent: #f1f1f3;
+  --accent-foreground: #18181b;
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+  --border: #e6e6ea;
+  --input: #e2e2e6;
+  --input-background: #ffffff;
+  --switch-background: #d4d4d8;
+  --ring: #a1a1aa;
+  --radius: 0.625rem;
+  --sidebar: #ffffff;
+  --sidebar-foreground: #18181b;
+  --sidebar-primary: #18181b;
+  --sidebar-primary-foreground: #fafafa;
+  --sidebar-accent: #f4f4f5;
+  --sidebar-accent-foreground: #18181b;
+  --sidebar-border: #e6e6ea;
+  --sidebar-ring: #a1a1aa;
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.04), 0 1px 1px rgb(0 0 0 / 0.02);
+  --shadow-card-hover: 0 4px 16px -4px rgb(0 0 0 / 0.08), 0 1px 2px rgb(0 0 0 / 0.04);
+}
+
+/* Re-applies the light values inside a dark page, for the canvas when it edits light mode. */
+.light {
   --background: #f6f6f7;
   --foreground: #18181b;
   --card: #ffffff;
@@ -125,8 +162,13 @@
     color-scheme: light;
   }
 
-  html.dark {
+  html.dark,
+  .dark {
     color-scheme: dark;
+  }
+
+  .light {
+    color-scheme: light;
   }
 
   body {
@@ -171,6 +213,11 @@
     --checker-b: #2a2a2e;
   }
 
+  .dark .light .checkerboard {
+    --checker-a: #e5e5e5;
+    --checker-b: #ffffff;
+  }
+
   /* 1px edge on color swatches: pure black in light, pure white in dark, never a tinted neutral. */
   .hatched {
     background:
@@ -184,6 +231,10 @@
 
   .dark .swatch-outline {
     box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.1);
+  }
+
+  .dark .light .swatch-outline {
+    box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.1);
   }
 
   /*

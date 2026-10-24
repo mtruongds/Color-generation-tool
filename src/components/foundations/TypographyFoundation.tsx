@@ -25,7 +25,6 @@ import {
   typeStyleFor,
 } from '../../lib/foundations';
 import { typeCss } from './FoundationSample';
-import { ProductSwitcher } from '../palette-generator/PalettePicker';
 import type { FontRole, Product } from '../../lib/tokens';
 import { CanvasHeading, NumberInput, Section, SegmentedField, SelectField, SliderField, SwitchField } from './inspector-controls';
 
@@ -225,14 +224,10 @@ const FONT_FIELDS: [FontRole, string, 'headingFamily' | 'bodyFamily' | 'monoFami
   ['mono', 'Mono', 'monoFamily'],
 ];
 
-/** Products for the Fonts section: each can use its own fonts, inheriting the rest from the first. */
+/** Products for the Fonts section: each can use its own fonts, inheriting the rest from the first. Picked in the header. */
 export interface TypographyProducts {
   products: Product[];
   activeProductId: string;
-  onSelect: (id: string) => void;
-  onAdd: () => void;
-  onRename: (id: string, name: string) => void;
-  onRemove: (id: string) => void;
   /** Sets the active extra product's font for a role; undefined inherits it again. */
   onSetFont: (role: FontRole, family: string | undefined) => void;
 }
@@ -252,18 +247,6 @@ export function TypographyInspector({
 
   return (
     <div className="flex flex-col">
-      {products && (
-        <div className="border-b px-5 py-4">
-          <ProductSwitcher
-            products={products.products}
-            activeId={products.products[index].id}
-            onSelect={products.onSelect}
-            onAdd={products.onAdd}
-            onRename={products.onRename}
-            onRemove={products.onRemove}
-          />
-        </div>
-      )}
       <Section title="Fonts">
         {FONT_FIELDS.map(([role, label, field]) => {
           const options = role === 'mono' ? monoFonts : textFonts;

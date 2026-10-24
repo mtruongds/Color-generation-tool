@@ -110,7 +110,7 @@ export interface Product {
 
 export type FontRole = 'heading' | 'body' | 'mono';
 
-export const DEFAULT_PRODUCT: Product = { id: 'default', name: 'Product 1' };
+export const DEFAULT_PRODUCT: Product = { id: 'default', name: 'Main' };
 
 /** The products, the default first. A missing list means just the default one. */
 export const productsOf = (f: { products?: Product[] }): Product[] => (f.products?.length ? f.products : [DEFAULT_PRODUCT]);
@@ -141,6 +141,29 @@ export function resolveProductRoles(palettes: PaletteConfig[], products: Product
     out.set(product.id, roles);
   });
   return out;
+}
+
+/**
+ * Fills a role in an extra product with a palette, taking it from the palette that filled it there
+ * before. `none` or undefined clears the palette's role in that product, so the role inherits again.
+ */
+export function withProductRole(palettes: PaletteConfig[], productId: string, id: string, role: ColorRole | 'none' | undefined) {
+  // A palette given a role in another product stops being guessed for the first product's roles,
+  // so a role it already fills there by name or position is written down to keep it
+  const mainRoles = resolveColorRoles(palettes);
+  return palettes.map((p) => {
+    const current = p.productRoles?.[productId];
+    const keep = p.id === id ? role && role !== 'none' && role : current !== role && current;
+    const { [productId]: _, ...rest } = p.productRoles ?? {};
+    const productRoles = keep ? { ...rest, [productId]: keep } : rest;
+    if (current === (keep || undefined)) return p;
+    const pinned = keep && !p.tokenRole && mainRoles.get(p.id);
+    return {
+      ...p,
+      ...(pinned && { tokenRole: pinned }),
+      productRoles: Object.keys(productRoles).length ? productRoles : undefined,
+    };
+  });
 }
 
 const BRAND_ROLES: ColorRole[] = ['brand', 'brand-secondary'];

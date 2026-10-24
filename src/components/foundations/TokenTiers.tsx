@@ -71,12 +71,27 @@ function Preview({ t }: { t: Token | undefined }) {
   return null;
 }
 
-/** Resolved value, with the widest breakpoint's value when the token switches by width. */
+/** Every alias from a token down to its primitive, in light or dark mode. */
+function aliasChain(t: Token, byName: Map<string, Token>, isDark: boolean): string[] {
+  const chain = [t.name];
+  let cur: Token | undefined = t;
+  for (let i = 0; cur?.ref && i < 4; i++) {
+    cur = byName.get(isDark && cur.darkRef ? cur.darkRef : cur.ref);
+    if (cur) chain.push(cur.name);
+  }
+  return chain;
+}
+
+/**
+ * Resolved value, with the widest breakpoint's value when the token switches by width. Semantic
+ * tokens also name the primitive they land on, so the whole chain reads without opening anything.
+ */
 function Resolved({ t, byName, isDark }: { t: Token; byName: Map<string, Token>; isDark: boolean }) {
   const resolved = resolveToken(t, byName, isDark);
   const last = t.responsive?.at(-1);
   const wide = last && byName.get(last.ref);
-  return (
+  const chain = t.tier === 'primitive' ? [] : aliasChain(t, byName, isDark);
+  const value = (
     <span className="flex items-center gap-2 font-mono text-xs whitespace-nowrap text-muted-foreground tabular">
       <Preview t={resolved} />
       {formatValue(resolved)}
@@ -85,9 +100,23 @@ function Resolved({ t, byName, isDark }: { t: Token; byName: Map<string, Token>;
           → {formatValue(resolveToken(wide, byName, isDark))} ≥{last.minWidth}
         </span>
       )}
+      {chain.length > 2 && <span className="min-w-0 truncate text-muted-foreground/60">via {chain.at(-1)}</span>}
     </span>
   );
+  if (chain.length < 2) return value;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="block min-w-0 cursor-default">{value}</span>
+      </TooltipTrigger>
+      <TooltipContent align="start" className="font-mono text-[0.6875rem]">
+        {[...chain, formatValue(resolved)].join('  →  ')}
+      </TooltipContent>
+    </Tooltip>
+  );
 }
+
+type RowFilter = 'all' | 'edited' | 'custom';
 
 /**
  * Every token in one foundation, split into its three tiers. Primitives are read-only; base and
@@ -127,6 +156,7 @@ export function TokenTiers({
   onRemoveToken: (name: string) => void;
 }) {
   const [query, setQuery] = useState('');
+  const [filter, setFilter] = useState<RowFilter>('all');
   const [folded, setFolded] = useState<Partial<Record<Tier, boolean>>>({});
 
   // Every group, so new names can't clash with a custom property elsewhere
@@ -137,6 +167,7 @@ export function TokenTiers({
   const tokens = useMemo(() => allTokens.filter((t) => t.group === group), [allTokens, group]);
   const byName = useMemo(() => new Map(allTokens.map((t) => [t.name, t])), [allTokens]);
   const edited = tokens.filter((t) => t.defaultRef);
+  const added = tokens.filter((t) => t.custom);
 
   /** Tokens that alias each token, so one in use can't be deleted. */
   const usedBy = useMemo(() => {
@@ -150,7 +181,11 @@ export function TokenTiers({
   }, [tokens]);
 
   const q = query.trim().toLowerCase();
-  const matches = (t: Token) => !q || t.name.includes(q) || t.ref?.includes(q) || t.description?.toLowerCase().includes(q);
+  const matches = (t: Token) =>
+    (filter === 'all' || (filter === 'edited' ? !!t.defaultRef : !!t.custom)) &&
+    (!q || t.name.includes(q) || t.ref?.includes(q) || t.description?.toLowerCase().includes(q));
+  /** Searching or filtering opens every tier, so matches never hide in a folded one. */
+  const narrowing = !!q || filter !== 'all';
 
   return (
     <div className="space-y-6 pb-16">
@@ -158,6 +193,33 @@ export function TokenTiers({
         <div className="relative min-w-[12rem] flex-1">
           <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
           <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filter tokens" className="h-8 pl-8 text-sm" aria-label="Filter tokens" />
+        </div>
+        <div role="radiogroup" aria-label="Show tokens" className="flex h-8 items-center rounded-lg bg-muted p-0.5">
+          {(
+            [
+              ['all', 'All', tokens.length],
+              ['edited', 'Edited', edited.length],
+              ['custom', 'Added', added.length],
+            ] as const
+          ).map(([value, label, count]) => (
+            <button
+              key={value}
+              type="button"
+              role="radio"
+              aria-checked={filter === value}
+              disabled={value !== 'all' && count === 0}
+              onClick={() => setFilter(value)}
+              className={cn(
+                'flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-40',
+                filter === value ? 'bg-card font-medium text-foreground shadow-xs' : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              {value === 'edited' && <span className="size-1.5 rounded-full bg-amber-500" />}
+              {value === 'custom' && <span className="size-1.5 rounded-full bg-emerald-500" />}
+              {label}
+              <span className="font-mono text-[0.625rem] tabular opacity-60">{count}</span>
+            </button>
+          ))}
         </div>
         {edited.length > 0 && (
           <Button variant="outline" size="sm" className="gap-1.5" onClick={() => onResetAliases(edited.map((t) => t.name))}>
@@ -170,11 +232,16 @@ export function TokenTiers({
         const all = tokens.filter((t) => t.tier === tier);
         if (all.length === 0 && tier === 'primitive') return null;
         const rows = all.filter(matches);
-        const isFolded = !q && (folded[tier] ?? (tier === 'primitive' && all.length > FOLD_OVER));
+        // A filter that leaves a tier empty hides it, rather than showing an empty table
+        if (filter !== 'all' && rows.length === 0) return null;
+        const isFolded = !narrowing && (folded[tier] ?? (tier === 'primitive' && all.length > FOLD_OVER));
         const meta = TIER_META[tier];
         const editedHere = all.filter((t) => t.defaultRef).length;
         const nameWidth = tokenColumnWidth(all);
         const customHere = all.filter((t) => t.custom).length;
+        // Usage only shows where some token has one; otherwise the column is just empty space
+        const hasUsage = all.some((t) => t.description);
+        const columns = 2 + (tier !== 'primitive' ? 1 : 0) + (hasUsage ? 1 : 0);
 
         return (
           <section key={tier} className="overflow-hidden rounded-xl border bg-card shadow-card">
@@ -190,7 +257,7 @@ export function TokenTiers({
               <span className="ml-auto shrink-0 font-mono text-[0.6875rem] text-muted-foreground tabular">
                 {customHere > 0 && <span className="mr-2 text-emerald-600 dark:text-emerald-400">{customHere} added</span>}
                 {editedHere > 0 && <span className="mr-2 text-amber-600 dark:text-amber-400">{editedHere} edited</span>}
-                {q ? `${rows.length}/${all.length}` : all.length}
+                {narrowing ? `${rows.length}/${all.length}` : all.length}
               </span>
             </button>
 
@@ -204,7 +271,7 @@ export function TokenTiers({
                       </th>
                       {tier !== 'primitive' && <th className="w-60 px-4 py-2 font-medium">Aliases</th>}
                       <th className="px-4 py-2 font-medium">{tier === 'primitive' ? 'Value' : 'Resolves to'}</th>
-                      <th className="px-4 py-2 font-medium">Usage</th>
+                      {hasUsage && <th className="px-4 py-2 font-medium">Usage</th>}
                     </tr>
                   </thead>
                   <tbody className="divide-y">
@@ -245,18 +312,18 @@ export function TokenTiers({
                         <td className="px-4 py-2">
                           <Resolved t={t} byName={byName} isDark={isDark} />
                         </td>
-                        <td className="px-4 py-2 text-xs text-muted-foreground">{t.description}</td>
+                        {hasUsage && <td className="px-4 py-2 text-xs text-muted-foreground">{t.description}</td>}
                       </tr>
                     ))}
                     {rows.length === 0 && q && (
                       <tr>
-                        <td colSpan={4} className="px-4 py-6 text-center text-xs text-muted-foreground">
+                        <td colSpan={columns} className="px-4 py-6 text-center text-xs text-muted-foreground">
                           No {meta.label.toLowerCase()} tokens match “{query}”
                         </td>
                       </tr>
                     )}
-                    {tier !== 'primitive' && (
-                      <AddTokenRow key={`${group}-${tier}`} tier={tier} group={group} tokens={tokens} taken={byName} isDark={isDark} onAdd={onAddToken} />
+                    {tier !== 'primitive' && filter === 'all' && (
+                      <AddTokenRow key={`${group}-${tier}`} columns={columns} tier={tier} group={group} tokens={tokens} taken={byName} isDark={isDark} onAdd={onAddToken} />
                     )}
                   </tbody>
                 </table>
@@ -345,6 +412,7 @@ function AliasCell({
 }
 
 function AddTokenRow({
+  columns,
   tier,
   group,
   tokens,
@@ -352,6 +420,7 @@ function AddTokenRow({
   isDark,
   onAdd,
 }: {
+  columns: number;
   tier: 'base' | 'semantic';
   group: TokenGroup;
   tokens: Token[];
@@ -385,7 +454,7 @@ function AddTokenRow({
   if (!open) {
     return (
       <tr>
-        <td colSpan={4} className="px-2 py-1.5">
+        <td colSpan={columns} className="px-2 py-1.5">
           <Button
             variant="ghost"
             size="sm"
@@ -429,7 +498,7 @@ function AddTokenRow({
           onChange={setRef}
         />
       </td>
-      <td colSpan={2} className="px-4 py-2">
+      <td colSpan={columns - 2} className="px-4 py-2">
         <div className="flex items-center gap-1.5">
           <Input
             value={description}

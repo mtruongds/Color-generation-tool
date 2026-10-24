@@ -1,4 +1,4 @@
-import { Check, Moon, Sun, X } from 'lucide-react';
+import { Check, X } from 'lucide-react';
 import { copyToClipboard } from '../../lib/clipboard';
 import { formatLength, typeBreakpoint } from '../../lib/foundation-export';
 import {
@@ -87,14 +87,6 @@ const GUIDELINES: Record<DocKey, { intro: string; dos: string[]; donts: string[]
       'Don’t place text closer to the screen edge than the margin.',
     ],
   },
-};
-
-const TITLES: Record<DocKey, string> = {
-  typography: 'Typography reference',
-  spacing: 'Spacing reference',
-  radius: 'Radius reference',
-  shadow: 'Shadow reference',
-  grid: 'Layout grid reference',
 };
 
 function spacingUsage(multiplier: number) {
@@ -224,18 +216,8 @@ export function FoundationDocs({
 
   return (
     <div className="space-y-8 pb-16">
-      <div className="space-y-1.5 border-b pb-6">
-        <div className="flex flex-wrap items-center gap-2.5">
-          <h1 className="text-2xl font-semibold tracking-tight">{TITLES[foundation]}</h1>
-          {foundation === 'shadow' && (
-            <span className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[0.6875rem] text-muted-foreground">
-              {isDark ? <Moon className="size-3" /> : <Sun className="size-3" />}
-              {isDark ? 'Dark' : 'Light'}
-            </span>
-          )}
-        </div>
-        <p className="max-w-2xl text-sm text-muted-foreground">{guide.intro}</p>
-      </div>
+      {/* The page header names the foundation; this is the guidance that opens its reference */}
+      <p className="max-w-2xl text-sm text-muted-foreground">{guide.intro}</p>
 
       <div className="grid gap-3 sm:grid-cols-2">
         {[

@@ -159,10 +159,10 @@ export function PresetsMenu({
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground hover:text-foreground max-lg:size-8 max-lg:px-0" aria-label="Presets">
+          <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground hover:text-foreground max-xl:size-8 max-xl:px-0" aria-label="Presets">
             <Library />
-            <span className="hidden lg:inline">Presets</span>
-            <ChevronDown className="hidden size-3.5 opacity-60 lg:block" />
+            <span className="hidden xl:inline">Presets</span>
+            <ChevronDown className="hidden size-3.5 opacity-60 xl:block" />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-52">

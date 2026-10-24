@@ -625,7 +625,10 @@ export function allFontFamilies(f: Foundations): string[] {
 
 function normalizeProducts(raw: unknown): Product[] | undefined {
   if (!Array.isArray(raw)) return undefined;
-  const list = raw.filter((p): p is Product => !!p && typeof p.id === 'string' && typeof p.name === 'string');
+  const list = raw
+    .filter((p): p is Product => !!p && typeof p.id === 'string' && typeof p.name === 'string')
+    // The default product used to be called "Product 1"
+    .map((p) => (p.id === 'default' && p.name === 'Product 1' ? { ...p, name: 'Main' } : p));
   return list.length ? list : undefined;
 }
 

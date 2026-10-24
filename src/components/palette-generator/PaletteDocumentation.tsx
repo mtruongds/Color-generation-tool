@@ -48,16 +48,6 @@ export function PaletteDocumentation({ palettes, colorFormat = 'hex' }: PaletteD
   const info = colorTokenInfo(palettes);
   return (
     <div className="space-y-12 pb-16">
-      <div className="flex flex-col items-start justify-between gap-4 border-b pb-6 md:flex-row md:items-end">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Color reference</h1>
-          <p className="mt-1 max-w-xl text-sm text-muted-foreground">
-            Token names, values, contrast and recommended usage for every step of the design system
-            palette.
-          </p>
-        </div>
-      </div>
-
       {palettes.map((palette) => {
         const s = palette.scale.colors;
         const alphaScale = generateAlphaScale(palette.scale, palette.isDark);
