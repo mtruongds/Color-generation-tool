@@ -354,6 +354,8 @@ export interface ShadowLayer {
   blur: number;
   spread: number;
   color: string;
+  /** The color token this layer takes its color from, in the token model. */
+  colorRef?: string;
 }
 
 export interface ShadowToken {
@@ -608,13 +610,19 @@ export function normalizeFoundations(raw: unknown): Foundations {
 
 const FONT_FIELDS = { heading: 'headingFamily', body: 'bodyFamily', mono: 'monoFamily' } as const satisfies Record<FontRole, keyof TypographyConfig>;
 
-/** Foundations as a product sees them: its own fonts over the first product's. */
-export function foundationsForProduct(f: Foundations, productId: string | undefined): Foundations {
-  const fonts = f.products?.slice(1).find((p) => p.id === productId)?.fonts;
-  if (!fonts || !Object.keys(fonts).length) return f;
-  const typography = { ...f.typography };
-  for (const role of Object.keys(FONT_FIELDS) as FontRole[]) if (fonts[role]) typography[FONT_FIELDS[role]] = fonts[role]!;
-  return { ...f, typography };
+/** Foundations as a product sees them: its own fonts, radius and shadow tint (from `productShadowTints`) over the first product's. */
+export function foundationsForProduct(f: Foundations, productId: string | undefined, shadowTint?: string): Foundations {
+  const product = f.products?.slice(1).find((p) => p.id === productId);
+  if (!product) return f;
+  let out = f;
+  if (product.fonts && Object.keys(product.fonts).length) {
+    const typography = { ...f.typography };
+    for (const role of Object.keys(FONT_FIELDS) as FontRole[]) if (product.fonts[role]) typography[FONT_FIELDS[role]] = product.fonts[role]!;
+    out = { ...out, typography };
+  }
+  if (product.radius !== undefined) out = { ...out, radius: { ...f.radius, base: product.radius } };
+  if (shadowTint && shadowTint !== f.shadow.tint) out = { ...out, shadow: { ...f.shadow, tint: shadowTint } };
+  return out;
 }
 
 /** Every font family any product uses, so all of them load. */
@@ -628,7 +636,12 @@ function normalizeProducts(raw: unknown): Product[] | undefined {
   const list = raw
     .filter((p): p is Product => !!p && typeof p.id === 'string' && typeof p.name === 'string')
     // The default product used to be called "Product 1"
-    .map((p) => (p.id === 'default' && p.name === 'Product 1' ? { ...p, name: 'Main' } : p));
+    .map((p) => (p.id === 'default' && p.name === 'Product 1' ? { ...p, name: 'Main' } : p))
+    .map(({ radius, shadowTint, ...p }) => ({
+      ...p,
+      ...(typeof radius === 'number' && Number.isFinite(radius) && { radius }),
+      ...(shadowTint === 'brand' && { shadowTint }),
+    }));
   return list.length ? list : undefined;
 }
 
@@ -644,7 +657,8 @@ function normalizeCustomTokens(raw: unknown): CustomToken[] {
 
 /**
  * Renamed roles: primary became brand (primary-9 → brand-9), secondary became brand-secondary (bg-secondary → bg-brand-secondary),
- * and the per-role weights became emphasis levels at their old defaults (font-weight-heading → font-weight-strong).
+ * the per-role weights became emphasis levels at their old defaults (font-weight-heading → font-weight-strong),
+ * and the elevation shadows became levels (elevation-24 → shadow-2xl).
  */
 const renameRoles = (name: string) =>
   name
@@ -652,7 +666,11 @@ const renameRoles = (name: string) =>
     .replace(/^secondary-(\d+|a\d+|contrast|surface)$/, 'brand-secondary-$1')
     .replace(/^(bg|fg-on|fg|border)-secondary(-subtle)?$/, '$1-brand-secondary$2')
     .replace(/^font-weight-heading$/, 'font-weight-strong')
-    .replace(/^font-weight-body$/, 'font-weight-normal');
+    .replace(/^font-weight-body$/, 'font-weight-normal')
+    .replace(/^elevation-(?:dark-)?(\d+)$/, (m, e) => {
+      const level = SHADOW_LEVELS.find((l) => l.elevation === Number(e));
+      return level ? `shadow-${level.name}` : m;
+    });
 
 function normalizeAliases(raw: unknown): Record<string, string> {
   if (!raw || typeof raw !== 'object') return {};

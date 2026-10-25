@@ -16,10 +16,12 @@ import {
   type Tier,
   type Token,
   type TokenGroup,
+  aliasLock,
   aliasOptions,
   aliasTargets,
   buildTokens,
   isTokenName,
+  resolveShadowLayers,
   resolveToken,
 } from '../../lib/tokens';
 
@@ -37,7 +39,7 @@ const NAME_HINTS: Record<TokenGroup, Record<'base' | 'semantic', string>> = {
   typography: { base: 'font-size-hero', semantic: 'text-hero-size' },
   spacing: { base: 'space-4xl', semantic: 'padding-section' },
   radius: { base: 'radius-3xl', semantic: 'radius-input' },
-  shadow: { base: 'shadow-3xl', semantic: 'shadow-toast' },
+  shadow: { base: 'shadow-3xl', semantic: 'container-toast' },
   grid: { base: 'container-narrow', semantic: 'page-narrow' },
 };
 
@@ -71,6 +73,12 @@ function Preview({ t }: { t: Token | undefined }) {
   return null;
 }
 
+/** The token an alias lands on. A shadow level's colors come from its slots, so they follow the mode. */
+function resolveShown(t: Token, byName: Map<string, Token>, isDark: boolean): Token | undefined {
+  const landed = resolveToken(t, byName, isDark);
+  return landed?.type === 'shadow' ? { ...landed, value: resolveShadowLayers(landed, byName, isDark) } : landed;
+}
+
 /** Every alias from a token down to its primitive, in light or dark mode. */
 function aliasChain(t: Token, byName: Map<string, Token>, isDark: boolean): string[] {
   const chain = [t.name];
@@ -87,7 +95,7 @@ function aliasChain(t: Token, byName: Map<string, Token>, isDark: boolean): stri
  * tokens also name the primitive they land on, so the whole chain reads without opening anything.
  */
 function Resolved({ t, byName, isDark }: { t: Token; byName: Map<string, Token>; isDark: boolean }) {
-  const resolved = resolveToken(t, byName, isDark);
+  const resolved = resolveShown(t, byName, isDark);
   const last = t.responsive?.at(-1);
   const wide = last && byName.get(last.ref);
   const chain = t.tier === 'primitive' ? [] : aliasChain(t, byName, isDark);
@@ -358,6 +366,9 @@ function AliasCell({
   const options = aliasOptions(token, tokens);
   const defaultRef = token.defaultRef ?? token.ref;
   const change = (ref: string) => (token.custom ? onUpdateToken(token.name, ref) : onAliasChange(token.name, ref === token.defaultRef ? null : ref));
+  // Shadow levels alias nothing, so a picker would only store an edit that never applies
+  const lock = aliasLock(token);
+  if (lock) return <span className="block truncate px-1 text-xs text-muted-foreground" title={lock}>{lock}</span>;
 
   return (
     <div className="flex items-center gap-1">
@@ -433,7 +444,8 @@ function AddTokenRow({
   const [name, setName] = useState('');
   const [ref, setRef] = useState('');
   const [description, setDescription] = useState('');
-  const targets = aliasTargets(tier, group, tokens);
+  // A new shadow token is a shadow, so its color slots and raw layer colors aren't targets
+  const targets = aliasTargets(tier, group, tokens, group === 'shadow' ? 'shadow' : undefined);
 
   const slug = name.trim().toLowerCase().replace(/\s+/g, '-');
   const error = !slug ? null : !isTokenName(slug) ? 'Use lowercase letters, numbers and hyphens' : taken.has(slug) ? 'Name already in use' : null;
@@ -494,7 +506,7 @@ function AddTokenRow({
           byName={taken}
           isDark={isDark}
           label="Aliases"
-          placeholder={`Pick a ${TIER_META[tier === 'base' ? 'primitive' : 'base'].label.toLowerCase()} token`}
+          placeholder={group === 'shadow' ? 'Pick a shadow' : `Pick a ${TIER_META[tier === 'base' ? 'primitive' : 'base'].label.toLowerCase()} token`}
           onChange={setRef}
         />
       </td>
@@ -568,7 +580,7 @@ function AliasPicker({
           <CommandList className="max-h-72 p-1">
             <CommandEmpty className="py-6 text-center text-xs text-muted-foreground">No matching token</CommandEmpty>
             {options.map((o) => {
-              const resolved = resolveToken(o, byName, isDark);
+              const resolved = resolveShown(o, byName, isDark);
               const shown = formatValue(resolved);
               return (
                 <CommandItem

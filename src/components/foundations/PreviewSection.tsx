@@ -22,7 +22,7 @@ import { cn } from '../ui/utils';
 import type { Accent, Foundations } from '../../lib/foundations';
 import type { GeneratedPalette } from '../../lib/export-utils';
 import { openPreviewWindow } from '../../lib/preview-window';
-import { productsOf, resolveProductRoles } from '../../lib/tokens';
+import { productShadowTints, productsOf, resolveProductRoles } from '../../lib/tokens';
 import { foundationsForProduct } from '../../lib/foundations';
 import {
   PreviewPaletteControls,
@@ -146,8 +146,11 @@ export function PreviewSection({
   const [productId, setProductId] = useState<string>(() => activeProductId ?? loadProduct() ?? products[0].id);
   const product = hasProducts && productId !== CUSTOM ? products.find((p) => p.id === productId) : undefined;
   const productRoles = product && rolesByProduct.get(product.id);
-  // The product's fonts too; custom palettes keep the first product's type
-  const shownFoundations = useMemo(() => foundationsForProduct(foundations, product?.id), [foundations, product?.id]);
+  // The product's fonts, radius and shadow tint too; custom palettes keep the first product's
+  const shownFoundations = useMemo(
+    () => foundationsForProduct(foundations, product?.id, product && productShadowTints(palettes, foundations).get(product.id)),
+    [foundations, product, palettes],
+  );
   const updateView = (updates: Partial<ViewSettings>) => setView((v) => ({ ...v, ...updates }));
 
   useEffect(() => {

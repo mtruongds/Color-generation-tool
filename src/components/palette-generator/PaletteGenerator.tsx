@@ -92,8 +92,11 @@ import {
   type ColorRole,
   type CustomToken,
   type FontRole,
+  type Product,
   DEFAULT_PRODUCT,
+  brandSolid,
   colorTokenInfo,
+  productShadowTints,
   productsOf,
   resolveColorRoles,
   resolveProductRoles,
@@ -478,6 +481,21 @@ export function PaletteGenerator({
     [activeProduct.id, setProducts],
   );
 
+  /** Sets a field on the active extra product; undefined inherits the first product's again. */
+  const setProductField = useCallback(
+    <K extends 'radius' | 'shadowTint'>(key: K, value: Product[K]) =>
+      setProducts((list) =>
+        list.map((p) => {
+          if (p.id !== activeProduct.id) return p;
+          const next = { ...p };
+          if (value === undefined) delete next[key];
+          else next[key] = value;
+          return next;
+        }),
+      ),
+    [activeProduct.id, setProducts],
+  );
+
   /** Fills a role in an extra product, taking it from the palette that filled it there before. */
   const setProductRole = useCallback((productId: string, id: string, role: ColorRole | 'none' | undefined) => {
     setPalettes((prev) => withProductRole(prev, productId, id, role));
@@ -493,8 +511,18 @@ export function PaletteGenerator({
     return { solid: c[8], contrast: primary.scale.contrast, subtle: c[2], text: c[10] };
   }, [generatedPalettes, paletteTokens]);
 
-  /** Foundations with the active product's fonts, for the canvases and samples. */
-  const productFoundations = useMemo(() => foundationsForProduct(foundations, activeProduct.id), [foundations, activeProduct.id]);
+  const shadowTints = useMemo(() => productShadowTints(generatedPalettes, foundations), [generatedPalettes, foundations]);
+  /** The active product's brand step 9, offered as its shadow tint. */
+  const productBrand = useMemo(() => {
+    const brand = generatedPalettes.find((p) => p.id === activeProductRoles.get('brand')?.paletteId);
+    return brand ? brandSolid(brand) : accent.solid;
+  }, [activeProductRoles, generatedPalettes, accent.solid]);
+
+  /** Foundations with the active product's fonts, radius and shadow tint, for the canvases and samples. */
+  const productFoundations = useMemo(
+    () => foundationsForProduct(foundations, activeProduct.id, shadowTints.get(activeProduct.id)),
+    [foundations, activeProduct.id, shadowTints],
+  );
   const resolved = useMemo(() => resolveFoundations(productFoundations, isDarkMode), [productFoundations, isDarkMode]);
 
   const summaries: Record<NavKey, string> = useMemo(
@@ -945,9 +973,32 @@ export function PaletteGenerator({
   ) : foundation === 'spacing' ? (
     <SpacingInspector config={foundations.spacing} onChange={(u) => updateFoundation('spacing', u)} />
   ) : foundation === 'radius' ? (
-    <RadiusInspector config={foundations.radius} onChange={(u) => updateFoundation('radius', u)} />
+    <RadiusInspector
+      config={foundations.radius}
+      onChange={(u) => updateFoundation('radius', u)}
+      product={
+        isExtraProduct
+          ? { name: activeProduct.name, from: products[0].name, base: activeProduct.radius, onChange: (base) => setProductField('radius', base) }
+          : undefined
+      }
+    />
   ) : foundation === 'shadow' ? (
-    <ShadowInspector config={foundations.shadow} accent={accent.solid} onChange={(u) => updateFoundation('shadow', u)} />
+    <ShadowInspector
+      config={foundations.shadow}
+      accent={accent.solid}
+      onChange={(u) => updateFoundation('shadow', u)}
+      product={
+        isExtraProduct
+          ? {
+              name: activeProduct.name,
+              from: products[0].name,
+              tint: activeProduct.shadowTint,
+              brand: productBrand,
+              onChange: (tint) => setProductField('shadowTint', tint),
+            }
+          : undefined
+      }
+    />
   ) : (
     <GridInspector config={foundations.grid} spacingBase={foundations.spacing.base} onChange={(u) => updateFoundation('grid', u)} />
   );
@@ -1474,9 +1525,9 @@ export function PaletteGenerator({
                 ) : foundation === 'spacing' ? (
                   <SpacingCanvas config={foundations.spacing} accent={accent} />
                 ) : foundation === 'radius' ? (
-                  <RadiusCanvas config={foundations.radius} accent={accent} />
+                  <RadiusCanvas config={productFoundations.radius} accent={accent} />
                 ) : foundation === 'shadow' ? (
-                  <ShadowCanvas config={foundations.shadow} isDark={isDarkMode} radius={resolved.radius.lg} />
+                  <ShadowCanvas config={productFoundations.shadow} isDark={isDarkMode} radius={resolved.radius.lg} />
                 ) : (
                   <GridCanvas config={foundations.grid} accent={accent} />
                 )}

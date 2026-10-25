@@ -2,7 +2,7 @@
   "_meta": {
     "app": "Lumina",
     "version": 1,
-    "exportedAt": "2026-10-24T04:19:55.630Z"
+    "exportedAt": "2026-10-25T17:05:29.294Z"
   },
   "presets": [
     {
@@ -492,6 +492,483 @@
         ]
       },
       "createdAt": 1792815573641
+    },
+    {
+      "id": "tu33375my",
+      "name": "Neu Color p1",
+      "palettes": [
+        {
+          "id": "l7dlonl66",
+          "name": "Tomato",
+          "baseColor": "#E54D2E",
+          "isDark": false,
+          "hueShift": 0,
+          "saturationScale": 1,
+          "lockStep9": false,
+          "tokenRole": "brand"
+        },
+        {
+          "id": "gynxb4lpo",
+          "name": "Red",
+          "baseColor": "#E5484D",
+          "isDark": false,
+          "hueShift": 0,
+          "saturationScale": 1,
+          "lockStep9": false
+        },
+        {
+          "id": "0zu2r05gv",
+          "name": "Ruby",
+          "baseColor": "#E54666",
+          "isDark": false,
+          "hueShift": 0,
+          "saturationScale": 1,
+          "lockStep9": false
+        },
+        {
+          "id": "7m1bsrswa",
+          "name": "Crimson",
+          "baseColor": "#E93D82",
+          "isDark": false,
+          "hueShift": 0,
+          "saturationScale": 1,
+          "lockStep9": false
+        },
+        {
+          "id": "132g9uugh",
+          "name": "Pink",
+          "baseColor": "#D6409F",
+          "isDark": false,
+          "hueShift": 0,
+          "saturationScale": 1,
+          "lockStep9": false
+        },
+        {
+          "id": "q6p905jgi",
+          "name": "Plum",
+          "baseColor": "#AB4ABA",
+          "isDark": false,
+          "hueShift": 0,
+          "saturationScale": 1,
+          "lockStep9": false
+        },
+        {
+          "id": "i58fxffvd",
+          "name": "Purple",
+          "baseColor": "#8E4EC6",
+          "isDark": false,
+          "hueShift": 0,
+          "saturationScale": 1,
+          "lockStep9": false
+        },
+        {
+          "id": "mer30a3zh",
+          "name": "Violet",
+          "baseColor": "#6E56CF",
+          "isDark": false,
+          "hueShift": 0,
+          "saturationScale": 1,
+          "lockStep9": false
+        },
+        {
+          "id": "q0u6qcyvu",
+          "name": "Iris",
+          "baseColor": "#5B5BD6",
+          "isDark": false,
+          "hueShift": 0,
+          "saturationScale": 1,
+          "lockStep9": false
+        },
+        {
+          "id": "dnufs6lu4",
+          "name": "Indigo",
+          "baseColor": "#3E63DD",
+          "isDark": false,
+          "hueShift": 0,
+          "saturationScale": 1,
+          "lockStep9": false
+        },
+        {
+          "id": "hlox7xb2e",
+          "name": "Blue",
+          "baseColor": "#0090FF",
+          "isDark": false,
+          "hueShift": 0,
+          "saturationScale": 1,
+          "lockStep9": false
+        },
+        {
+          "id": "w8ygvr3ya",
+          "name": "Cyan",
+          "baseColor": "#00A2C7",
+          "isDark": false,
+          "hueShift": 0,
+          "saturationScale": 1,
+          "lockStep9": false
+        },
+        {
+          "id": "zjlb6x42g",
+          "name": "Teal",
+          "baseColor": "#12A594",
+          "isDark": false,
+          "hueShift": 0,
+          "saturationScale": 1,
+          "lockStep9": false
+        },
+        {
+          "id": "peydb8wzz",
+          "name": "Jade",
+          "baseColor": "#29A383",
+          "isDark": false,
+          "hueShift": 0,
+          "saturationScale": 1,
+          "lockStep9": false
+        },
+        {
+          "id": "ccz231f8v",
+          "name": "Green",
+          "baseColor": "#30A46C",
+          "isDark": false,
+          "hueShift": 0,
+          "saturationScale": 1,
+          "lockStep9": false
+        },
+        {
+          "id": "5kdsd9oqk",
+          "name": "Grass",
+          "baseColor": "#46A758",
+          "isDark": false,
+          "hueShift": 0,
+          "saturationScale": 1,
+          "lockStep9": false
+        },
+        {
+          "id": "3ymw8ov22",
+          "name": "Bronze",
+          "baseColor": "#A18072",
+          "isDark": false,
+          "hueShift": 0,
+          "saturationScale": 1,
+          "lockStep9": false
+        },
+        {
+          "id": "e8vwa0zu7",
+          "name": "Gold",
+          "baseColor": "#978365",
+          "isDark": false,
+          "hueShift": 0,
+          "saturationScale": 1,
+          "lockStep9": false
+        },
+        {
+          "id": "kvl5jhvmt",
+          "name": "Brown",
+          "baseColor": "#AD7F58",
+          "isDark": false,
+          "hueShift": 0,
+          "saturationScale": 1,
+          "lockStep9": false
+        },
+        {
+          "id": "brc14aq53",
+          "name": "Orange",
+          "baseColor": "#F76B15",
+          "isDark": false,
+          "hueShift": 0,
+          "saturationScale": 1,
+          "lockStep9": false
+        },
+        {
+          "id": "5zvku55sh",
+          "name": "Amber",
+          "baseColor": "#FFC53D",
+          "isDark": false,
+          "hueShift": 0,
+          "saturationScale": 1,
+          "lockStep9": false
+        },
+        {
+          "id": "ppi9fwsxh",
+          "name": "Tangerine",
+          "baseColor": "#FFCC00",
+          "isDark": false,
+          "hueShift": 0,
+          "saturationScale": 1,
+          "lockStep9": false
+        },
+        {
+          "id": "fig82ibs4",
+          "name": "Yellow",
+          "baseColor": "#FFE629",
+          "isDark": false,
+          "hueShift": 0,
+          "saturationScale": 1,
+          "lockStep9": false
+        },
+        {
+          "id": "ygj651f4j",
+          "name": "Lime",
+          "baseColor": "#BDEE63",
+          "isDark": false,
+          "hueShift": 0,
+          "saturationScale": 1,
+          "lockStep9": false
+        },
+        {
+          "id": "ri7673ofu",
+          "name": "Mint",
+          "baseColor": "#86EAD4",
+          "isDark": false,
+          "hueShift": 0,
+          "saturationScale": 1,
+          "lockStep9": false
+        },
+        {
+          "id": "orfi420z5",
+          "name": "Sky",
+          "baseColor": "#7CE2FE",
+          "isDark": false,
+          "hueShift": 0,
+          "saturationScale": 1,
+          "lockStep9": false
+        },
+        {
+          "id": "thqmh5md2",
+          "name": "Grays",
+          "baseColor": "#7d7d7d",
+          "isDark": false,
+          "hueShift": 0,
+          "saturationScale": 1,
+          "lockStep9": false,
+          "description": "Used for all colors",
+          "tokenRole": "neutral",
+          "role": "gray"
+        },
+        {
+          "id": "39i8vr56a",
+          "name": "Mauve",
+          "baseColor": "#77738c",
+          "isDark": false,
+          "hueShift": 0,
+          "saturationScale": 1,
+          "lockStep9": false,
+          "description": "Used for warning colors: red, pink, purple...",
+          "role": "gray"
+        },
+        {
+          "id": "rihnos2hm",
+          "name": "Slate",
+          "baseColor": "#777988",
+          "isDark": false,
+          "hueShift": 0,
+          "saturationScale": 1,
+          "lockStep9": false,
+          "description": "Used for cool colors: blue, indigo, cyan...",
+          "role": "gray"
+        },
+        {
+          "id": "50nbvhhmm",
+          "name": "Sage",
+          "baseColor": "#7a8580",
+          "isDark": false,
+          "hueShift": 0,
+          "saturationScale": 1,
+          "lockStep9": true,
+          "description": "Used for green colors",
+          "role": "gray"
+        },
+        {
+          "id": "1jbwozdnp",
+          "name": "Olive",
+          "baseColor": "#7d857a",
+          "isDark": false,
+          "hueShift": 0,
+          "saturationScale": 1,
+          "lockStep9": true,
+          "description": "Used for light green colors",
+          "role": "gray"
+        },
+        {
+          "id": "1h67bz49x",
+          "name": "Sand",
+          "baseColor": "#8D8D86",
+          "isDark": false,
+          "hueShift": 0,
+          "saturationScale": 1,
+          "lockStep9": false,
+          "description": "Used for light warning colors: yellow, amber, orange...",
+          "role": "gray"
+        }
+      ],
+      "foundations": {
+        "typography": {
+          "headingFamily": "Inter",
+          "bodyFamily": "Inter",
+          "monoFamily": "JetBrains Mono",
+          "baseSize": 16,
+          "ratio": 1.25,
+          "mobileRatio": 1.2,
+          "lineHeightGrid": 4,
+          "headingLineHeight": 1.2,
+          "bodyLineHeight": 1.5,
+          "opticalTracking": true,
+          "steps": [
+            {
+              "name": "display",
+              "label": "Display",
+              "step": 6,
+              "role": "heading",
+              "weight": "semibold",
+              "usage": "Hero and marketing headlines"
+            },
+            {
+              "name": "h1",
+              "label": "Heading 1",
+              "step": 5,
+              "role": "heading",
+              "weight": "semibold",
+              "usage": "Page titles"
+            },
+            {
+              "name": "h2",
+              "label": "Heading 2",
+              "step": 4,
+              "role": "heading",
+              "weight": "semibold",
+              "usage": "Section titles"
+            },
+            {
+              "name": "h3",
+              "label": "Heading 3",
+              "step": 3,
+              "role": "heading",
+              "weight": "semibold",
+              "usage": "Subsection titles"
+            },
+            {
+              "name": "h4",
+              "label": "Heading 4",
+              "step": 2,
+              "role": "heading",
+              "weight": "semibold",
+              "usage": "Card and dialog titles"
+            },
+            {
+              "name": "h5",
+              "label": "Heading 5",
+              "step": 1,
+              "role": "heading",
+              "weight": "semibold",
+              "usage": "Group labels, small titles"
+            },
+            {
+              "name": "body-lg",
+              "label": "Body large",
+              "step": 1,
+              "role": "body",
+              "weight": "regular",
+              "usage": "Lead paragraphs"
+            },
+            {
+              "name": "body",
+              "label": "Body",
+              "step": 0,
+              "role": "body",
+              "weight": "regular",
+              "usage": "Default text"
+            },
+            {
+              "name": "body-sm",
+              "label": "Body small",
+              "step": -1,
+              "role": "body",
+              "weight": "regular",
+              "usage": "Secondary text, dense UI"
+            },
+            {
+              "name": "caption",
+              "label": "Caption",
+              "step": -2,
+              "role": "body",
+              "weight": "regular",
+              "usage": "Labels, metadata, footnotes"
+            }
+          ],
+          "sizeOverrides": {}
+        },
+        "spacing": {
+          "base": 4,
+          "progression": "linear"
+        },
+        "radius": {
+          "base": 8
+        },
+        "shadow": {
+          "style": "soft",
+          "intensity": 1,
+          "tint": "#3e63dd",
+          "tintStrength": 0.15,
+          "lightAngle": 0
+        },
+        "grid": {
+          "breakpoints": [
+            {
+              "name": "xs",
+              "minWidth": 0,
+              "columns": 4,
+              "gutter": 16,
+              "margin": 16
+            },
+            {
+              "name": "sm",
+              "minWidth": 576,
+              "columns": 8,
+              "gutter": 16,
+              "margin": 24
+            },
+            {
+              "name": "md",
+              "minWidth": 768,
+              "columns": 8,
+              "gutter": 24,
+              "margin": 32
+            },
+            {
+              "name": "lg",
+              "minWidth": 992,
+              "columns": 12,
+              "gutter": 24,
+              "margin": 32
+            },
+            {
+              "name": "xl",
+              "minWidth": 1200,
+              "columns": 12,
+              "gutter": 24,
+              "margin": 40
+            },
+            {
+              "name": "xxl",
+              "minWidth": 1400,
+              "columns": 12,
+              "gutter": 32,
+              "margin": 48
+            }
+          ],
+          "maxWidth": 1280,
+          "sidebar": 240,
+          "sidebarFrom": "lg"
+        },
+        "aliases": {},
+        "customTokens": [],
+        "products": [
+          {
+            "id": "default",
+            "name": "Main"
+          }
+        ]
+      },
+      "createdAt": 1792947876476
     }
   ]
 }

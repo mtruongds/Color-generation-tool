@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { copyToClipboard } from '../../lib/clipboard';
 import { cn } from '../ui/utils';
 import { type Accent, DEFAULT_FOUNDATIONS, RADIUS_FULL, RADIUS_PRESETS, type RadiusConfig, generateRadiusScale, nestedRadius } from '../../lib/foundations';
-import { CanvasHeading, Section, SliderField } from './inspector-controls';
+import { CanvasHeading, Section, SliderField, SwitchField } from './inspector-controls';
 
 const DEFAULTS = DEFAULT_FOUNDATIONS.radius;
 
@@ -86,26 +86,51 @@ export function RadiusCanvas({ config, accent }: { config: RadiusConfig; accent:
   );
 }
 
+/** An extra product's own radius. Picked in the header; undefined inherits the first product's. */
+export interface RadiusProduct {
+  name: string;
+  /** The first product, which it inherits from. */
+  from: string;
+  base: number | undefined;
+  onChange: (base: number | undefined) => void;
+}
+
 export function RadiusInspector({
   config,
   onChange,
+  product,
 }: {
   config: RadiusConfig;
   onChange: (updates: Partial<RadiusConfig>) => void;
+  product?: RadiusProduct;
 }) {
+  // An extra product edits its own base; changing it while inheriting gives the product its own
+  const base = product?.base ?? config.base;
+  const setBase = (value: number) => (product ? product.onChange(value) : onChange({ base: value }));
+
   return (
     <div className="flex flex-col">
+      {product && (
+        <Section title="Product">
+          <SwitchField
+            label={`Own radius for ${product.name}`}
+            hint={product.base === undefined ? `Uses ${product.from}'s ${config.base}px.` : `${product.from} uses ${config.base}px.`}
+            checked={product.base !== undefined}
+            onChange={(on) => product.onChange(on ? config.base : undefined)}
+          />
+        </Section>
+      )}
       <Section title="Presets">
         <div className="grid grid-cols-4 gap-1.5">
           {RADIUS_PRESETS.map((p) => (
             <button
               key={p.label}
               type="button"
-              aria-pressed={config.base === p.base}
-              onClick={() => onChange({ base: p.base })}
+              aria-pressed={base === p.base}
+              onClick={() => setBase(p.base)}
               className={cn(
                 'flex flex-col items-center gap-2 rounded-lg border px-1 py-2.5 text-[0.6875rem] transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                config.base === p.base && 'border-foreground/40 bg-accent',
+                base === p.base && 'border-foreground/40 bg-accent',
               )}
             >
               <span className="size-6 border-t-2 border-l-2 border-foreground/70" style={{ borderTopLeftRadius: p.base * 1.5 }} />
@@ -117,13 +142,13 @@ export function RadiusInspector({
       <Section title="Base radius">
         <SliderField
           label="md"
-          value={config.base}
-          display={`${config.base}px`}
+          value={base}
+          display={`${base}px`}
           min={0}
           max={24}
           step={1}
           defaultValue={DEFAULTS.base}
-          onChange={(base) => onChange({ base })}
+          onChange={setBase}
         />
         <p className="text-xs leading-snug text-muted-foreground">
           Buttons and inputs use md. Smaller and larger steps scale from it, so the whole set keeps one character.

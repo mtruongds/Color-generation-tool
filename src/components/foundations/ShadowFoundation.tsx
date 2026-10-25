@@ -84,15 +84,30 @@ export function ShadowCanvas({ config, isDark, radius }: { config: ShadowConfig;
   );
 }
 
+/** An extra product's shadow tint. Picked in the header; undefined inherits the shared tint. */
+export interface ShadowProduct {
+  name: string;
+  /** The first product, which it inherits from. */
+  from: string;
+  tint: 'brand' | undefined;
+  /** The product's brand step 9, the tint it gets when following its brand. */
+  brand: string;
+  onChange: (tint: 'brand' | undefined) => void;
+}
+
+const SHARED_TINT = 'shared';
+
 export function ShadowInspector({
   config,
   accent,
   onChange,
+  product,
 }: {
   config: ShadowConfig;
   /** Primary step 9, offered as a one-click tint. */
   accent: string;
   onChange: (updates: Partial<ShadowConfig>) => void;
+  product?: ShadowProduct;
 }) {
   const [hexDraft, setHexDraft] = useState(config.tint);
   useEffect(() => setHexDraft(config.tint), [config.tint]);
@@ -130,6 +145,32 @@ export function ShadowInspector({
       </Section>
 
       <Section title="Tint">
+        {product && (
+          <>
+            <SelectField
+              label={product.name}
+              value={product.tint ?? SHARED_TINT}
+              options={[
+                { value: SHARED_TINT, label: `Same as ${product.from}` },
+                {
+                  value: 'brand',
+                  label: (
+                    <span className="flex items-center gap-2">
+                      <span className="size-3 rounded-full shadow-[inset_0_0_0_1px_rgb(0_0_0/0.1)]" style={{ backgroundColor: product.brand }} />
+                      Brand color
+                    </span>
+                  ),
+                },
+              ]}
+              onChange={(v) => product.onChange(v === 'brand' ? 'brand' : undefined)}
+            />
+            <p className="text-xs leading-snug text-muted-foreground">
+              {product.tint === 'brand'
+                ? `${product.name}'s shadows take its brand color. The color below is ${product.from}'s; strength and the rest are shared.`
+                : `The tint below is shared with ${product.from}. Choose Brand color to follow ${product.name}'s brand.`}
+            </p>
+          </>
+        )}
         <div className="flex gap-2">
           <label
             className="relative size-9 shrink-0 cursor-pointer overflow-hidden rounded-md shadow-[inset_0_0_0_1px_rgb(0_0_0/0.1)] focus-within:ring-[3px] focus-within:ring-ring/50"

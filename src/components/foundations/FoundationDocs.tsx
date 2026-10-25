@@ -68,7 +68,7 @@ const GUIDELINES: Record<DocKey, { intro: string; dos: string[]; donts: string[]
     dos: [
       'Use one level per layer: cards at sm, menus at lg, dialogs at xl.',
       'Raise an element one level on hover to show it’s interactive.',
-      'Use the dark set on dark surfaces — it’s stronger and adds a light edge.',
+      'Let dark mode switch the colors — the same shadow gets stronger and adds a light edge.',
     ],
     donts: [
       'Don’t stack shadows on elements inside an already raised card.',

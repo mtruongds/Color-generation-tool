@@ -26,10 +26,14 @@ import {
   generateColorCollectionJson,
   generateCss,
   generateEffectStylesCsv,
+  generateShadowStylesCss,
+  generateShadowStylesJson,
+  generateShadowVariablesCsv,
   generateJson,
   generateSheetVariablesCsv,
   generateTextStylesCsv,
   SHEET_COLLECTIONS,
+  SHADOW_COLLECTION,
   SHEET_FILENAMES,
   type SheetGroup,
   sheetFilename,
@@ -82,7 +86,7 @@ const COLLECTION_HINTS: Record<ExportKind, Record<ColorCollection, string>> = {
   css: {
     primitive: 'Raw palette steps, light and -dark side by side.',
     base: 'Roles aliasing Color Palette, light and -dark side by side. Load color-palette.css first.',
-    semantic: 'Purposes aliasing Color, with dark values under .dark. Load color.css first.',
+    semantic: 'Purposes aliasing Color, with dark values under [data-theme="dark"]. Load color.css first.',
   },
   json: {
     primitive: 'Raw palette steps, light and -dark side by side, as W3C design tokens.',
@@ -100,12 +104,23 @@ const COLLECTION_HINTS: Record<ExportKind, Record<ColorCollection, string>> = {
 const SHEET_GROUPS: ExportScope[] = ['typography', 'spacing', 'radius', 'grid'];
 const isSheetGroup = (scope: ExportScope): scope is SheetGroup => SHEET_GROUPS.includes(scope);
 
-/** A tier's collection, or Typography's text styles built on the Text collection. */
-type SheetPart = ColorCollection | 'text-styles';
+/** A tier's collection, or the styles built on one: Typography's text styles, Shadow's effect styles. */
+type SheetPart = ColorCollection | 'text-styles' | 'effect-styles';
+
+const isTier = (p: SheetPart): p is ColorCollection => p !== 'text-styles' && p !== 'effect-styles';
+
+/** Shadow's one collection sits in the primitive slot, then the styles bound to it. */
+const SHADOW_PARTS: SheetPart[] = ['primitive', 'effect-styles'];
+
+const SHADOW_HINTS: Partial<Record<SheetPart, string>> = {
+  primitive: 'One color per shadow layer, with Light and Dark modes (per product once one has its own tint), scoped to Effects. Import this first.',
+  'effect-styles': `Effect styles for the Shadow Styles tab, levels under shadow/ and custom purposes under container/, each layer's color bound to ${SHADOW_COLLECTION}, so one set follows Light and Dark. Import ${SHADOW_COLLECTION} first.`,
+};
 
 /** Where a collection's modes come from, when it has any. */
 const SHEET_MODES: Partial<Record<SheetGroup, string>> = {
   typography: ' Sizes switch between Mobile and Desktop modes.',
+  radius: ' Gets a mode per product once one has its own radius.',
   grid: ' Columns, gutter and margin get a mode per breakpoint.',
 };
 
@@ -120,10 +135,10 @@ function sheetHint(group: SheetGroup, part: SheetPart) {
 function filenameFor(kind: ExportKind, scope: ExportScope, colorTier: ColorCollection, sheetPart: SheetPart) {
   if (scope === 'color') return colorCollectionFilename(colorTier, kind);
   if (kind === 'csv') {
-    if (scope === 'shadow') return SHEET_FILENAMES['effect-styles'];
-    if (isSheetGroup(scope)) return sheetPart === 'text-styles' ? SHEET_FILENAMES['text-styles'] : sheetFilename(scope, sheetPart);
+    if (scope === 'shadow') return sheetPart === 'effect-styles' ? SHEET_FILENAMES['effect-styles'] : `${SHADOW_COLLECTION}.csv`;
+    if (isSheetGroup(scope)) return isTier(sheetPart) ? sheetFilename(scope, sheetPart) : SHEET_FILENAMES[sheetPart];
   }
-  const base = scope === 'all' ? 'tokens' : scope;
+  const base = scope === 'all' ? 'tokens' : scope === 'shadow' ? 'shadow-styles' : scope;
   return `${base}.${EXPORTS[kind].ext}`;
 }
 
@@ -163,25 +178,33 @@ export function ExportDialog({
   const meta = EXPORTS[activeKind];
   const colorTierKind = scope === 'color' ? activeKind : null;
   const sheetGroup = activeKind === 'csv' && isSheetGroup(scope) ? scope : null;
-  // Only Typography has text styles; the rest fall back to their scale
-  const sheetPart: SheetPart = chosenSheetPart === 'text-styles' && scope !== 'typography' ? 'primitive' : chosenSheetPart;
-  const sheetParts: SheetPart[] = sheetGroup ? [...TIERS, ...(sheetGroup === 'typography' ? (['text-styles'] as const) : [])] : [];
+  const shadowSheet = activeKind === 'csv' && scope === 'shadow';
+  const sheetParts: SheetPart[] = sheetGroup
+    ? [...TIERS, ...(sheetGroup === 'typography' ? (['text-styles'] as const) : [])]
+    : shadowSheet
+      ? SHADOW_PARTS
+      : [];
+  // A part the scope doesn't have falls back to its first collection
+  const sheetPart: SheetPart = sheetParts.includes(chosenSheetPart) ? chosenSheetPart : 'primitive';
   const filename = filenameFor(activeKind, scope, colorTier, sheetPart);
   const usesColorFormat = (scope === 'all' || scope === 'color') && ['css', 'json'].includes(activeKind);
-  const usesUnit = scope !== 'color' && ['css', 'json'].includes(activeKind);
+  // Shadow styles are always px, like Figma's effects
+  const usesUnit = scope !== 'color' && scope !== 'shadow' && ['css', 'json'].includes(activeKind);
 
   const content = useMemo(() => {
     if (!open) return '';
     const opts = { scope, unit, colorFormat };
     switch (activeKind) {
       case 'css':
+        if (scope === 'shadow') return generateShadowStylesCss(palettes, foundations);
         return scope === 'color' ? generateColorCollectionCss(palettes, foundations, colorTier, colorFormat) : generateCss(palettes, foundations, opts);
       case 'json':
+        if (scope === 'shadow') return generateShadowStylesJson(palettes, foundations);
         return scope === 'color' ? generateColorCollectionJson(palettes, foundations, colorTier, colorFormat) : generateJson(palettes, foundations, opts);
       case 'csv':
         if (scope === 'color' || scope === 'all') return generateColorCollectionCsv(palettes, foundations, colorTier);
-        if (scope === 'shadow') return generateEffectStylesCsv(palettes, foundations);
-        if (sheetPart === 'text-styles') return generateTextStylesCsv(palettes, foundations);
+        if (scope === 'shadow') return sheetPart === 'effect-styles' ? generateEffectStylesCsv(palettes, foundations) : generateShadowVariablesCsv(palettes, foundations);
+        if (!isTier(sheetPart)) return generateTextStylesCsv(palettes, foundations);
         return generateSheetVariablesCsv(palettes, foundations, scope, sheetPart);
     }
   }, [open, activeKind, scope, unit, palettes, colorFormat, foundations, colorTier, sheetPart]);
@@ -272,7 +295,7 @@ export function ExportDialog({
             ))}
           </div>
         )}
-        {sheetGroup && (
+        {sheetParts.length > 0 && (
           <div className="flex flex-wrap gap-1.5 px-6 pb-3" role="group" aria-label="Collection">
             {sheetParts.map((p) => (
               <button
@@ -285,7 +308,13 @@ export function ExportDialog({
                   sheetPart === p ? 'border-foreground/40 bg-accent text-foreground' : 'text-muted-foreground',
                 )}
               >
-                {p === 'text-styles' ? 'Text Styles' : SHEET_COLLECTIONS[sheetGroup][p]}
+                {p === 'text-styles'
+                  ? 'Text Styles'
+                  : p === 'effect-styles'
+                    ? 'Shadow Styles'
+                    : sheetGroup
+                      ? SHEET_COLLECTIONS[sheetGroup][p]
+                      : SHADOW_COLLECTION}
               </button>
             ))}
           </div>
@@ -293,14 +322,16 @@ export function ExportDialog({
         <p className="px-6 pb-3 text-xs text-muted-foreground">
           {colorTierKind
             ? COLLECTION_HINTS[colorTierKind][colorTier]
-            : activeKind === 'csv' && scope === 'shadow'
-              ? 'Semantic shadows as effect styles for the Shadow Styles tab, light under Shadow/ and dark under Shadow Dark/.'
+            : shadowSheet
+              ? SHADOW_HINTS[sheetPart]
+              : scope === 'shadow'
+                ? `Levels under shadow, and custom purposes under container, resolved per mode${activeKind === 'css' ? '' : ', Light and Dark at the root'}.`
               : sheetGroup
                 ? sheetHint(sheetGroup, sheetPart)
                 : meta.hint}
           {usesColorFormat && <span className="ml-1 font-mono uppercase">({colorFormat})</span>}
           {activeKind === 'css' && (scope === 'all' || scope === 'shadow' || (scope === 'color' && colorTier === 'semantic')) && (
-            <> Put the <code className="font-mono">dark</code> class on &lt;html&gt;.</>
+            <> Put <code className="font-mono">data-theme="dark"</code> on &lt;html&gt; for dark mode.</>
           )}
           {showsProducts && activeKind === 'css' && (
             <>

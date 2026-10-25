@@ -7,6 +7,7 @@ import {
   type Foundations,
   RADIUS_FULL,
   type TypeStyle,
+  type ShadowConfig,
   type ShadowLayer,
   fontStack,
   generateRadiusScale,
@@ -106,6 +107,10 @@ export interface Product {
   name: string;
   /** Fonts this product uses instead of the first product's, by font role. */
   fonts?: Partial<Record<FontRole, string>>;
+  /** The md radius in px this product uses instead of the first product's. */
+  radius?: number;
+  /** `brand` tints this product's shadows with its own brand color instead of the shared tint. */
+  shadowTint?: 'brand';
 }
 
 export type FontRole = 'heading' | 'body' | 'mono';
@@ -164,6 +169,22 @@ export function withProductRole(palettes: PaletteConfig[], productId: string, id
       productRoles: Object.keys(productRoles).length ? productRoles : undefined,
     };
   });
+}
+
+/** A palette's light step 9, whatever mode the editor shows, like the shared tint's Use primary color. */
+export const brandSolid = (p: GeneratedPalette) => generatePaletteScale(p, false, p.context).colors[8];
+
+/** Each product's shadow tint: its brand's step 9 when it follows its brand, else the shared tint. */
+export function productShadowTints(palettes: GeneratedPalette[], f: Foundations): Map<string, string> {
+  const products = productsOf(f);
+  const roles = resolveProductRoles(palettes, products);
+  const byId = new Map(palettes.map((p) => [p.id, p]));
+  return new Map(
+    products.map((product, i) => {
+      const brand = i > 0 && product.shadowTint === 'brand' ? byId.get(roles.get(product.id)?.get('brand')?.paletteId ?? '') : undefined;
+      return [product.id, brand ? brandSolid(brand) : f.shadow.tint];
+    }),
+  );
 }
 
 const BRAND_ROLES: ColorRole[] = ['brand', 'brand-secondary'];
@@ -636,8 +657,31 @@ function radiusTokens(f: Foundations): Token[] {
     const name = primName(r);
     tokens.push({ tier: 'primitive', group: 'radius', name, path: ['radius', name.replace('radius-', '')], type: 'dimension', value: r.value });
   }
+  // An extra product's own radius gets the steps that differ, plus the product's position (radius-1-2), like its fonts
+  const productRadius = new Map<string, { product: string; ref: string }[]>();
+  productsOf(f)
+    .slice(1)
+    .forEach((product, i) => {
+      if (product.radius === undefined || product.radius === f.radius.base) return;
+      for (const r of generateRadiusScale({ ...f.radius, base: product.radius })) {
+        if (r.value === scale.find((s) => s.name === r.name)!.value) continue;
+        const name = `${primName(r)}-${i + 2}`;
+        tokens.push({ tier: 'primitive', group: 'radius', name, path: ['radius', name.replace('radius-', '')], type: 'dimension', value: r.value, description: `${product.name} radius` });
+        productRadius.set(r.name, [...(productRadius.get(r.name) ?? []), { product: product.name, ref: name }]);
+      }
+    });
   for (const r of scale) {
-    tokens.push({ tier: 'base', group: 'radius', name: `radius-${r.name}`, path: ['radius', r.name], type: 'dimension', ref: primName(r), description: r.usage, tw: `radius-${r.name}` });
+    tokens.push({
+      tier: 'base',
+      group: 'radius',
+      name: `radius-${r.name}`,
+      path: ['radius', r.name],
+      type: 'dimension',
+      ref: primName(r),
+      description: r.usage,
+      tw: `radius-${r.name}`,
+      products: productRadius.get(r.name),
+    });
   }
   for (const [name, role, usage] of SEMANTIC_RADIUS) {
     tokens.push({ tier: 'semantic', group: 'radius', name: `radius-${name}`, path: ['radius', name], type: 'dimension', ref: `radius-${role}`, description: usage, tw: `radius-${name}` });
@@ -649,51 +693,146 @@ function radiusTokens(f: Foundations): Token[] {
 // Shadow
 // ============================================================
 
-const SEMANTIC_SHADOW: [string, string, string][] = [
-  ['input', 'xs', 'Inputs and small controls'],
-  ['card', 'sm', 'Cards at rest'],
-  ['card-hover', 'md', 'Hovered or lifted cards'],
-  ['dropdown', 'lg', 'Dropdown menus, selects'],
-  ['popover', 'lg', 'Popovers, floating toolbars'],
-  ['dialog', 'xl', 'Dialogs and sheets'],
-  ['drag', '2xl', 'Items being dragged'],
-];
+interface ShadowLevelLayers {
+  name: string;
+  usage: string;
+  /** Dark adds a light edge as the first layer. */
+  edge: boolean;
+  layers: { light: ShadowLayer; dark: ShadowLayer }[];
+}
 
-function shadowTokens(f: Foundations, modes: TokenModes): Token[] {
+/**
+ * Each level's layers with their light and dark colors side by side. Geometry is the same in both
+ * modes; dark adds a light edge first, so light gets a clear one to keep the same layers in one style.
+ */
+function shadowLevelLayers(c: ShadowConfig): ShadowLevelLayers[] {
+  const dark = generateShadowScale(c, true);
+  return generateShadowScale(c, false).map((level, i) => {
+    const d = dark[i].layers;
+    const edge = d.length > level.layers.length;
+    const light = edge ? [{ ...d[0], color: 'rgb(255 255 255 / 0)' }, ...level.layers] : level.layers;
+    return { name: level.name, usage: level.usage, edge, layers: light.map((l, j) => ({ light: l, dark: d[j] })) };
+  });
+}
+
+/**
+ * Each layer's color slot. Layers are counted from the top; a slot every level fills with the same
+ * color is shared, and one whose color changes per level (Hard) gets a slot per level.
+ */
+function shadowSlots(levels: ShadowLevelLayers[]) {
+  const slotOf = (level: ShadowLevelLayers, j: number) => (level.edge && j === 0 ? 'edge' : `layer-${level.edge ? j : j + 1}`);
+  const colors = new Map<string, Set<string>>();
+  for (const level of levels) {
+    level.layers.forEach(({ light, dark }, j) => {
+      const slot = slotOf(level, j);
+      colors.set(slot, (colors.get(slot) ?? new Set()).add(`${light.color}|${dark.color}`));
+    });
+  }
+  return (level: ShadowLevelLayers, j: number) => {
+    const slot = slotOf(level, j);
+    const shared = colors.get(slot)!.size === 1;
+    const layer = slot === 'edge' ? 'Edge that lifts raised surfaces off dark backgrounds, clear in light' : `Layer ${slot.slice(6)}`;
+    return {
+      key: shared ? slot : `${slot}-${level.name}`,
+      path: shared ? [slot] : [slot, level.name],
+      description: slot === 'edge' ? layer : `${layer} of ${shared ? 'every shadow' : `shadow ${level.name}`}`,
+    };
+  };
+}
+
+/**
+ * Shadows split like colors, so one set of styles follows light, dark and each product:
+ *   primitive — each layer's raw color, light and dark side by side (elevation-layer-1, elevation-dark-layer-1),
+ *               and a product's own when its tint differs (elevation-layer-1-2)
+ *   base      — color slots that switch to dark and per product (shadow-layer-1-color), and the levels
+ *               (shadow-md): each layer's geometry with the slot its color comes from
+ * Purposes are left to the user: a custom semantic token aliasing a level (container-toast).
+ */
+function shadowTokens(palettes: GeneratedPalette[], f: Foundations, modes: TokenModes): Token[] {
   const tokens: Token[] = [];
   const modeList = modes === 'both' ? [false, true] : [modes === 'dark'];
-  const prim = (e: number, isDark: boolean) => `elevation-${modes === 'both' && isDark ? 'dark-' : ''}${e}`;
+  const darkPart = (isDark: boolean) => (modes === 'both' && isDark ? ['dark'] : []);
+  const prim = (key: string, isDark: boolean, suffix = '') => ['elevation', ...darkPart(isDark), `${key}${suffix}`].join('-');
 
-  for (const isDark of modeList) {
-    for (const s of generateShadowScale(f.shadow, isDark)) {
-      tokens.push({
-        tier: 'primitive',
-        group: 'shadow',
-        name: prim(s.elevation, isDark),
-        path: ['elevation', ...(modes === 'both' && isDark ? ['dark'] : []), `${s.elevation}`],
-        type: 'shadow',
-        value: s.layers,
-        pair: modes === 'both' && !isDark ? prim(s.elevation, true) : undefined,
-      });
+  // The first product's levels, then each product whose tint differs; tint only changes colors
+  const tints = productShadowTints(palettes, f);
+  const products = productsOf(f);
+  const variants = [
+    { product: undefined as Product | undefined, suffix: '', levels: shadowLevelLayers(f.shadow) },
+    ...products.slice(1).flatMap((product, i) => {
+      const tint = tints.get(product.id)!;
+      return tint === f.shadow.tint ? [] : [{ product, suffix: `-${i + 2}`, levels: shadowLevelLayers({ ...f.shadow, tint }) }];
+    }),
+  ];
+  const levels = variants[0].levels;
+  const slotFor = shadowSlots(levels);
+  const slots = new Map<string, ReturnType<typeof slotFor> & { level: number; layer: number }>();
+  levels.forEach((level, i) => level.layers.forEach((_, j) => {
+    const slot = slotFor(level, j);
+    if (!slots.has(slot.key)) slots.set(slot.key, { ...slot, level: i, layer: j });
+  }));
+
+  for (const { product, suffix, levels: own } of variants) {
+    for (const isDark of modeList) {
+      for (const slot of slots.values()) {
+        const layer = own[slot.level].layers[slot.layer];
+        tokens.push({
+          tier: 'primitive',
+          group: 'shadow',
+          name: prim(slot.key, isDark, suffix),
+          path: ['elevation', ...darkPart(isDark), `${slot.key}${suffix}`],
+          type: 'color',
+          value: (isDark ? layer.dark : layer.light).color,
+          description: product ? `${product.name} ${slot.description[0].toLowerCase()}${slot.description.slice(1)}` : slot.description,
+          pair: modes === 'both' && !isDark ? prim(slot.key, true, suffix) : undefined,
+        });
+      }
     }
   }
-  for (const s of generateShadowScale(f.shadow, false)) {
+  for (const slot of slots.values()) {
+    const own = variants.slice(1).map(({ product, suffix }) => ({
+      product: product!.name,
+      ref: prim(slot.key, modes === 'dark', suffix),
+      darkRef: modes === 'both' ? prim(slot.key, true, suffix) : undefined,
+    }));
     tokens.push({
       tier: 'base',
       group: 'shadow',
-      name: `shadow-${s.name}`,
-      path: ['shadow', s.name],
-      type: 'shadow',
-      ref: prim(s.elevation, modes === 'dark'),
-      darkRef: modes === 'both' ? prim(s.elevation, true) : undefined,
-      description: s.usage,
-      tw: `shadow-${s.name}`,
+      name: `shadow-${slot.key}-color`,
+      path: ['shadow', ...slot.path, 'color'],
+      type: 'color',
+      ref: prim(slot.key, modes === 'dark'),
+      darkRef: modes === 'both' ? prim(slot.key, true) : undefined,
+      description: slot.description,
+      products: own.length ? own : undefined,
     });
   }
-  for (const [name, role, usage] of SEMANTIC_SHADOW) {
-    tokens.push({ tier: 'semantic', group: 'shadow', name: `shadow-${name}`, path: ['shadow', name], type: 'shadow', ref: `shadow-${role}`, description: usage, tw: `shadow-${name}` });
+  for (const level of levels) {
+    tokens.push({
+      tier: 'base',
+      group: 'shadow',
+      name: `shadow-${level.name}`,
+      path: ['shadow', level.name],
+      type: 'shadow',
+      // Light colors for previews; colorRef is what each layer's color really is
+      value: level.layers.map((l, j) => ({ ...(modes === 'dark' ? l.dark : l.light), colorRef: `shadow-${slotFor(level, j).key}-color` })),
+      description: level.usage,
+      tw: `shadow-${level.name}`,
+    });
   }
   return tokens;
+}
+
+/** A shadow level whose layer colors come from its color slots, here resolved for a mode and product. */
+export function resolveShadowLayers(t: Token, byName: Map<string, Token>, isDark = false, product?: string): ShadowLayer[] {
+  return ((t.value as ShadowLayer[] | undefined) ?? []).map((l) => {
+    const slot = l.colorRef ? byName.get(l.colorRef) : undefined;
+    if (!slot) return l;
+    const own = product ? slot.products?.find((o) => o.product === product) : undefined;
+    const ref = own ? (isDark && own.darkRef) || own.ref : isDark && slot.darkRef ? slot.darkRef : slot.ref;
+    const color = ref ? resolveToken(byName.get(ref) ?? slot, byName, isDark)?.value : slot.value;
+    return { ...l, color: typeof color === 'string' ? color : l.color };
+  });
 }
 
 // ============================================================
@@ -767,9 +906,16 @@ function gridTokens(f: Foundations): Token[] {
 
 export const TIER_BELOW: Partial<Record<Tier, Tier>> = { base: 'primitive', semantic: 'base' };
 
-/** Why a token can't be re-pointed, or null when it can. Only primitives are locked. */
+/** Shadow levels are composites in base: geometry plus color slots, not an alias. */
+const isShadowLevel = (t: Token) => t.group === 'shadow' && t.tier === 'base' && t.type === 'shadow' && !t.ref;
+
+/** Whether a token in `tier` may point at `target`: the tier below, or for a base shadow a level beside it. */
+const canAlias = (tier: Tier, target: Token) => target.tier === TIER_BELOW[tier] || (tier === 'base' && isShadowLevel(target));
+
+/** Why a token can't be re-pointed, or null when it can. Primitives and shadow levels are locked. */
 export function aliasLock(t: Token): string | null {
-  return t.tier === 'primitive' ? 'Raw value — change it in the editor' : null;
+  if (t.tier === 'primitive') return 'Raw value — change it in the editor';
+  return isShadowLevel(t) ? 'Built from the shadow settings — change it in the editor' : null;
 }
 
 /**
@@ -779,7 +925,7 @@ export function aliasLock(t: Token): string | null {
 export function aliasTargets(tier: Tier, group: TokenGroup, tokens: Token[], type?: TokenType): Token[] {
   const below = TIER_BELOW[tier];
   const darkOnly = new Set(tokens.flatMap((t) => (t.pair ? [t.pair] : [])));
-  return tokens.filter((o) => o.tier === below && o.group === group && (!type || o.type === type) && !darkOnly.has(o.name));
+  return tokens.filter((o) => (o.tier === below || canAlias(tier, o)) && o.group === group && (!type || o.type === type) && !darkOnly.has(o.name));
 }
 
 /** Groups that share a type across families (font size vs line height, gutter vs margin) need a narrower match. */
@@ -815,7 +961,7 @@ function applyAliases(tokens: Token[], aliases: Record<string, string> | undefin
     const ref = aliases[t.name];
     const target = ref ? byName.get(ref) : undefined;
     if (!target || ref === t.ref || aliasLock(t)) return t;
-    if (target.tier !== TIER_BELOW[t.tier] || target.group !== t.group || target.type !== t.type) return t;
+    if (!canAlias(t.tier, target) || target.group !== t.group || target.type !== t.type) return t;
     return { ...pointAt(t, target), defaultRef: t.ref };
   });
 }
@@ -841,6 +987,18 @@ const CUSTOM_ROOT: Record<TokenGroup, string> = { color: 'color', typography: 'f
 
 export const isTokenName = (name: string) => /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/.test(name);
 
+/**
+ * A custom token's path, without the root its name repeats (`shadow-toast` → `shadow.toast`). Color keeps
+ * the whole name, since its collection exports name variables by path, and so does a name whose short
+ * key another token in the tier already uses (`shadow-edge` beside `shadow.edge.color`).
+ */
+function customPath(c: CustomToken, tokens: Token[]): string[] {
+  const root = CUSTOM_ROOT[c.group];
+  const key = c.name.slice(root.length + 1);
+  const taken = c.group === 'color' || !c.name.startsWith(`${root}-`) || tokens.some((t) => t.tier === c.tier && t.path[0] === root && t.path[1] === key);
+  return [root, taken ? c.name : key];
+}
+
 /** Adds the user's tokens, base before semantic so a custom semantic can point at a custom base. Invalid ones are skipped. */
 function addCustomTokens(tokens: Token[], custom: CustomToken[] | undefined, groups: TokenGroup[]): Token[] {
   if (!custom?.length) return tokens;
@@ -850,12 +1008,12 @@ function addCustomTokens(tokens: Token[], custom: CustomToken[] | undefined, gro
     for (const c of custom) {
       if (c.tier !== tier || !groups.includes(c.group) || !isTokenName(c.name) || byName.has(c.name)) continue;
       const target = byName.get(c.ref);
-      if (!target || target.tier !== TIER_BELOW[tier] || target.group !== c.group) continue;
+      if (!target || !canAlias(tier, target) || target.group !== c.group) continue;
       const t: Token = {
         tier,
         group: c.group,
         name: c.name,
-        path: [CUSTOM_ROOT[c.group], c.name],
+        path: customPath(c, out),
         type: target.type,
         ref: target.name,
         darkRef: target.pair,
@@ -885,7 +1043,7 @@ export function buildTokens(
     ...(has('typography') ? typographyTokens(f) : []),
     ...(has('spacing') ? spacingTokens(f) : []),
     ...(has('radius') ? radiusTokens(f) : []),
-    ...(has('shadow') ? shadowTokens(f, opts.modes) : []),
+    ...(has('shadow') ? shadowTokens(palettes, f, opts.modes) : []),
     ...(has('grid') ? gridTokens(f) : []),
   ], f.aliases);
   return addCustomTokens(generated, f.customTokens, opts.groups);

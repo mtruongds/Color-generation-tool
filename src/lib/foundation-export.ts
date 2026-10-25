@@ -2,7 +2,7 @@ import chroma from 'chroma-js';
 import type { ColorFormat } from './color-utils';
 import type { GeneratedPalette } from './export-utils';
 import { type Foundations, type ShadowLayer, generateTypeScale, layerToCss } from './foundations';
-import { TIERS, type Token, type TokenGroup, buildTokens, productSlug, productsOf, resolveToken } from './tokens';
+import { TIERS, type Token, type TokenGroup, buildTokens, productSlug, productsOf, resolveShadowLayers, resolveToken } from './tokens';
 
 export { typeBreakpoint } from './tokens';
 
@@ -23,7 +23,7 @@ export const formatLength = (px: number, unit: LengthUnit) =>
 
 const TIER_TITLES: Record<Token['tier'], string> = {
   primitive: 'Primitive — raw values. Reference these only from base tokens.',
-  base: 'Base — roles. Each aliases a primitive; dark mode swaps them under .dark.',
+  base: 'Base — roles. Each aliases a primitive; dark mode swaps them under [data-theme="dark"].',
   semantic: 'Semantic — purposes. Use these in components.',
 };
 
@@ -36,11 +36,15 @@ function cssValue(t: Token, unit: LengthUnit): string {
     case 'letterSpacing':
       return t.value === 0 ? '0' : `${t.value}em`;
     case 'shadow':
-      return (t.value as ShadowLayer[]).map(layerToCss).join(', ');
+      // Each layer's color is its slot's variable, so levels follow dark mode and products
+      return (t.value as ShadowLayer[]).map((l) => layerToCss(l.colorRef ? { ...l, color: `var(--${l.colorRef})` } : l)).join(', ');
     default:
       return String(t.value);
   }
 }
+
+/** Every CSS export switches to dark values under this, on <html>, next to `data-product`. */
+const DARK_SELECTOR = '[data-theme="dark"]';
 
 const decl = (t: Token, unit: LengthUnit, indent = '  ') =>
   `${indent}--${t.name}: ${t.ref ? `var(--${t.ref})` : cssValue(t, unit)};`;
@@ -78,9 +82,9 @@ function variablesCss(tokens: Token[], unit: LengthUnit) {
       css += '\n    }\n  }\n}\n';
     }
 
-    // Put .dark on <html> so tokens that alias these resolve against the dark values
+    // Put data-theme="dark" on <html> so tokens that alias these resolve against the dark values
     const dark = inTier.filter((t) => t.darkRef);
-    if (dark.length) css += `\n.dark {\n${dark.map((t) => `  --${t.name}: var(--${t.darkRef});`).join('\n')}\n}\n`;
+    if (dark.length) css += `\n${DARK_SELECTOR} {\n${dark.map((t) => `  --${t.name}: var(--${t.darkRef});`).join('\n')}\n}\n`;
 
     // Put data-product on <html> to switch the roles an extra product fills itself
     css += productCss(inTier.flatMap((t) => t.products?.map((o) => ({ name: t.name, ...o })) ?? []));
@@ -106,7 +110,7 @@ function productCss(overrides: { name: string; product: string; ref: string; dar
     const selector = `[data-product="${productSlug(product)}"]`;
     css += `\n/* ${product} */\n${selector} {\n${own.map((o) => `  --${o.name}: var(--${o.ref});`).join('\n')}\n}\n`;
     const dark = own.filter((o) => o.darkRef);
-    if (dark.length) css += `\n.dark${selector} {\n${dark.map((o) => `  --${o.name}: var(--${o.darkRef});`).join('\n')}\n}\n`;
+    if (dark.length) css += `\n${DARK_SELECTOR}${selector} {\n${dark.map((o) => `  --${o.name}: var(--${o.darkRef});`).join('\n')}\n}\n`;
   }
   return css;
 }
@@ -171,14 +175,14 @@ function aliasResolver(tokens: Token[]) {
   };
 }
 
-function jsonValue(t: Token, unit: LengthUnit) {
+function jsonValue(t: Token, unit: LengthUnit, alias: (name: string) => string) {
   if (t.type === 'shadow') {
     return (t.value as ShadowLayer[]).map((l) => ({
       offsetX: `${l.x}px`,
       offsetY: `${l.y}px`,
       blur: `${l.blur}px`,
       spread: `${l.spread}px`,
-      color: l.color,
+      color: l.colorRef ? alias(l.colorRef) : l.color,
     }));
   }
   if (t.type === 'number' || t.type === 'fontWeight') return t.value;
@@ -205,7 +209,7 @@ export function generateJson(palettes: GeneratedPalette[], f: Foundations, opts:
     }
     setPath(out, [t.tier, ...t.path], {
       $type: DTCG_TYPE[t.type],
-      $value: t.ref ? alias(t.ref) : jsonValue(t, opts.unit),
+      $value: t.ref ? alias(t.ref) : jsonValue(t, opts.unit, alias),
       ...(t.description && { $description: t.description }),
       ...(Object.keys(extensions).length && { $extensions: extensions }),
     });
@@ -318,7 +322,7 @@ function colorCollectionVariables(palettes: GeneratedPalette[], f: Foundations, 
 const COLLECTION_TITLES: Record<ColorCollection, string> = {
   primitive: 'Color Palette — raw steps, light and -dark side by side. Reference these only from Color.',
   base: 'Color — roles aliasing Color Palette, light and -dark side by side. Load color-palette.css first.',
-  semantic: 'Theme — purposes aliasing Color, with dark values under .dark. Use these in components. Load color.css first.',
+  semantic: 'Theme — purposes aliasing Color, with dark values under [data-theme="dark"]. Use these in components. Load color.css first.',
 };
 
 /** One color collection as custom properties. Variable names are the collection paths joined with `-`. */
@@ -347,9 +351,9 @@ export function generateColorCollectionCss(palettes: GeneratedPalette[], f: Foun
     }
   }
 
-  // Put .dark on <html> to switch Theme to the dark Color variables
+  // Put data-theme="dark" on <html> to switch Theme to the dark Color variables
   if (tier === 'semantic') {
-    css += `\n.dark {\n${variables.map((v) => `  --${v.path.join('-')}: ${value(v.modes.Dark)};`).join('\n')}\n}\n`;
+    css += `\n${DARK_SELECTOR} {\n${variables.map((v) => `  --${v.path.join('-')}: ${value(v.modes.Dark)};`).join('\n')}\n}\n`;
   }
   return css;
 }
@@ -421,7 +425,7 @@ export function generateColorCollectionCsv(palettes: GeneratedPalette[], f: Foun
 // Other foundations for the Sheet Variable Importer plugin
 // ============================================================
 
-/** Foundations exported as variables. Shadow has no variable type in Figma, so it goes out as effect styles. */
+/** Foundations exported as variables. Shadow has no variable type in Figma, so it goes out as layer colors and effect styles. */
 export type SheetGroup = Exclude<TokenGroup, 'color' | 'shadow'>;
 
 /** Like Color, each foundation splits into three collections, one per tier: raw scale, roles, purposes. */
@@ -583,30 +587,150 @@ export function generateTextStylesCsv(palettes: GeneratedPalette[], f: Foundatio
   return `${lines.join('\n')}\n`;
 }
 
-/** `rgb(r g b / a)` → `#RRGGBBAA`, which the plugin reads. */
-function hexColor(css: string) {
+// ============================================================
+// Shadow for the Sheet Variable Importer plugin
+// ============================================================
+
+/** Effect styles have no modes, so each layer's color is a variable with Light and Dark modes instead. */
+export const SHADOW_COLLECTION = 'Shadow';
+
+/** `rgb(r g b / a)` → `rgba(r, g, b, a)`. The plugin splits on spaces and commas, so the slash form won't parse. */
+function rgbaColor(css: string) {
   const m = css.match(/rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)(?:\s*[/,]\s*([\d.]+%?))?\s*\)/);
-  if (!m) return chroma(css).hex();
-  const alpha = m[4] === undefined ? 1 : m[4].endsWith('%') ? parseFloat(m[4]) / 100 : parseFloat(m[4]);
-  return chroma(+m[1], +m[2], +m[3]).alpha(alpha).hex().toUpperCase();
+  const [r, g, b, a] = m
+    ? [+m[1], +m[2], +m[3], m[4] === undefined ? 1 : m[4].endsWith('%') ? parseFloat(m[4]) / 100 : parseFloat(m[4])]
+    : chroma(css).rgba();
+  return `rgba(${r}, ${g}, ${b}, ${trim(a, 3)})`;
+}
+
+interface ShadowMode {
+  /** Mode name: Light and Dark, prefixed with the product once a product has its own tint (`Pro Dark`). */
+  name: string;
+  isDark: boolean;
+  /** The product, when it isn't the first. */
+  product?: string;
+  /** Whether this product's colors differ from the first product's, so CSS needs a block for it. */
+  own: boolean;
+}
+
+/** The shadow tokens in both modes, with the color slots, styles and modes the exports need. */
+function shadowModel(palettes: GeneratedPalette[], f: Foundations) {
+  const tokens = buildTokens(palettes, f, { groups: ['shadow'], modes: 'both', colorFormat: 'hex' });
+  const byName = new Map(tokens.map((t) => [t.name, t]));
+  const slots = tokens.filter((t) => t.tier === 'base' && t.type === 'color');
+  const tinted = new Set(slots.flatMap((t) => t.products?.map((o) => o.product) ?? []));
+  const products = productsOf(f).map((p) => p.name);
+  const modes: ShadowMode[] = (tinted.size ? products : [products[0]]).flatMap((product, i) =>
+    (['Light', 'Dark'] as const).map((label) => ({
+      name: tinted.size ? `${product} ${label}` : label,
+      isDark: label === 'Dark',
+      product: i ? product : undefined,
+      own: tinted.has(product),
+    })),
+  );
+  return { byName, slots, modes, styles: shadowStyles(tokens, byName) };
 }
 
 /**
- * One effect style per semantic shadow, one row per layer. Effect styles have no modes, so dark
- * shadows are their own styles under `Shadow Dark/`, like the -dark color variables.
+ * The effect styles: base shadows under `shadow/`, purposes under `container/`, custom ones included.
+ * Each takes the level it resolves to, so a re-pointed or added token gets that level's layers.
+ */
+function shadowStyles(tokens: Token[], byName: Map<string, Token>) {
+  return tokens.flatMap((t) => {
+    if (t.tier === 'primitive' || t.type !== 'shadow') return [];
+    const level = resolveToken(t, byName);
+    if (!level?.value) return [];
+    // Custom tokens may carry either prefix (`shadow-toast`), so names drop it
+    const name = t.tier === 'base' ? `shadow/${t.name.replace(/^shadow-/, '')}` : `container/${t.name.replace(/^(container|shadow)-/, '')}`;
+    return [{ name, token: t.name, description: t.description ?? '', level }];
+  });
+}
+
+/** A color slot's value in a mode, as `rgba()`. */
+function slotColor(slot: Token, byName: Map<string, Token>, mode: ShadowMode) {
+  const probe: Token = { ...slot, type: 'shadow', value: [{ x: 0, y: 0, blur: 0, spread: 0, color: '', colorRef: slot.name }] };
+  return rgbaColor(resolveShadowLayers(probe, byName, mode.isDark, mode.product)[0].color);
+}
+
+/** Figma's variable path for a color slot: `shadow/layer-1/color`. */
+const slotPath = (slot: Token) => slot.path.join('/');
+
+/**
+ * The Shadow collection: the base color slots, Light and Dark, scoped to effects. Once a product has
+ * its own tint, every product gets its own Light and Dark. Import it before the styles.
+ */
+export function generateShadowVariablesCsv(palettes: GeneratedPalette[], f: Foundations) {
+  const { byName, slots, modes } = shadowModel(palettes, f);
+  const lines = [['Collection Name', 'Name', 'Type', 'Description', 'Scope', ...modes.map((m) => `Mode: ${m.name}`)].join(',')];
+  for (const slot of slots) {
+    const cells = modes.map((m) => slotColor(slot, byName, m));
+    lines.push([SHADOW_COLLECTION, slotPath(slot), 'COLOR', slot.description ?? '', SCOPE_LABELS.EFFECT_COLOR, ...cells].map(csvCell).join(','));
+  }
+  return `${lines.join('\n')}\n`;
+}
+
+/**
+ * One effect style per level under `shadow/` (`shadow/md`) and per custom purpose under `container/`
+ * (`container/toast`), one row per layer. Each layer's color is bound to the Shadow collection, so a
+ * single set follows its Light and Dark modes.
  */
 export function generateEffectStylesCsv(palettes: GeneratedPalette[], f: Foundations) {
-  const tokens = buildTokens(palettes, f, { groups: ['shadow'], modes: 'both', colorFormat: 'hex' });
-  const byName = new Map(tokens.map((t) => [t.name, t]));
+  const { byName, styles } = shadowModel(palettes, f);
   const lines = [['Name', 'Type', 'Description', 'Shadow Type', 'Color', 'Offset X', 'Offset Y', 'Radius', 'Spread'].join(',')];
-  for (const isDark of [false, true]) {
-    for (const t of tokens.filter((x) => x.tier === 'semantic')) {
-      const layers = (resolveToken(t, byName, isDark)?.value as ShadowLayer[] | undefined) ?? [];
-      const name = `${isDark ? 'Shadow Dark' : 'Shadow'}/${t.path.slice(1).join('/')}`;
-      for (const l of layers) {
-        lines.push([name, 'EFFECT', t.description ?? '', 'Drop Shadow', hexColor(l.color), String(l.x), String(l.y), String(l.blur), String(l.spread)].map(csvCell).join(','));
-      }
+  for (const { name, description, level } of styles) {
+    for (const l of level.value as ShadowLayer[]) {
+      const slot = l.colorRef ? byName.get(l.colorRef) : undefined;
+      const color = slot ? `{${SHADOW_COLLECTION}:${slotPath(slot)}}` : rgbaColor(l.color);
+      lines.push([name, 'EFFECT', description, 'Drop Shadow', color, String(l.x), String(l.y), String(l.blur), String(l.spread)].map(csvCell).join(','));
     }
   }
   return `${lines.join('\n')}\n`;
+}
+
+/**
+ * The shadow styles resolved per mode, one custom property each (`shadow/md` → `--shadow-md`). Light
+ * is the default and also applies under `[data-theme="light"]`, so a light section can sit inside a
+ * dark page; dark applies under `[data-theme="dark"]`. Every style has the same layers in both modes.
+ */
+export function generateShadowStylesCss(palettes: GeneratedPalette[], f: Foundations) {
+  const { byName, modes, styles } = shadowModel(palettes, f);
+  // Extra products that keep the shared tint need no block of their own
+  return modes
+    .filter((m) => !m.product || m.own)
+    .map((mode) => {
+      // Properties keep the token's name, as in the full CSS export (`shadow-card`, not `container-card`)
+      const props = styles.map(({ name, token, description, level }) => {
+        const value = resolveShadowLayers(level, byName, mode.isDark, mode.product).map((l) => layerToCss({ ...l, color: rgbaColor(l.color) })).join(', ');
+        return `${description ? `  /* ${description} */\n` : ''}  /* ${name} */\n  --${token}: ${value};`;
+      });
+      const productSelector = mode.product ? `[data-product="${productSlug(mode.product)}"]` : '';
+      const selector = mode.isDark ? `${DARK_SELECTOR}${productSelector}` : productSelector || ':root, [data-theme="light"]';
+      return `/* Mode: ${mode.name} */\n${selector} {\n${props.join('\n')}\n}\n`;
+    })
+    .join('\n');
+}
+
+/** The shadow styles resolved per mode, grouped by mode then style path, with colors as 8-digit hex. */
+export const generateShadowStylesJson = (palettes: GeneratedPalette[], f: Foundations) => JSON.stringify(shadowStylesByMode(palettes, f), null, 2);
+
+function shadowStylesByMode(palettes: GeneratedPalette[], f: Foundations) {
+  const { byName, modes, styles } = shadowModel(palettes, f);
+  const out: Record<string, unknown> = {};
+  for (const mode of modes) {
+    for (const { name, description, level } of styles) {
+      setPath(out, [mode.name, ...name.split('/')], {
+        type: 'shadow',
+        value: resolveShadowLayers(level, byName, mode.isDark, mode.product).map((l) => ({
+          inset: false,
+          color: chroma(rgbaColor(l.color)).hex('rgba'),
+          offsetX: `${l.x}px`,
+          offsetY: `${l.y}px`,
+          blur: `${l.blur}px`,
+          spread: `${l.spread}px`,
+        })),
+        description,
+      });
+    }
+  }
+  return out;
 }
