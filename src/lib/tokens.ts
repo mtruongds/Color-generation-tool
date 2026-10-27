@@ -64,7 +64,7 @@ export interface Token {
   pair?: string;
   /** Added by the user rather than the generator. */
   custom?: boolean;
-  /** Base color tokens: the alias in each extra product that points somewhere else. */
+  /** The alias in each extra product that points somewhere else: base color roles, radius steps, text style families. */
   products?: { product: string; ref: string; darkRef?: string }[];
 }
 
@@ -493,6 +493,9 @@ function typographyTokens(f: Foundations): Token[] {
   }
 
   // Base: roles. `code` rather than `mono`, which names the primitive; Tailwind keeps its familiar font-mono.
+  // An extra product's own font is a role of its own, numbered by product like its primitive (heading-2), so Typography keeps
+  // only its breakpoint modes; the Text styles switch to it per product.
+  const productRoles = new Map<FontRole, { product: string; ref: string }[]>();
   for (const [role, slot, tw, fontRole] of [
     ['heading', 'primary', 'font-heading', 'heading'],
     ['body', 'secondary', 'font-body', 'body'],
@@ -506,8 +509,13 @@ function typographyTokens(f: Foundations): Token[] {
       type: 'fontFamily',
       ref: `font-family-${slot}`,
       tw,
-      products: productFonts.get(fontRole),
     });
+    for (const own of productFonts.get(fontRole) ?? []) {
+      const n = products.findIndex((p) => p.name === own.product) + 1;
+      const name = `font-family-${role}-${n}`;
+      tokens.push({ tier: 'base', group: 'typography', name, path: ['font', 'family', `${role}-${n}`], type: 'fontFamily', ref: own.ref, description: `${own.product} ${role} font` });
+      productRoles.set(fontRole, [...(productRoles.get(fontRole) ?? []), { product: own.product, ref: name }]);
+    }
   }
   // Base: emphasis levels, so each style's weight aliases a purpose rather than a primitive
   for (const [weight, emphasis] of Object.entries(WEIGHT_EMPHASIS)) {
@@ -567,7 +575,7 @@ function typographyTokens(f: Foundations): Token[] {
       description: prop === 'size' ? s.usage : undefined,
     });
     tokens.push(
-      t('family', 'fontFamily', `font-family-${role}`),
+      { ...t('family', 'fontFamily', `font-family-${role}`), products: productRoles.get(role) },
       t('size', 'dimension', `font-size-${size}`, `text-${s.name}`),
       t('line-height', 'dimension', `line-height-${size}`, `text-${s.name}--line-height`),
       t('weight', 'fontWeight', `font-weight-${WEIGHT_EMPHASIS[s.weightName]}`, `text-${s.name}--font-weight`),

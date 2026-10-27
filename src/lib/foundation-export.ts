@@ -495,7 +495,7 @@ const SHEET_TYPES: Partial<Record<Token['type'], string>> = { fontFamily: 'STRIN
 /**
  * One tier of a foundation as its own collection. Aliases point into the collection below
  * (`{Space Scale:4}`), so import the scale, then the roles, then the purposes. Modes only appear where
- * values change: responsive roles get a mode per breakpoint, and extra products' fonts a mode per product.
+ * values change: responsive roles get a mode per breakpoint, and Text a mode per product when one has its own fonts.
  */
 export function generateSheetVariablesCsv(palettes: GeneratedPalette[], f: Foundations, group: SheetGroup, tier: Token['tier']) {
   const all = buildTokens(palettes, f, { groups: [group], modes: 'light', colorFormat: 'hex' });

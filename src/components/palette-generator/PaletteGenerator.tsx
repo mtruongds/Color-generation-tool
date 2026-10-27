@@ -425,8 +425,8 @@ export function PaletteGenerator({
 
   const addProduct = useCallback(() => {
     const names = new Set(products.map((p) => p.name.toLowerCase()));
-    // Counts the added products only, so the first one after Main is Product 1
-    let n = products.length;
+    // Main counts as the first, so the first one after it is Product 2, like its primary-2 font
+    let n = products.length + 1;
     while (names.has(`product ${n}`)) n++;
     const product = { id: newId(), name: `Product ${n}` };
     setProducts((list) => [...list, product]);
