@@ -68,8 +68,8 @@ export function SpacingCanvas({ config, accent }: { config: SpacingConfig; accen
               ))}
             </div>
             <p className="mt-4 text-xs text-muted-foreground">
-              Stack <span className="font-mono">space-3</span> ({s(3)}px) between rows, inline{' '}
-              <span className="font-mono">space-2</span> ({s(2)}px) between avatar and text.
+              Stack <span className="font-mono">space-sm</span> ({s(3)}px) between rows, inline{' '}
+              <span className="font-mono">space-xs</span> ({s(2)}px) between avatar and text.
             </p>
           </div>
         </div>
@@ -122,7 +122,7 @@ export function SpacingInspector({
         />
         <p className="text-xs leading-snug text-muted-foreground">
           {config.progression === 'linear'
-            ? 'Dense small steps for tight UI, like Tailwind: 0.5, 1, 1.5, 2, 2.5, 3, 4 …'
+            ? 'Dense small steps for tight UI, like Tailwind: 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4 …'
             : 'Fewer, wider steps for layouts with more air: 0.5, 1, 2, 3, 4, 6, 8, 12 …'}
         </p>
       </Section>

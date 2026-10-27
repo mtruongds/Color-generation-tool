@@ -243,8 +243,8 @@ export interface SpacingConfig {
 }
 
 const SPACING_MULTIPLIERS: Record<SpacingProgression, number[]> = {
-  // Dense at the small end, like Tailwind
-  linear: [0, 0.5, 1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10, 12, 16, 20, 24],
+  // Tailwind's default steps up to 24: dense at the small end, wider apart as they grow
+  linear: [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 16, 20, 24],
   // Each step roughly 1.5× the last, for looser layouts
   geometric: [0, 0.5, 1, 2, 3, 4, 6, 8, 12, 16, 24, 32],
 };

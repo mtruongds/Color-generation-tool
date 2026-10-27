@@ -8,10 +8,10 @@ import {
   RADIUS_FULL,
   generateRadiusScale,
   generateShadowScale,
-  generateSpacingScale,
   generateTypeScale,
   sortedBreakpoints,
 } from '../../lib/foundations';
+import { buildTokens, resolveToken } from '../../lib/tokens';
 import { typeCss } from './FoundationSample';
 
 type DocKey = Exclude<FoundationKey, 'color'>;
@@ -42,7 +42,7 @@ const GUIDELINES: Record<DocKey, { intro: string; dos: string[]; donts: string[]
   spacing: {
     intro: 'Every gap, padding and margin comes from multiples of the base unit, so layouts keep one rhythm.',
     dos: [
-      'Use small steps (0.5–3) inside components and larger ones (6+) between sections.',
+      'Use 2xs–sm inside components and lg and up between sections.',
       'Group related items with less space than unrelated ones.',
       'Match inner padding to the component’s size: dense controls get smaller insets.',
     ],
@@ -133,14 +133,23 @@ function rowsFor(key: DocKey, f: Foundations, isDark: boolean, accent: Accent): 
         usage: s.usage,
       }));
     }
-    case 'spacing':
-      return generateSpacingScale(f.spacing).map((t) => ({
-        token: t.name,
-        preview: <span className="block h-3 rounded-[2px]" style={{ width: Math.min(t.value, 96), minWidth: t.value ? 2 : 0, background: accent.solid }} />,
-        value: `${t.value}px · ${formatLength(t.value, 'rem')}`,
-        cssVar: `--${t.name}`,
-        usage: spacingUsage(t.multiplier),
-      }));
+    case 'spacing': {
+      // The roles, like radius, so the table names what components use; re-pointed and added ones included
+      const tokens = buildTokens([], f, { groups: ['spacing'], modes: 'light', colorFormat: 'hex' });
+      const byName = new Map(tokens.map((t) => [t.name, t]));
+      return tokens
+        .filter((t) => t.tier === 'base')
+        .map((t) => {
+          const value = Number(resolveToken(t, byName)?.value ?? 0);
+          return {
+            token: t.name,
+            preview: <span className="block h-3 rounded-[2px]" style={{ width: Math.min(value, 96), minWidth: value ? 2 : 0, background: accent.solid }} />,
+            value: `${value}px · ${formatLength(value, 'rem')}`,
+            cssVar: `--${t.name}`,
+            usage: t.description ?? spacingUsage(value / f.spacing.base),
+          };
+        });
+    }
     case 'radius':
       return generateRadiusScale(f.radius).map((t) => ({
         token: `radius-${t.name}`,
@@ -166,7 +175,7 @@ function rowsFor(key: DocKey, f: Foundations, isDark: boolean, accent: Accent): 
     case 'grid':
       return [
         ...sortedBreakpoints(f.grid).map((b) => ({
-          token: b.name,
+          token: `breakpoint-${b.name}`,
           preview: (
             <span className="flex h-4 w-24 gap-px">
               {Array.from({ length: b.columns }, (_, i) => (
@@ -175,7 +184,7 @@ function rowsFor(key: DocKey, f: Foundations, isDark: boolean, accent: Accent): 
             </span>
           ),
           value: `≥${b.minWidth}px · ${b.columns} cols · ${b.gutter}/${b.margin}px`,
-          cssVar: '--grid-columns, --grid-gutter, --grid-margin',
+          cssVar: `--breakpoint-${b.name}, --grid-${b.name}-*`,
           usage: deviceFor(b.minWidth),
         })),
         {

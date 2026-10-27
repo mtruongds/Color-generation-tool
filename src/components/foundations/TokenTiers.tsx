@@ -40,7 +40,7 @@ const NAME_HINTS: Record<TokenGroup, Record<'base' | 'semantic', string>> = {
   typography: { base: 'font-size-hero', semantic: 'text-button' },
   spacing: { base: 'space-4xl', semantic: 'padding-section' },
   radius: { base: 'radius-3xl', semantic: 'radius-input' },
-  shadow: { base: 'shadow-glow-color', semantic: 'container-toast' },
+  shadow: { base: 'shadow-glow-color', semantic: 'shadow-toast' },
   grid: { base: 'container-narrow', semantic: 'page-narrow' },
 };
 

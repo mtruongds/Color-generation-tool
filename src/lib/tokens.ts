@@ -24,7 +24,7 @@ import type { PaletteConfig } from '../components/palette-generator/types';
  *   base      — roles that alias primitives (brand-9, font-family-heading, space-md)
  *   semantic  — purposes that alias base tokens (bg-brand, text-h1-size, padding-card); text styles and
  *               shadow levels are composites of those (text-h1 of its properties, shadow-md of its color slots)
- * Formatters (CSS, Tailwind, JSON, Figma) only read this model.
+ * Formatters (CSS, JSON, Figma) only read this model.
  */
 
 export type Tier = 'primitive' | 'base' | 'semantic';
@@ -76,10 +76,6 @@ export interface Token {
   /** Wide-gamut color for P3 displays. */
   p3?: string;
   description?: string;
-  /** Tailwind v4 theme variable that exposes this token as utilities. */
-  tw?: string;
-  /** Tailwind needs a literal value here, e.g. breakpoints used in media queries. */
-  twLiteral?: boolean;
   /** The generator's alias, set when the user re-pointed this token. */
   defaultRef?: string;
   /** On a light primitive when both modes share one set: its dark counterpart. */
@@ -402,7 +398,6 @@ function colorTokens(palettes: GeneratedPalette[], modes: TokenModes, format: Co
         type: 'color',
         ref: `${prim(p.id, modes === 'dark')}-${step}`,
         darkRef: modes === 'both' ? `${prim(p.id, true)}-${step}` : undefined,
-        tw: `color-${role}-${step}`,
         products: overrides.length
           ? overrides.map(({ product, paletteId }) => ({
               product: product.name,
@@ -426,7 +421,6 @@ function colorTokens(palettes: GeneratedPalette[], modes: TokenModes, format: Co
       type: 'color',
       ref: `${s.role}-${s.step}`,
       description: s.usage,
-      tw: `color-${s.name}`,
     });
   }
   return tokens;
@@ -519,14 +513,14 @@ function typographyTokens(f: Foundations): Token[] {
     tokens.push({ tier: 'primitive', group: 'typography', name: `letter-spacing-${code}`, path: ['font', 'letter-spacing', code], type: 'letterSpacing', value: st.tracking });
   }
 
-  // Base: roles. `code` rather than `mono`, which names the primitive; Tailwind keeps its familiar font-mono.
+  // Base: roles. `code` rather than `mono`, which names the primitive.
   // An extra product's own font is a role of its own, numbered by product like its primitive (heading-2), so Typography keeps
   // only its breakpoint modes; the Text styles switch to it per product.
   const productRoles = new Map<FontRole, { product: string; ref: string }[]>();
-  for (const [role, slot, tw, fontRole] of [
-    ['heading', 'primary', 'font-heading', 'heading'],
-    ['body', 'secondary', 'font-body', 'body'],
-    ['code', 'mono', 'font-mono', 'mono'],
+  for (const [role, slot, fontRole] of [
+    ['heading', 'primary', 'heading'],
+    ['body', 'secondary', 'body'],
+    ['code', 'mono', 'mono'],
   ] as const) {
     tokens.push({
       tier: 'base',
@@ -535,7 +529,6 @@ function typographyTokens(f: Foundations): Token[] {
       path: ['font', 'family', role],
       type: 'fontFamily',
       ref: `font-family-${slot}`,
-      tw,
     });
     for (const own of productFonts.get(fontRole) ?? []) {
       const n = products.findIndex((p) => p.name === own.product) + 1;
@@ -593,24 +586,23 @@ function typographyTokens(f: Foundations): Token[] {
     const role = s.role === 'heading' ? 'heading' : 'body';
     const size = sizeRole(s.step);
     const style = `text-${s.name}`;
-    const t = (prop: string, type: TokenType, ref: string, tw?: string): Token => ({
+    const t = (prop: string, type: TokenType, ref: string): Token => ({
       tier: 'semantic',
       group: 'typography',
       name: `${style}-${prop}`,
       path: ['text', s.name, prop],
       type,
       ref,
-      tw,
       description: prop === 'size' ? s.usage : undefined,
       partOf: style,
     });
     tokens.push(
       { tier: 'semantic', group: 'typography', name: style, path: ['text', s.name], type: 'typography', value: typographyParts(style), description: s.usage },
       { ...t('family', 'fontFamily', `font-family-${role}`), products: productRoles.get(role) },
-      t('size', 'dimension', `font-size-${size}`, `text-${s.name}`),
-      t('line-height', 'dimension', `line-height-${size}`, `text-${s.name}--line-height`),
-      t('weight', 'fontWeight', `font-weight-${WEIGHT_EMPHASIS[s.weightName]}`, `text-${s.name}--font-weight`),
-      t('tracking', 'letterSpacing', `letter-spacing-${size}`, `text-${s.name}--letter-spacing`),
+      t('size', 'dimension', `font-size-${size}`),
+      t('line-height', 'dimension', `line-height-${size}`),
+      t('weight', 'fontWeight', `font-weight-${WEIGHT_EMPHASIS[s.weightName]}`),
+      t('tracking', 'letterSpacing', `letter-spacing-${size}`),
     );
   }
   return tokens;
@@ -632,14 +624,14 @@ const SPACE_ROLES: [string, number][] = [
   ['3xl', 16],
 ];
 
-const SEMANTIC_SPACE: { name: string; role: string; tw: string; usage: string }[] = [
-  { name: 'gap-inline', role: 'xs', tw: 'spacing-inline', usage: 'Between items in a row: icon and label, buttons' },
-  { name: 'gap-stack', role: 'md', tw: 'spacing-stack', usage: 'Between stacked items: form fields, list rows' },
-  { name: 'gap-section', role: '2xl', tw: 'spacing-section', usage: 'Between page sections' },
-  { name: 'padding-control-x', role: 'md', tw: 'spacing-control-x', usage: 'Horizontal padding in buttons and inputs' },
-  { name: 'padding-control-y', role: 'xs', tw: 'spacing-control-y', usage: 'Vertical padding in buttons and inputs' },
-  { name: 'padding-card', role: 'lg', tw: 'spacing-card', usage: 'Inside cards and panels' },
-  { name: 'padding-dialog', role: 'xl', tw: 'spacing-dialog', usage: 'Inside dialogs and sheets' },
+const SEMANTIC_SPACE: { name: string; role: string; usage: string }[] = [
+  { name: 'gap-inline', role: 'xs', usage: 'Between items in a row: icon and label, buttons' },
+  { name: 'gap-stack', role: 'md', usage: 'Between stacked items: form fields, list rows' },
+  { name: 'gap-section', role: '2xl', usage: 'Between page sections' },
+  { name: 'padding-control-x', role: 'md', usage: 'Horizontal padding in buttons and inputs' },
+  { name: 'padding-control-y', role: 'xs', usage: 'Vertical padding in buttons and inputs' },
+  { name: 'padding-card', role: 'lg', usage: 'Inside cards and panels' },
+  { name: 'padding-dialog', role: 'xl', usage: 'Inside dialogs and sheets' },
 ];
 
 function spacingTokens(f: Foundations): Token[] {
@@ -651,8 +643,6 @@ function spacingTokens(f: Foundations): Token[] {
     path: ['space', s.name.replace('space-', '')],
     type: 'dimension' as const,
     value: s.value,
-    // Tailwind multiplies one base unit for p-1, p-2, …
-    ...(s.multiplier === 1 && { tw: 'spacing' }),
   }));
   for (const [role, m] of SPACE_ROLES) {
     tokens.push({
@@ -662,11 +652,11 @@ function spacingTokens(f: Foundations): Token[] {
       path: ['space', role],
       type: 'dimension',
       ref: scale.find((s) => s.multiplier === m)!.name,
-      tw: `spacing-${role}`,
     });
   }
   for (const s of SEMANTIC_SPACE) {
-    tokens.push({ tier: 'semantic', group: 'spacing', name: s.name, path: ['spacing', s.name], type: 'dimension', ref: `space-${s.role}`, description: s.usage, tw: s.tw });
+    // Under `space` like the scale and roles, so the user's own (padding-section) sit beside them
+    tokens.push({ tier: 'semantic', group: 'spacing', name: s.name, path: ['space', s.name], type: 'dimension', ref: `space-${s.role}`, description: s.usage });
   }
   return tokens;
 }
@@ -718,12 +708,11 @@ function radiusTokens(f: Foundations): Token[] {
       type: 'dimension',
       ref: primName(r),
       description: r.usage,
-      tw: `radius-${r.name}`,
       products: productRadius.get(r.name),
     });
   }
   for (const [name, role, usage] of SEMANTIC_RADIUS) {
-    tokens.push({ tier: 'semantic', group: 'radius', name: `radius-${name}`, path: ['radius', name], type: 'dimension', ref: `radius-${role}`, description: usage, tw: `radius-${name}` });
+    tokens.push({ tier: 'semantic', group: 'radius', name: `radius-${name}`, path: ['radius', name], type: 'dimension', ref: `radius-${role}`, description: usage });
   }
   return tokens;
 }
@@ -786,7 +775,7 @@ function shadowSlots(levels: ShadowLevelLayers[]) {
  *   base      — color slots that switch to dark and per product (shadow-layer-1-color)
  *   semantic  — the levels (shadow-md): each layer's geometry with the slot its color comes from, as a
  *               text style is built from its properties. Purposes are the user's: a custom semantic
- *               token aliasing a level beside it (container-toast).
+ *               token aliasing a level beside it (shadow-toast).
  */
 function shadowTokens(palettes: GeneratedPalette[], f: Foundations, modes: TokenModes): Token[] {
   const tokens: Token[] = [];
@@ -857,7 +846,6 @@ function shadowTokens(palettes: GeneratedPalette[], f: Foundations, modes: Token
       // Light colors for previews; colorRef is what each layer's color really is
       value: level.layers.map((l, j) => ({ ...(modes === 'dark' ? l.dark : l.light), colorRef: `shadow-${slotFor(level, j).key}-color` })),
       description: level.usage,
-      tw: `shadow-${level.name}`,
     });
   }
   return tokens;
@@ -894,7 +882,6 @@ function gridTokens(f: Foundations): Token[] {
         path: ['breakpoint', b.name],
         type: 'dimension',
         value: b.minWidth,
-        ...(b.minWidth > 0 && { tw: `breakpoint-${b.name}`, twLiteral: true }),
       },
       { tier: 'primitive', group: 'grid', name: `grid-${b.name}-columns`, path: ['grid', b.name, 'columns'], type: 'number', value: b.columns },
       { tier: 'primitive', group: 'grid', name: `grid-${b.name}-gutter`, path: ['grid', b.name, 'gutter'], type: 'dimension', value: b.gutter },
@@ -927,15 +914,15 @@ function gridTokens(f: Foundations): Token[] {
   }
 
   // Semantic: page layout
-  const page: [string, string, TokenType, string, string?][] = [
+  const page: [string, string, TokenType, string][] = [
     ['page-columns', 'grid-columns', 'number', 'Columns in the page grid'],
     ['page-gutter', 'grid-gutter', 'dimension', 'Gaps between grid columns'],
     ['page-margin', 'grid-margin', 'dimension', 'Space between content and screen edge'],
   ];
-  if (g.maxWidth > 0) page.push(['page-max-width', 'container-max', 'dimension', 'Widest the content gets', 'container-page']);
+  if (g.maxWidth > 0) page.push(['page-max-width', 'container-max', 'dimension', 'Widest the content gets']);
   if (g.sidebar > 0) page.push(['page-sidebar', 'sidebar-width', 'dimension', 'App navigation sidebar']);
-  for (const [name, ref, type, usage, tw] of page) {
-    tokens.push({ tier: 'semantic', group: 'grid', name, path: ['page', name.replace('page-', '')], type, ref, description: usage, tw });
+  for (const [name, ref, type, usage] of page) {
+    tokens.push({ tier: 'semantic', group: 'grid', name, path: ['page', name.replace('page-', '')], type, ref, description: usage });
   }
   return tokens;
 }
@@ -1015,37 +1002,34 @@ function applyAliases(tokens: Token[], aliases: Record<string, string> | undefin
   });
 }
 
-/** Tailwind theme variable for a custom token, in the namespace its group uses. */
-function customTw(c: CustomToken): string | undefined {
-  const prefixed = (ns: string) => (c.name.startsWith(`${ns}-`) ? c.name : `${ns}-${c.name}`);
-  switch (c.group) {
-    case 'color':
-      return `color-${c.name}`;
-    case 'spacing':
-      return `spacing-${c.name}`;
-    case 'radius':
-      return prefixed('radius');
-    case 'shadow':
-      return prefixed('shadow');
-    default:
-      return undefined;
-  }
-}
-
 const CUSTOM_ROOT: Record<TokenGroup, string> = { color: 'color', typography: 'font', spacing: 'space', radius: 'radius', shadow: 'shadow', grid: 'page' };
 
 export const isTokenName = (name: string) => /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/.test(name);
 
 /**
- * A custom token's path, without the root its name repeats (`shadow-toast` → `shadow.toast`). Color keeps
- * the whole name, since its collection exports name variables by path, and so does a name whose short
- * key another token in the tier already uses (`shadow-edge` beside `shadow.edge.color`).
+ * A custom token's path, nested like the tokens beside it whose names it continues (`font-size-hero` →
+ * `font.size.hero` beside `font-size-md`, `container-narrow` → `container.narrow`), else without the
+ * root its name repeats (`shadow-toast` → `shadow.toast`). Color keeps the whole name, since its
+ * collection exports name variables by path, and so does a name whose path would nest into or around
+ * another token's in the tier (`shadow-edge` beside `shadow.edge.color`).
  */
 function customPath(c: CustomToken, tokens: Token[]): string[] {
   const root = CUSTOM_ROOT[c.group];
-  const key = c.name.slice(root.length + 1);
-  const taken = c.group === 'color' || !c.name.startsWith(`${root}-`) || tokens.some((t) => t.tier === c.tier && t.path[0] === root && t.path[1] === key);
-  return [root, taken ? c.name : key];
+  if (c.group === 'color') return [root, c.name];
+  let stem = c.name.startsWith(`${root}-`) ? root : '';
+  let path = stem ? [root, c.name.slice(root.length + 1)] : [root, c.name];
+  // The longest name stem a sibling shares (`line-height` of `line-height-md`), and the group it sits in
+  for (const t of tokens) {
+    const last = t.path.at(-1)!;
+    if (t.tier !== c.tier || t.group !== c.group || !t.name.endsWith(`-${last}`)) continue;
+    const s = t.name.slice(0, -last.length - 1);
+    if (s.length > stem.length && c.name.startsWith(`${s}-`)) {
+      stem = s;
+      path = [...t.path.slice(0, -1), c.name.slice(s.length + 1)];
+    }
+  }
+  const within = (a: string[], b: string[]) => a.every((k, i) => b[i] === k);
+  return tokens.some((t) => t.tier === c.tier && (within(path, t.path) || within(t.path, path))) ? [root, c.name] : path;
 }
 
 /**
@@ -1059,7 +1043,7 @@ function customTextStyle(c: CustomToken, style: Token, tokens: Token[], byName: 
   const own = (Object.keys(TYPOGRAPHY_PARTS) as (keyof TypographyParts)[]).flatMap((k) => {
     const from = byName.get((style.value as TypographyParts)[k]);
     if (!from) return [];
-    const { defaultRef, description, tw, ...rest } = from;
+    const { defaultRef, description, ...rest } = from;
     // The usage goes on the size too, as on generated styles, so the Figma variable carries it
     const usage = k === 'size' && c.description ? { description: c.description } : {};
     return [{ ...rest, ...usage, name: parts[k], path: [...path, TYPOGRAPHY_PARTS[k]], partOf: c.name }];
@@ -1096,7 +1080,6 @@ function addCustomTokens(tokens: Token[], custom: CustomToken[] | undefined, gro
         ref: target.name,
         darkRef: target.pair,
         description: c.description || undefined,
-        tw: customTw(c),
         custom: true,
       };
       out.push(t);

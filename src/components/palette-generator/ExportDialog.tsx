@@ -325,7 +325,7 @@ export function ExportDialog({
             : shadowSheet
               ? SHADOW_HINTS[sheetPart]
               : scope === 'shadow'
-                ? `Levels under shadow, and custom purposes under container, resolved per mode${activeKind === 'css' ? '' : ', Light and Dark at the root'}.`
+                ? `Levels and custom purposes under shadow, resolved per mode${activeKind === 'css' ? '' : ', Light and Dark at the root'}.`
               : sheetGroup
                 ? sheetHint(sheetGroup, sheetPart)
                 : meta.hint}

@@ -1,7 +1,7 @@
 import chroma from 'chroma-js';
 import type { ColorFormat } from './color-utils';
 import type { GeneratedPalette } from './export-utils';
-import { type Foundations, type ShadowLayer, generateTypeScale, layerToCss } from './foundations';
+import { type Foundations, type ShadowLayer, layerToCss } from './foundations';
 import {
   TIERS,
   type Token,
@@ -604,22 +604,20 @@ const FONT_STYLE_NAMES: Record<number, string> = { 300: 'Light', 400: 'Regular',
 /**
  * One text style per text style token, bound to the Text collection, so sizes follow Typography's
  * Mobile and Desktop modes. Letter spacing is a raw percent, since Figma reads bound letter spacing as px.
- * Every style goes under `text/`, as shadows go under `shadow/`: generated ones by label (text/Heading 1),
- * the user's own by name (text/button).
+ * Every style is named by token path, as shadows are: text-h1 → text/h1, the user's text-button → text/button.
  */
 export function generateTextStylesCsv(palettes: GeneratedPalette[], f: Foundations) {
   const tokens = buildTokens(palettes, f, { groups: ['typography'], modes: 'light', colorFormat: 'hex' });
   const byName = new Map(tokens.map((t) => [t.name, t]));
   const collection = SHEET_COLLECTIONS.typography.semantic;
   const paths = collectionPaths(tokens.filter((t) => t.tier === 'semantic' && t.type !== 'typography'));
-  const labels = new Map(generateTypeScale(f.typography).map((s) => [`text-${s.name}`, s.label]));
   const alias = (t: Token) => `{${collection}:${paths.get(t.name)}}`;
 
   const lines = [['Name', 'Type', 'Description', 'Property', 'Value'].join(',')];
   for (const style of tokens.filter((t) => t.type === 'typography')) {
     const parts = style.value as TypographyParts;
     const prop = (k: keyof TypographyParts) => byName.get(parts[k]);
-    const name = `text/${style.custom ? style.path.at(-1) : (labels.get(style.name) ?? style.name)}`;
+    const name = style.path.join('/');
     const description = style.description ?? '';
     const rows: [string, string][] = [];
     const family = prop('family');
@@ -688,21 +686,16 @@ function shadowModel(palettes: GeneratedPalette[], f: Foundations) {
 }
 
 /**
- * The effect styles, all under `shadow/` like text styles under `text/`: levels (shadow/md), then
- * purposes (shadow/toast). A purpose whose short name a level already has keeps its whole name
- * (shadow/container-md). Each takes the level it resolves to, so a re-pointed or added token gets
- * that level's layers.
+ * The effect styles, named by token path like text styles, so Figma reads as the JSON export does:
+ * levels (shadow/md), then purposes (shadow-toast → shadow/toast, container-toast → shadow/container-toast).
+ * Each takes the level it resolves to, so a re-pointed or added token gets that level's layers.
  */
 function shadowStyles(tokens: Token[], byName: Map<string, Token>) {
-  const shadows = tokens.filter((t) => t.tier !== 'primitive' && t.type === 'shadow');
-  // Custom tokens may carry either prefix (`shadow-toast`), so names drop it
-  const short = (t: Token) => t.name.replace(/^(container|shadow)-/, '');
-  const levels = new Set(shadows.filter((t) => !t.custom).map(short));
-  return shadows.flatMap((t) => {
+  return tokens.flatMap((t) => {
+    if (t.tier === 'primitive' || t.type !== 'shadow') return [];
     const level = resolveToken(t, byName);
     if (!level?.value) return [];
-    const name = `shadow/${t.custom && levels.has(short(t)) ? t.name : short(t)}`;
-    return [{ name, token: t.name, description: t.description ?? '', level }];
+    return [{ name: t.path.join('/'), token: t.name, description: t.description ?? '', level }];
   });
 }
 
@@ -757,7 +750,7 @@ export function generateShadowStylesCss(palettes: GeneratedPalette[], f: Foundat
   return modes
     .filter((m) => !m.product || m.own)
     .map((mode) => {
-      // Properties keep the token's name, as in the full CSS export (`shadow-card`, not `container-card`)
+      // Properties keep the token's name, as in the full CSS export; the comment names the Figma style
       const props = styles.map(({ name, token, description, level }) => {
         const value = resolveShadowLayers(level, byName, mode.isDark, mode.product).map((l) => layerToCss({ ...l, color: rgbaColor(l.color) })).join(', ');
         return `${description ? `  /* ${description} */\n` : ''}  /* ${name} */\n  --${token}: ${value};`;
