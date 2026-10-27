@@ -572,8 +572,29 @@ export function PaletteGenerator({
     toast.success(`Added ${token.name}`);
   }, []);
 
-  const updateToken = useCallback((name: string, ref: string) => {
-    setFoundations((prev) => ({ ...prev, customTokens: prev.customTokens?.map((t) => (t.name === name ? { ...t, ref } : t)) }));
+  /** Edits a custom token. A rename re-points every token that aliased the old name. */
+  const updateToken = useCallback((name: string, patch: Partial<Pick<CustomToken, 'name' | 'ref' | 'description'>>) => {
+    setFoundations((prev) => {
+      const renamed = patch.name && patch.name !== name ? patch.name : null;
+      const follow = (ref: string) => (renamed && ref === name ? renamed : ref);
+      return {
+        ...prev,
+        customTokens: prev.customTokens?.map((t) => (t.name === name ? { ...t, ...patch } : { ...t, ref: follow(t.ref) })),
+        aliases: renamed && prev.aliases ? Object.fromEntries(Object.entries(prev.aliases).map(([k, v]) => [k, follow(v)])) : prev.aliases,
+      };
+    });
+  }, []);
+
+  /** Moves a custom token to where another one sits, shifting the ones between along. */
+  const moveToken = useCallback((name: string, to: string) => {
+    setFoundations((prev) => {
+      const list = [...(prev.customTokens ?? [])];
+      const from = list.findIndex((t) => t.name === name);
+      const at = list.findIndex((t) => t.name === to);
+      if (from < 0 || at < 0 || from === at) return prev;
+      list.splice(at, 0, ...list.splice(from, 1));
+      return { ...prev, customTokens: list };
+    });
   }, []);
 
   const removeToken = useCallback(
@@ -1500,6 +1521,7 @@ export function PaletteGenerator({
                     onAddToken={addToken}
                     onUpdateToken={updateToken}
                     onRemoveToken={removeToken}
+                    onMoveToken={moveToken}
                   />
                 ) : activeView === 'docs' ? (
                   isColor ? (

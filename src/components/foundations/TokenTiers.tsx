@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Check, ChevronRight, ChevronsUpDown, Plus, RotateCcw, Search, Trash2 } from 'lucide-react';
+import { Check, ChevronRight, ChevronsUpDown, GripVertical, Pencil, Plus, RotateCcw, Search, Trash2 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Command, CommandEmpty, CommandInput, CommandItem, CommandList } from '../ui/command';
@@ -132,10 +132,10 @@ type RowFilter = 'all' | 'edited' | 'custom';
  */
 /**
  * Token column wide enough for the group's longest name (mono 12px ≈ 0.45rem a character),
- * plus room for the edited dot and custom badge. Names past the cap still truncate.
+ * plus room for the edited dot, custom badge and drag grip. Names past the cap still truncate.
  */
 function tokenColumnWidth(tokens: Token[]) {
-  const chars = Math.max(0, ...tokens.map((t) => t.name.length + (t.custom ? 8 : 0) + (t.defaultRef ? 2 : 0)));
+  const chars = Math.max(0, ...tokens.map((t) => t.name.length + (t.custom ? 11 : 0) + (t.defaultRef ? 2 : 0)));
   return `${Math.min(24, Math.max(12, chars * 0.45 + 2.5))}rem`;
 }
 
@@ -150,6 +150,7 @@ export function TokenTiers({
   onAddToken,
   onUpdateToken,
   onRemoveToken,
+  onMoveToken,
 }: {
   group: TokenGroup;
   palettes: GeneratedPalette[];
@@ -160,10 +161,21 @@ export function TokenTiers({
   onAliasChange: (name: string, ref: string | null) => void;
   onResetAliases: (names: string[]) => void;
   onAddToken: (token: CustomToken) => void;
-  onUpdateToken: (name: string, ref: string) => void;
+  onUpdateToken: (name: string, patch: TokenPatch) => void;
   onRemoveToken: (name: string) => void;
+  /** Moves a custom token to where `to` sits. */
+  onMoveToken: (name: string, to: string) => void;
 }) {
   const [query, setQuery] = useState('');
+  /** The custom token whose row is open as a form. */
+  const [editing, setEditing] = useState<string | null>(null);
+  /** Custom token being dragged, and the one it would drop onto. */
+  const [dragging, setDragging] = useState<string | null>(null);
+  const [dropOn, setDropOn] = useState<string | null>(null);
+  const endDrag = () => {
+    setDragging(null);
+    setDropOn(null);
+  };
   const [filter, setFilter] = useState<RowFilter>('all');
   const [folded, setFolded] = useState<Partial<Record<Tier, boolean>>>({});
 
@@ -246,7 +258,8 @@ export function TokenTiers({
         const meta = TIER_META[tier];
         const editedHere = all.filter((t) => t.defaultRef).length;
         const nameWidth = tokenColumnWidth(all);
-        const customHere = all.filter((t) => t.custom).length;
+        const customRows = all.filter((t) => t.custom);
+        const customHere = customRows.length;
         // Usage only shows where some token has one; otherwise the column is just empty space
         const hasUsage = all.some((t) => t.description);
         const columns = 2 + (tier !== 'primitive' ? 1 : 0) + (hasUsage ? 1 : 0);
@@ -283,9 +296,55 @@ export function TokenTiers({
                     </tr>
                   </thead>
                   <tbody className="divide-y">
-                    {rows.map((t) => (
-                      <tr key={t.name} className="transition-colors hover:bg-muted/30">
-                        <td className="px-4 py-2">
+                    {rows.map((t) =>
+                      t.custom && editing === t.name ? (
+                        <TokenFormRow
+                          key={t.name}
+                          columns={columns}
+                          tier={t.tier as 'base' | 'semantic'}
+                          group={group}
+                          targets={aliasOptions(t, tokens)}
+                          taken={byName}
+                          isDark={isDark}
+                          initial={{ name: t.name, ref: t.ref ?? '', description: t.description }}
+                          onSubmit={(patch) => {
+                            onUpdateToken(t.name, patch);
+                            setEditing(null);
+                          }}
+                          onCancel={() => setEditing(null)}
+                        />
+                      ) : (
+                      <tr
+                        key={t.name}
+                        // Added tokens reorder by dragging, only among the added tokens in their own table
+                        draggable={t.custom && customHere > 1}
+                        onDragStart={(e) => {
+                          e.dataTransfer.effectAllowed = 'move';
+                          setDragging(t.name);
+                        }}
+                        onDragOver={(e) => {
+                          const from = customRows.findIndex((c) => c.name === dragging);
+                          if (!t.custom || from < 0) return;
+                          e.preventDefault();
+                          setDropOn(t.name);
+                        }}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          if (dragging && dragging !== t.name) onMoveToken(dragging, t.name);
+                          endDrag();
+                        }}
+                        onDragEnd={endDrag}
+                        className={cn(
+                          'group/row h-[42px] transition-colors hover:bg-muted/30',
+                          dragging === t.name && 'opacity-40',
+                          dropOn === t.name &&
+                            dragging !== t.name &&
+                            (customRows.findIndex((c) => c.name === dragging) < customRows.indexOf(t)
+                              ? 'shadow-[inset_0_-2px_0_var(--primary)]'
+                              : 'shadow-[inset_0_2px_0_var(--primary)]'),
+                        )}
+                      >
+                        <td className={cn('px-4 py-0', t.custom && customHere > 1 && 'cursor-grab active:cursor-grabbing')}>
                           <span className="flex items-center gap-1.5">
                             {t.defaultRef && <span className="size-1.5 shrink-0 rounded-full bg-amber-500" aria-label="Edited" />}
                             <button
@@ -301,10 +360,16 @@ export function TokenTiers({
                                 custom
                               </span>
                             )}
+                            {t.custom && customHere > 1 && (
+                              <GripVertical
+                                className="ml-auto size-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover/row:opacity-100"
+                                aria-hidden
+                              />
+                            )}
                           </span>
                         </td>
                         {tier !== 'primitive' && (
-                          <td className="px-4 py-1.5">
+                          <td className="px-4 py-0">
                             <AliasCell
                               token={t}
                               tokens={tokens}
@@ -313,16 +378,22 @@ export function TokenTiers({
                               usedBy={usedBy.get(t.name)}
                               onAliasChange={onAliasChange}
                               onUpdateToken={onUpdateToken}
+                              onEditToken={setEditing}
                               onRemoveToken={onRemoveToken}
                             />
                           </td>
                         )}
-                        <td className="px-4 py-2">
+                        <td className="px-4 py-0">
                           <Resolved t={t} byName={byName} isDark={isDark} />
                         </td>
-                        {hasUsage && <td className="px-4 py-2 text-xs text-muted-foreground">{t.description}</td>}
+                        {hasUsage && (
+                          <td className="truncate px-4 py-0 text-xs text-muted-foreground" title={t.description}>
+                            {t.description}
+                          </td>
+                        )}
                       </tr>
-                    ))}
+                      ),
+                    )}
                     {rows.length === 0 && q && (
                       <tr>
                         <td colSpan={columns} className="px-4 py-6 text-center text-xs text-muted-foreground">
@@ -352,6 +423,7 @@ function AliasCell({
   usedBy,
   onAliasChange,
   onUpdateToken,
+  onEditToken,
   onRemoveToken,
 }: {
   token: Token;
@@ -360,12 +432,13 @@ function AliasCell({
   isDark: boolean;
   usedBy?: string[];
   onAliasChange: (name: string, ref: string | null) => void;
-  onUpdateToken: (name: string, ref: string) => void;
+  onUpdateToken: (name: string, patch: TokenPatch) => void;
+  onEditToken: (name: string) => void;
   onRemoveToken: (name: string) => void;
 }) {
   const options = aliasOptions(token, tokens);
   const defaultRef = token.defaultRef ?? token.ref;
-  const change = (ref: string) => (token.custom ? onUpdateToken(token.name, ref) : onAliasChange(token.name, ref === token.defaultRef ? null : ref));
+  const change = (ref: string) => (token.custom ? onUpdateToken(token.name, { ref }) : onAliasChange(token.name, ref === token.defaultRef ? null : ref));
   // Shadow levels alias nothing, so a picker would only store an edit that never applies
   const lock = aliasLock(token);
   if (lock) return <span className="block truncate px-1 text-xs text-muted-foreground" title={lock}>{lock}</span>;
@@ -401,6 +474,22 @@ function AliasCell({
       {token.custom && (
         <Tooltip>
           <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-7 shrink-0 text-muted-foreground"
+              aria-label={`Edit ${token.name}`}
+              onClick={() => onEditToken(token.name)}
+            >
+              <Pencil className="size-3" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Edit name, alias and usage</TooltipContent>
+        </Tooltip>
+      )}
+      {token.custom && (
+        <Tooltip>
+          <TooltipTrigger asChild>
             {/* Wrapped so the tooltip still shows while the button is disabled */}
             <span tabIndex={usedBy ? 0 : -1} className="shrink-0 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
               <Button
@@ -422,6 +511,8 @@ function AliasCell({
   );
 }
 
+type TokenPatch = Partial<Pick<CustomToken, 'name' | 'ref' | 'description'>>;
+
 function AddTokenRow({
   columns,
   tier,
@@ -441,27 +532,8 @@ function AddTokenRow({
   onAdd: (token: CustomToken) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const [name, setName] = useState('');
-  const [ref, setRef] = useState('');
-  const [description, setDescription] = useState('');
   // A new shadow token is a shadow, so its color slots and raw layer colors aren't targets
   const targets = aliasTargets(tier, group, tokens, group === 'shadow' ? 'shadow' : undefined);
-
-  const slug = name.trim().toLowerCase().replace(/\s+/g, '-');
-  const error = !slug ? null : !isTokenName(slug) ? 'Use lowercase letters, numbers and hyphens' : taken.has(slug) ? 'Name already in use' : null;
-  const canAdd = !!slug && !error && !!ref;
-
-  const close = () => {
-    setOpen(false);
-    setName('');
-    setRef('');
-    setDescription('');
-  };
-  const submit = () => {
-    if (!canAdd) return;
-    onAdd({ tier, group, name: slug, ref, description: description.trim() || undefined });
-    close();
-  };
 
   if (!open) {
     return (
@@ -482,16 +554,75 @@ function AddTokenRow({
   }
 
   return (
+    <TokenFormRow
+      columns={columns}
+      tier={tier}
+      group={group}
+      targets={targets}
+      taken={taken}
+      isDark={isDark}
+      onSubmit={(t) => {
+        onAdd({ tier, group, name: t.name!, ref: t.ref!, description: t.description });
+        setOpen(false);
+      }}
+      onCancel={() => setOpen(false)}
+    />
+  );
+}
+
+/** Name, alias and usage for a custom token, as a table row. Adds a token, or edits `initial`. */
+function TokenFormRow({
+  columns,
+  tier,
+  group,
+  targets,
+  taken,
+  isDark,
+  initial,
+  onSubmit,
+  onCancel,
+}: {
+  columns: number;
+  tier: 'base' | 'semantic';
+  group: TokenGroup;
+  targets: Token[];
+  /** Every token name across groups. */
+  taken: Map<string, Token>;
+  isDark: boolean;
+  initial?: { name: string; ref: string; description?: string };
+  onSubmit: (token: TokenPatch) => void;
+  onCancel: () => void;
+}) {
+  const [name, setName] = useState(initial?.name ?? '');
+  const [ref, setRef] = useState(initial?.ref ?? '');
+  const [description, setDescription] = useState(initial?.description ?? '');
+
+  const slug = name.trim().toLowerCase().replace(/\s+/g, '-');
+  const error = !slug
+    ? null
+    : !isTokenName(slug)
+      ? 'Use lowercase letters, numbers and hyphens'
+      : taken.has(slug) && slug !== initial?.name
+        ? 'Name already in use'
+        : null;
+  const canSubmit = !!slug && !error && !!ref;
+
+  const submit = () => {
+    if (canSubmit) onSubmit({ name: slug, ref, description: description.trim() || undefined });
+  };
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') submit();
+    if (e.key === 'Escape') onCancel();
+  };
+
+  return (
     <tr className="bg-muted/30 align-top">
       <td className="px-4 py-2">
         <Input
           autoFocus
           value={name}
           onChange={(e) => setName(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') submit();
-            if (e.key === 'Escape') close();
-          }}
+          onKeyDown={onKeyDown}
           placeholder={NAME_HINTS[group][tier]}
           aria-label="Token name"
           aria-invalid={!!error}
@@ -515,18 +646,15 @@ function AddTokenRow({
           <Input
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') submit();
-              if (e.key === 'Escape') close();
-            }}
+            onKeyDown={onKeyDown}
             placeholder="Usage (optional)"
             aria-label="Usage"
             className="h-7 min-w-0 flex-1 text-xs"
           />
-          <Button size="sm" className="h-7 px-2.5 text-xs" disabled={!canAdd} onClick={submit}>
-            Add
+          <Button size="sm" className="h-7 px-2.5 text-xs" disabled={!canSubmit} onClick={submit}>
+            {initial ? 'Save' : 'Add'}
           </Button>
-          <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={close}>
+          <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={onCancel}>
             Cancel
           </Button>
         </div>

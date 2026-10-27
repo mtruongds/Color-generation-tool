@@ -338,11 +338,11 @@ export function FoundationPreview({
   };
   /** Spacing tag for a gap. */
   const gapMark = (multiplier: number) => mark('spacing', `gap: ${spacingTokenName(multiplier)}`, `${space(multiplier)}px`);
-  /** Spacing tag that also tints the padding area while spacing is highlighted. */
+  /** Spacing tag that also tints the padding area while spacing is highlighted; "py:" labels tint only top and bottom. */
   const pad = (multiplier: number, label = `p: ${spacingTokenName(multiplier)}`): PadProps => ({
     'data-fx-spacing': label,
     'data-fx-spacing-value': `${space(multiplier)}px`,
-    'data-fx-pad': '',
+    'data-fx-pad': label.startsWith('py:') ? 'y' : '',
     style: { '--fx-pad': `${space(multiplier)}px` } as React.CSSProperties,
   });
 
@@ -488,6 +488,8 @@ export function FoundationPreview({
   const wide = cols >= 12 && contentWidth >= 960;
   /** Room for two-up rows and extra table columns. */
   const roomy = cols >= 8 && contentWidth >= 640;
+  /** The dashboard's stat strip: four stats need about 200px each before labels start to wrap. */
+  const statColumns = roomy && contentWidth >= 800 ? 4 : 2;
   /**
    * The lines from `from` to `to` of a 12-column design, mapped proportionally onto the grid's
    * real column count, so layouts keep their shape on 16 or 24 columns. Neighbours share the same
@@ -571,7 +573,8 @@ export function FoundationPreview({
       >
         <div
           ref={frameRef}
-          className="fx-preview relative w-full overflow-hidden bg-background text-foreground"
+          // isolate: highlight labels and overlays layer within the page, never over the sticky toolbar
+          className="fx-preview relative isolate w-full overflow-hidden bg-background text-foreground"
           data-highlight={highlight}
           style={
             {
@@ -829,8 +832,7 @@ export function FoundationPreview({
                     className="grid overflow-hidden"
                     style={{
                       marginTop: space(6),
-                      // Four stats need about 200px each before labels start to wrap
-                      gridTemplateColumns: `repeat(${roomy && contentWidth >= 800 ? 4 : 2}, minmax(0, 1fr))`,
+                      gridTemplateColumns: `repeat(${statColumns}, minmax(0, 1fr))`,
                       gap: 1,
                       background: 'var(--g6)',
                       border: HAIRLINE,
@@ -845,7 +847,15 @@ export function FoundationPreview({
                       { label: 'Median build', value: '1m 42s', delta: '−8s', kind: 'soft' as const },
                       { label: 'Failed builds', value: '3', delta: '0', kind: 'gray' as const },
                     ].map(({ label, value, delta, kind }, i) => (
-                      <div key={label} {...mergeStyle(i === 0 ? pad(5, 'padding-stat') : {}, { background: 'var(--bg)', padding: space(mobile ? 4 : 5) })}>
+                      <div
+                        key={label}
+                        {...mergeStyle(i === 0 ? pad(5, 'padding-stat') : {}, {
+                          background: 'var(--bg)',
+                          padding: space(mobile ? 4 : 5),
+                          // Rounded like the strip's corners it sits in (inside its 1px border), so the highlight outline follows them
+                          ...(i === 0 && { borderRadius: `${radius.lg - 1}px 0 0 ${statColumns === 4 ? radius.lg - 1 : 0}px` }),
+                        })}
+                      >
                         <Text s="body-sm" tagged={i === 0} style={{ color: MUTED }}>
                           {label}
                         </Text>
@@ -958,7 +968,7 @@ export function FoundationPreview({
                   </div>
 
                   {/* Projects table */}
-                  <section style={{ ...panelStyle, marginTop: space(6), overflow: 'hidden' }} {...steps('panel: background · border: g6')}>
+                  <section className="overflow-hidden" style={{ ...panelStyle, marginTop: space(6) }} {...steps('panel: background · border: g6')}>
                     <div className="flex flex-wrap items-center justify-between" style={{ gap: space(3), padding: `${space(4)}px ${space(5)}px 0` }}>
                       <div className="flex items-center" style={{ gap: space(2) }}>
                         <Text s="h5" as="h2" tagged={false}>
@@ -1079,7 +1089,8 @@ export function FoundationPreview({
                   <div style={{ ...grid, marginTop: space(6), alignItems: 'start' }}>
                     {/* Settings form */}
                     <section style={{ ...at(1, 8), ...panelStyle }} {...steps('panel: background · border: g6')}>
-                      <div {...mergeStyle(pad(5, 'padding-panel'), { padding: space(5) })}>
+                      {/* Rounded like the panel's top, so the padding tint doesn't poke past its corners */}
+                      <div {...mergeStyle(pad(5, 'padding-panel'), { padding: space(5), borderRadius: `${radius.lg}px ${radius.lg}px 0 0` })}>
                         <Text s="h5" as="h2" tagged={false}>
                           Notifications
                         </Text>
@@ -1341,12 +1352,13 @@ export function FoundationPreview({
                     </div>
 
                     <div
+                      // A class, not an inline style, so highlight labels know this box clips them
+                      className="overflow-hidden"
                       style={{
                         ...at(9, 4),
                         background: 'var(--bg)',
                         borderRadius: radius.lg,
                         boxShadow: 'inset 0 0 0 1px var(--g6)',
-                        overflow: 'hidden',
                       }}
                       {...steps('code: background · border: g6')}
                       {...mark('radius', 'radius-lg')}
@@ -1486,6 +1498,8 @@ export function FoundationPreview({
                         padding: space(mobile ? 6 : 10),
                         ...(primary && { background: 'var(--a2)' }),
                         ...(i === 1 && (roomy ? { borderLeft: HAIRLINE } : { borderTop: HAIRLINE })),
+                        // Rounded like the panel's corners it sits in (inside its 1px border), so the highlight outline follows them
+                        ...(i === 0 && { borderRadius: roomy ? `${radius.xl - 1}px 0 0 ${radius.xl - 1}px` : `${radius.xl - 1}px ${radius.xl - 1}px 0 0` }),
                       })}
                       {...(primary ? steps('plan: a2 · rule: g6') : {})}
                     >
@@ -1540,6 +1554,7 @@ export function FoundationPreview({
                   })}
                   {...steps(`band: a9 · text: contrast · steps: ${isDark ? 'a8 → a6' : 'a10 → a12'}`)}
                   {...mark('radius', 'radius-2xl')}
+                  data-fx-on-accent=""
                 >
                   {/* The accent's own steps, deepening toward the page background in either theme */}
                   {!mobile && (
@@ -1572,7 +1587,8 @@ export function FoundationPreview({
                 <div style={{ ...grid, paddingTop: space(10), borderTop: HAIRLINE }}>
                   <div style={at(1, 4)}>
                     <Text s="h5">Northwind</Text>
-                    <Text s="body-sm" as="p" style={{ marginTop: space(2), color: MUTED, maxWidth: '32ch' }}>
+                    {/* Untagged: its label would cover the brand name just above */}
+                    <Text s="body-sm" as="p" tagged={false} style={{ marginTop: space(2), color: MUTED, maxWidth: '32ch' }}>
                       Design tokens from a few decisions, for every platform your team ships.
                     </Text>
                   </div>
@@ -1619,7 +1635,8 @@ export function FoundationPreview({
                         <Text s="body-sm" style={{ fontWeight: 500 }}>
                           Mai Kobayashi
                         </Text>
-                        <Text s="caption" style={{ color: MUTED }}>
+                        {/* Untagged: its label would cover the name just above */}
+                        <Text s="caption" tagged={false} style={{ color: MUTED }}>
                           Design engineer
                         </Text>
                       </div>
@@ -1803,7 +1820,8 @@ export function FoundationPreview({
                     </div>
                     <pre
                       className="overflow-x-auto"
-                      {...mergeStyle(pad(4), { margin: 0, padding: space(4), fontFamily: mono, fontSize: Math.max(12, t['body-sm'].size - 1), lineHeight: 1.7 })}
+                      // Rounded like the code block's bottom, so the highlight outline follows it
+                      {...mergeStyle(pad(4), { margin: 0, padding: space(4), borderRadius: `0 0 ${radius.md}px ${radius.md}px`, fontFamily: mono, fontSize: Math.max(12, t['body-sm'].size - 1), lineHeight: 1.7 })}
                     >
                       {`.button {\n  background: var(--color-bg-accent);\n  border-radius: var(--radius-md);\n  padding: var(--space-2-5) var(--space-4);\n}`}
                     </pre>
@@ -1856,7 +1874,8 @@ export function FoundationPreview({
                           className="fx-row flex cursor-pointer items-baseline"
                           {...mergeStyle(i === 0 ? pad(4, 'py: row') : {}, { gap: space(mobile ? 3 : 6), paddingBlock: space(4), borderBottom: HAIRLINE })}
                         >
-                          <Text s="caption" tagged={i === 0} className="shrink-0 tabular-nums" style={{ color: MUTED, width: space(14) }}>
+                          {/* Untagged: its label would run into the title's beside it */}
+                          <Text s="caption" tagged={false} className="shrink-0 tabular-nums" style={{ color: MUTED, width: space(14) }}>
                             {date}
                           </Text>
                           <Text s="body" tagged={i === 0} className="fx-row-title min-w-0 flex-1" style={{ fontWeight: 500, transition: 'color 150ms ease-out' }}>

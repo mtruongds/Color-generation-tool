@@ -160,7 +160,8 @@ export function ComponentGallery({ kit }: { kit: PreviewKit }) {
           {`<${name.replace(/\s+/g, '')} />`}
         </Text>
       </div>
-      <div {...mergeStyle(first ? pad(4) : {}, { padding: space(4) })}>{children}</div>
+      {/* Rounded like the tile's bottom, so the padding tint doesn't poke past its corners */}
+      <div {...mergeStyle(first ? pad(4) : {}, { padding: space(4), borderRadius: `0 0 ${radius.lg}px ${radius.lg}px` })}>{children}</div>
     </section>
   );
 
