@@ -22,8 +22,8 @@ import type { PaletteConfig } from '../components/palette-generator/types';
  * One token model for every export. Tokens come in three tiers:
  *   primitive — raw values, named so a config change never renames them (brand-scale-9, font-size-step-0, space-4)
  *   base      — roles that alias primitives (brand-9, font-family-heading, space-md)
- *   semantic  — purposes that alias base tokens (bg-brand, text-h1-size, padding-card); text styles are
- *               composites of those (text-h1), as shadow levels are of their color slots
+ *   semantic  — purposes that alias base tokens (bg-brand, text-h1-size, padding-card); text styles and
+ *               shadow levels are composites of those (text-h1 of its properties, shadow-md of its color slots)
  * Formatters (CSS, Tailwind, JSON, Figma) only read this model.
  */
 
@@ -783,9 +783,10 @@ function shadowSlots(levels: ShadowLevelLayers[]) {
  * Shadows split like colors, so one set of styles follows light, dark and each product:
  *   primitive — each layer's raw color, light and dark side by side (elevation-layer-1, elevation-dark-layer-1),
  *               and a product's own when its tint differs (elevation-layer-1-2)
- *   base      — color slots that switch to dark and per product (shadow-layer-1-color), and the levels
- *               (shadow-md): each layer's geometry with the slot its color comes from
- * Purposes are left to the user: a custom semantic token aliasing a level (container-toast).
+ *   base      — color slots that switch to dark and per product (shadow-layer-1-color)
+ *   semantic  — the levels (shadow-md): each layer's geometry with the slot its color comes from, as a
+ *               text style is built from its properties. Purposes are the user's: a custom semantic
+ *               token aliasing a level beside it (container-toast).
  */
 function shadowTokens(palettes: GeneratedPalette[], f: Foundations, modes: TokenModes): Token[] {
   const tokens: Token[] = [];
@@ -848,7 +849,7 @@ function shadowTokens(palettes: GeneratedPalette[], f: Foundations, modes: Token
   }
   for (const level of levels) {
     tokens.push({
-      tier: 'base',
+      tier: 'semantic',
       group: 'shadow',
       name: `shadow-${level.name}`,
       path: ['shadow', level.name],
@@ -945,18 +946,18 @@ function gridTokens(f: Foundations): Token[] {
 
 export const TIER_BELOW: Partial<Record<Tier, Tier>> = { base: 'primitive', semantic: 'base' };
 
-/** Shadow levels are composites in base: geometry plus color slots, not an alias. */
-const isShadowLevel = (t: Token) => t.group === 'shadow' && t.tier === 'base' && t.type === 'shadow' && !t.ref;
+/** Shadow levels are composites in semantic: geometry plus color slots, not an alias. */
+const isShadowLevel = (t: Token) => t.group === 'shadow' && t.tier === 'semantic' && t.type === 'shadow' && !t.ref;
 
 /** Text styles are composites in semantic: their properties are the tokens beside them. */
 const isTextStyle = (t: Token) => t.group === 'typography' && t.tier === 'semantic' && t.type === 'typography';
 
 /**
- * Whether a token in `tier` may point at `target`: the tier below, for a base shadow a level beside
- * it, and for a semantic text style another style.
+ * Whether a token in `tier` may point at `target`: the tier below, or for a semantic shadow or text
+ * style a composite beside it (a level, another style).
  */
 const canAlias = (tier: Tier, target: Token) =>
-  target.tier === TIER_BELOW[tier] || (tier === 'base' && isShadowLevel(target)) || (tier === 'semantic' && isTextStyle(target));
+  target.tier === TIER_BELOW[tier] || (tier === 'semantic' && (isShadowLevel(target) || isTextStyle(target)));
 
 /** Why a token can't be re-pointed, or null when it can. Primitives, shadow levels and generated text styles are locked. */
 export function aliasLock(t: Token): string | null {

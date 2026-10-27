@@ -688,16 +688,20 @@ function shadowModel(palettes: GeneratedPalette[], f: Foundations) {
 }
 
 /**
- * The effect styles: base shadows under `shadow/`, purposes under `container/`, custom ones included.
- * Each takes the level it resolves to, so a re-pointed or added token gets that level's layers.
+ * The effect styles, all under `shadow/` like text styles under `text/`: levels (shadow/md), then
+ * purposes (shadow/toast). A purpose whose short name a level already has keeps its whole name
+ * (shadow/container-md). Each takes the level it resolves to, so a re-pointed or added token gets
+ * that level's layers.
  */
 function shadowStyles(tokens: Token[], byName: Map<string, Token>) {
-  return tokens.flatMap((t) => {
-    if (t.tier === 'primitive' || t.type !== 'shadow') return [];
+  const shadows = tokens.filter((t) => t.tier !== 'primitive' && t.type === 'shadow');
+  // Custom tokens may carry either prefix (`shadow-toast`), so names drop it
+  const short = (t: Token) => t.name.replace(/^(container|shadow)-/, '');
+  const levels = new Set(shadows.filter((t) => !t.custom).map(short));
+  return shadows.flatMap((t) => {
     const level = resolveToken(t, byName);
     if (!level?.value) return [];
-    // Custom tokens may carry either prefix (`shadow-toast`), so names drop it
-    const name = t.tier === 'base' ? `shadow/${t.name.replace(/^shadow-/, '')}` : `container/${t.name.replace(/^(container|shadow)-/, '')}`;
+    const name = `shadow/${t.custom && levels.has(short(t)) ? t.name : short(t)}`;
     return [{ name, token: t.name, description: t.description ?? '', level }];
   });
 }
@@ -726,9 +730,8 @@ export function generateShadowVariablesCsv(palettes: GeneratedPalette[], f: Foun
 }
 
 /**
- * One effect style per level under `shadow/` (`shadow/md`) and per custom purpose under `container/`
- * (`container/toast`), one row per layer. Each layer's color is bound to the Shadow collection, so a
- * single set follows its Light and Dark modes.
+ * One effect style per level (`shadow/md`) and per custom purpose (`shadow/toast`), one row per layer.
+ * Each layer's color is bound to the Shadow collection, so a single set follows its Light and Dark modes.
  */
 export function generateEffectStylesCsv(palettes: GeneratedPalette[], f: Foundations) {
   const { byName, styles } = shadowModel(palettes, f);

@@ -114,7 +114,7 @@ const SHADOW_PARTS: SheetPart[] = ['primitive', 'effect-styles'];
 
 const SHADOW_HINTS: Partial<Record<SheetPart, string>> = {
   primitive: 'One color per shadow layer, with Light and Dark modes (per product once one has its own tint), scoped to Effects. Import this first.',
-  'effect-styles': `Effect styles for the Shadow Styles tab, levels under shadow/ and custom purposes under container/, each layer's color bound to ${SHADOW_COLLECTION}, so one set follows Light and Dark. Import ${SHADOW_COLLECTION} first.`,
+  'effect-styles': `Effect styles for the Shadow Styles tab, levels and custom purposes under shadow/, each layer's color bound to ${SHADOW_COLLECTION}, so one set follows Light and Dark. Import ${SHADOW_COLLECTION} first.`,
 };
 
 /** Where a collection's modes come from, when it has any. */

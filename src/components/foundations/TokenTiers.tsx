@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import { Check, ChevronRight, ChevronsUpDown, GripVertical, Pencil, Plus, RotateCcw, Search, Trash2 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -40,7 +40,7 @@ const NAME_HINTS: Record<TokenGroup, Record<'base' | 'semantic', string>> = {
   typography: { base: 'font-size-hero', semantic: 'text-button' },
   spacing: { base: 'space-4xl', semantic: 'padding-section' },
   radius: { base: 'radius-3xl', semantic: 'radius-input' },
-  shadow: { base: 'shadow-3xl', semantic: 'container-toast' },
+  shadow: { base: 'shadow-glow-color', semantic: 'container-toast' },
   grid: { base: 'container-narrow', semantic: 'page-narrow' },
 };
 
@@ -197,10 +197,10 @@ export function TokenTiers({
   };
   const [filter, setFilter] = useState<RowFilter>('all');
   const [folded, setFolded] = useState<Partial<Record<Tier, boolean>>>({});
-  /** Text styles showing their property tokens. */
-  const [openStyles, setOpenStyles] = useState<Set<string>>(new Set());
-  const toggleStyle = (name: string) =>
-    setOpenStyles((open) => {
+  /** Text styles showing their property tokens, and shadows their layers. */
+  const [openRows, setOpenRows] = useState<Set<string>>(new Set());
+  const toggleRow = (name: string) =>
+    setOpenRows((open) => {
       const next = new Set(open);
       if (!next.delete(name)) next.add(name);
       return next;
@@ -279,7 +279,7 @@ export function TokenTiers({
         const all = tokens.filter((t) => t.tier === tier);
         if (all.length === 0 && tier === 'primitive') return null;
         // A text style's properties fold under it, unless searching or filtering lists every match flat
-        const rows = all.filter((t) => matches(t) && (narrowing || !t.partOf || openStyles.has(t.partOf)));
+        const rows = all.filter((t) => matches(t) && (narrowing || !t.partOf || openRows.has(t.partOf)));
         // A filter that leaves a tier empty hides it, rather than showing an empty table
         if (filter !== 'all' && rows.length === 0) return null;
         const isFolded = !narrowing && (folded[tier] ?? (tier === 'primitive' && all.length > FOLD_OVER));
@@ -342,8 +342,8 @@ export function TokenTiers({
                           onCancel={() => setEditing(null)}
                         />
                       ) : (
+                      <Fragment key={t.name}>
                       <tr
-                        key={t.name}
                         // Added tokens reorder by dragging, only among the added tokens in their own table
                         draggable={t.custom && customHere > 1}
                         onDragStart={(e) => {
@@ -374,15 +374,16 @@ export function TokenTiers({
                       >
                         <td className={cn('px-4 py-0', t.partOf && !narrowing && 'pl-10', t.custom && customHere > 1 && 'cursor-grab active:cursor-grabbing')}>
                           <span className="flex items-center gap-1.5">
-                            {t.type === 'typography' && !narrowing && (
+                            {/* Searching lists a style's properties flat; a shadow's layers aren't tokens, so they only show here */}
+                            {(t.type === 'shadow' || (t.type === 'typography' && !narrowing)) && (
                               <button
                                 type="button"
-                                aria-expanded={openStyles.has(t.name)}
-                                aria-label={`${openStyles.has(t.name) ? 'Hide' : 'Show'} ${t.name} properties`}
-                                onClick={() => toggleStyle(t.name)}
+                                aria-expanded={openRows.has(t.name)}
+                                aria-label={`${openRows.has(t.name) ? 'Hide' : 'Show'} ${t.name} ${t.type === 'shadow' ? 'layers' : 'properties'}`}
+                                onClick={() => toggleRow(t.name)}
                                 className="-ml-1 shrink-0 rounded p-0.5 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                               >
-                                <ChevronRight className={cn('size-3.5 transition-transform', openStyles.has(t.name) && 'rotate-90')} />
+                                <ChevronRight className={cn('size-3.5 transition-transform', openRows.has(t.name) && 'rotate-90')} />
                               </button>
                             )}
                             {t.defaultRef && <span className="size-1.5 shrink-0 rounded-full bg-amber-500" aria-label="Edited" />}
@@ -431,6 +432,8 @@ export function TokenTiers({
                           </td>
                         )}
                       </tr>
+                      {t.type === 'shadow' && openRows.has(t.name) && <ShadowLayerRows t={t} byName={byName} isDark={isDark} columns={columns} />}
+                      </Fragment>
                       ),
                     )}
                     {rows.length === 0 && q && (
@@ -452,6 +455,30 @@ export function TokenTiers({
       })}
     </div>
   );
+}
+
+/** A shadow's layers as read-only rows under it: the color slot each takes, and its geometry. */
+function ShadowLayerRows({ t, byName, isDark, columns }: { t: Token; byName: Map<string, Token>; isDark: boolean; columns: number }) {
+  const layers = (resolveShown(t, byName, isDark)?.value as ShadowLayer[] | undefined) ?? [];
+  return layers.map((l, i) => {
+    const slot = l.colorRef?.match(/^shadow-(edge|layer-(\d+))/);
+    return (
+      <tr key={i} className="h-[34px] bg-muted/20">
+        <td className="py-0 pr-4 pl-10 text-xs text-muted-foreground">{slot?.[1] === 'edge' ? 'Edge' : `Layer ${slot?.[2] ?? i + 1}`}</td>
+        <td className="truncate px-4 py-0 font-mono text-xs text-muted-foreground" title={l.colorRef}>
+          {l.colorRef ?? '—'}
+        </td>
+        <td colSpan={columns - 2} className="px-4 py-0">
+          <span className="flex items-center gap-2 font-mono text-xs whitespace-nowrap text-muted-foreground tabular">
+            <span className="swatch-outline size-3 shrink-0 rounded-[3px] checkerboard">
+              <span className="block size-full rounded-[3px]" style={{ background: l.color }} />
+            </span>
+            {l.x}px {l.y}px {l.blur}px {l.spread}px
+          </span>
+        </td>
+      </tr>
+    );
+  });
 }
 
 function AliasCell({
@@ -571,9 +598,9 @@ function AddTokenRow({
   onAdd: (token: CustomToken) => void;
 }) {
   const [open, setOpen] = useState(false);
-  // A new shadow token is a shadow, so its color slots and raw layer colors aren't targets; a new
-  // semantic text token is a text style, built from the one it points at
-  const kind = group === 'shadow' ? 'shadow' : group === 'typography' && tier === 'semantic' ? 'typography' : undefined;
+  // A new semantic shadow is a shadow and a new semantic text token a text style, each built from the
+  // composite it points at; base shadow tokens are color slots over the raw layer colors
+  const kind = tier === 'semantic' ? (group === 'shadow' ? 'shadow' : group === 'typography' ? 'typography' : undefined) : undefined;
   const targets = aliasTargets(tier, group, tokens, kind);
 
   if (!open) {
@@ -678,7 +705,7 @@ function TokenFormRow({
           byName={taken}
           isDark={isDark}
           label="Aliases"
-          placeholder={group === 'shadow' ? 'Pick a shadow' : group === 'typography' && tier === 'semantic' ? 'Pick a text style' : `Pick a ${TIER_META[tier === 'base' ? 'primitive' : 'base'].label.toLowerCase()} token`}
+          placeholder={tier === 'semantic' && group === 'shadow' ? 'Pick a shadow' : tier === 'semantic' && group === 'typography' ? 'Pick a text style' : `Pick a ${TIER_META[tier === 'base' ? 'primitive' : 'base'].label.toLowerCase()} token`}
           onChange={setRef}
         />
       </td>
