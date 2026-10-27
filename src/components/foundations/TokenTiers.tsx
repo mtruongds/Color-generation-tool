@@ -20,7 +20,10 @@ import {
   aliasOptions,
   aliasTargets,
   buildTokens,
+  NAME_PREFIX,
   isTokenName,
+  nestedName,
+  typedPath,
   resolveShadowLayers,
   resolveToken,
   resolveTypography,
@@ -216,6 +219,22 @@ export function TokenTiers({
   const edited = tokens.filter((t) => t.defaultRef);
   const added = tokens.filter((t) => t.custom);
 
+  /** A nested custom token as typed (text/ui/demo), and its style's properties under it (text/ui/demo-size); else the CSS name. */
+  const nestedNames = useMemo(() => {
+    const typed = new Set((foundations.customTokens ?? []).filter((c) => c.path).map((c) => c.name));
+    return new Map(tokens.flatMap((t) => (typed.has(t.partOf ?? t.name) ? [[t.name, nestedName(t)] as const] : [])).filter((e): e is [string, string] => !!e[1]));
+  }, [foundations.customTokens, tokens]);
+  const displayName = (t: Token) => {
+    const nested = nestedNames.get(t.name);
+    if (!nested) return t.name;
+    return nested.split('/').map((k, i) => (
+      <Fragment key={i}>
+        {i > 0 && <span className="mx-px text-muted-foreground/60">/</span>}
+        {k}
+      </Fragment>
+    ));
+  };
+
   /** Tokens that alias each token, so one in use can't be deleted. */
   const usedBy = useMemo(() => {
     const map = new Map<string, string[]>();
@@ -230,7 +249,7 @@ export function TokenTiers({
   const q = query.trim().toLowerCase();
   const matches = (t: Token) =>
     (filter === 'all' || (filter === 'edited' ? !!t.defaultRef : !!t.custom)) &&
-    (!q || t.name.includes(q) || t.ref?.includes(q) || t.description?.toLowerCase().includes(q));
+    (!q || t.name.includes(q) || nestedNames.get(t.name)?.includes(q) || t.ref?.includes(q) || t.description?.toLowerCase().includes(q));
   /** Searching or filtering opens every tier, so matches never hide in a folded one. */
   const narrowing = !!q || filter !== 'all';
 
@@ -334,7 +353,11 @@ export function TokenTiers({
                           targets={aliasOptions(t, tokens)}
                           taken={byName}
                           isDark={isDark}
-                          initial={{ name: t.name, ref: t.ref ?? '', description: t.description }}
+                          initial={{
+                            name: foundations.customTokens?.find((c) => c.name === t.name)?.path?.join('/') ?? t.name,
+                            ref: t.ref ?? '',
+                            description: t.description,
+                          }}
                           onSubmit={(patch) => {
                             onUpdateToken(t.name, patch);
                             setEditing(null);
@@ -390,10 +413,10 @@ export function TokenTiers({
                             <button
                               type="button"
                               onClick={() => copyToClipboard(t.name, 'Token')}
-                              title={t.name}
+                              title={nestedNames.has(t.name) ? `CSS: --${t.name}` : t.name}
                               className="min-w-0 truncate rounded font-mono text-xs font-medium hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                             >
-                              {t.name}
+                              {displayName(t)}
                             </button>
                             {t.custom && (
                               <span className="shrink-0 rounded bg-emerald-500/10 px-1 text-[0.625rem] font-medium text-emerald-700 dark:text-emerald-300">
@@ -577,7 +600,7 @@ function AliasCell({
   );
 }
 
-type TokenPatch = Partial<Pick<CustomToken, 'name' | 'ref' | 'description'>>;
+type TokenPatch = Partial<Pick<CustomToken, 'name' | 'ref' | 'description' | 'path'>>;
 
 function AddTokenRow({
   columns,
@@ -630,7 +653,7 @@ function AddTokenRow({
       taken={taken}
       isDark={isDark}
       onSubmit={(t) => {
-        onAdd({ tier, group, name: t.name!, ref: t.ref!, description: t.description });
+        onAdd({ tier, group, name: t.name!, ref: t.ref!, description: t.description, path: t.path });
         setOpen(false);
       }}
       onCancel={() => setOpen(false)}
@@ -661,22 +684,47 @@ function TokenFormRow({
   onSubmit: (token: TokenPatch) => void;
   onCancel: () => void;
 }) {
-  const [name, setName] = useState(initial?.name ?? '');
+  const textStyle = tier === 'semantic' && group === 'typography';
+  // The prefix the tier's names share shows fixed in the field, which takes the rest:
+  // button → text-button, ui/demo → text/ui/demo, input → radius-input
+  const fixed = NAME_PREFIX[group][tier];
+  const [name, setName] = useState((fixed ? initial?.name.replace(new RegExp(`^${fixed}[-/]`), '') : initial?.name) ?? '');
   const [ref, setRef] = useState(initial?.ref ?? '');
   const [description, setDescription] = useState(initial?.description ?? '');
+  const [focused, setFocused] = useState(true);
 
-  const slug = name.trim().toLowerCase().replace(/\s+/g, '-');
-  const error = !slug
+  // Slashes nest the token (text/ui/demo → text.ui.demo in JSON, text/ui/demo in Figma); the CSS name joins them with hyphens
+  const typed = name.trim().toLowerCase().replace(/\s+/g, '-').split('/');
+  const segments = fixed && typed[0] !== fixed ? [fixed, ...typed] : typed;
+  const slug = segments.join('-');
+  // A trailing slash is a level still being typed, not a mistake
+  const typing = typed.length > 1 && !typed.at(-1);
+  // Only the whole name needs to start with a letter, so a level can be a step (space/4xl)
+  const valid = !!name.trim() && !typing && isTokenName(slug) && segments.every((k) => /^[a-z0-9]+(-[a-z0-9]+)*$/.test(k));
+  const path = typed.length > 1 ? segments : undefined;
+
+  // Where it lands, from the same rule the exports use, beside every token but its old self
+  const current = initial?.name.replaceAll('/', '-');
+  const others = useMemo(() => [...taken.values()].filter((t) => t.name !== current && t.partOf !== current), [taken, current]);
+  const candidate: CustomToken = { tier, group, name: slug, ref, path };
+  const nesting = valid ? typedPath(candidate, textStyle, others) : null;
+  const clash = nesting?.clash;
+
+  const error = !name.trim() || typing
     ? null
-    : !isTokenName(slug)
-      ? 'Use lowercase letters, numbers and hyphens'
-      : taken.has(slug) && slug !== initial?.name
+    : !valid
+      ? 'Use lowercase letters, numbers and hyphens, with / to nest'
+      : taken.has(slug) && slug !== current
         ? 'Name already in use'
-        : null;
-  const canSubmit = !!slug && !error && !!ref;
+        : clash
+          ? clash.path.length > nesting!.path.length
+            ? `${clash.name} already sits under this path`
+            : `${clash.name} is a token, so it can't hold others`
+          : null;
+  const canSubmit = !!slug && !typing && !error && !!ref;
 
   const submit = () => {
-    if (canSubmit) onSubmit({ name: slug, ref, description: description.trim() || undefined });
+    if (canSubmit) onSubmit({ name: slug, ref, description: description.trim() || undefined, path });
   };
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') submit();
@@ -686,16 +734,35 @@ function TokenFormRow({
   return (
     <tr className="bg-muted/30 align-top">
       <td className="px-4 py-2">
-        <Input
-          autoFocus
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          onKeyDown={onKeyDown}
-          placeholder={NAME_HINTS[group][tier]}
-          aria-label="Token name"
-          aria-invalid={!!error}
-          className="h-7 font-mono text-xs"
-        />
+        {/* The CSS name slashes make, only then since otherwise it reads as typed, beside the field while it has focus */}
+        <Tooltip open={focused && !!path && !error}>
+          <TooltipTrigger asChild>
+            <div className="relative">
+              {fixed && (
+                <span aria-hidden className="pointer-events-none absolute inset-y-0 left-3 flex items-center font-mono text-xs text-muted-foreground md:text-sm">
+                  {fixed}/
+                </span>
+              )}
+              <Input
+                autoFocus
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                onKeyDown={onKeyDown}
+                onFocus={() => setFocused(true)}
+                onBlur={() => setFocused(false)}
+                placeholder={fixed ? NAME_HINTS[group][tier].slice(fixed.length + 1) : NAME_HINTS[group][tier]}
+                aria-label="Token name"
+                aria-invalid={!!error}
+                aria-description={[fixed && `Starts with ${fixed}/`, path && valid && `CSS name --${slug}`].filter(Boolean).join('. ') || undefined}
+                className="h-7 font-mono text-xs"
+                style={fixed ? { paddingLeft: `calc(0.75rem + ${fixed.length + 1}ch)` } : undefined}
+              />
+            </div>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" align="start" className="font-mono text-[0.6875rem]">
+            --{slug}
+          </TooltipContent>
+        </Tooltip>
         {error && <p className="mt-1 text-[0.6875rem] text-destructive">{error}</p>}
       </td>
       <td className="px-4 py-2">

@@ -652,7 +652,7 @@ function normalizeCustomTokens(raw: unknown): CustomToken[] {
       (c): c is CustomToken =>
         !!c && typeof c === 'object' && (c.tier === 'base' || c.tier === 'semantic') && typeof c.group === 'string' && typeof c.name === 'string' && typeof c.ref === 'string',
     )
-    .map((c) => ({ ...c, ref: renameRoles(c.ref) }))
+    .map((c) => ({ ...c, ref: renameRoles(c.ref), path: Array.isArray(c.path) && c.path.length > 1 && c.path.every((k: unknown) => typeof k === 'string' && /^[a-z0-9-]+$/.test(k)) ? c.path : undefined }))
     // Shadow levels moved from base to semantic, so a base shadow aliasing one (shadow-3xl → shadow-2xl)
     // moved with them; base shadows alias the raw layer colors (elevation-…)
     .map((c) => (c.group === 'shadow' && c.tier === 'base' && c.ref.startsWith('shadow-') ? { ...c, tier: 'semantic' as const } : c));

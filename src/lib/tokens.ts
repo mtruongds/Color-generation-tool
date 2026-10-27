@@ -98,6 +98,8 @@ export interface CustomToken {
   name: string;
   ref: string;
   description?: string;
+  /** Nesting the user typed with slashes (text/ui/demo), whose segments joined by hyphens make the name. */
+  path?: string[];
 }
 
 /** `both` puts light and dark in one set (dark primitives get a `-dark` suffix); a single mode is for Figma. */
@@ -1004,18 +1006,53 @@ function applyAliases(tokens: Token[], aliases: Record<string, string> | undefin
 
 const CUSTOM_ROOT: Record<TokenGroup, string> = { color: 'color', typography: 'font', spacing: 'space', radius: 'radius', shadow: 'shadow', grid: 'page' };
 
+/**
+ * The prefix every generated name in a tier starts with, which the user's own tokens there take too
+ * (button → text-button, input → radius-input). Tiers whose names start several ways (gap, padding) have none.
+ */
+export const NAME_PREFIX: Record<TokenGroup, Partial<Record<'base' | 'semantic', string>>> = {
+  color: {},
+  typography: { semantic: 'text' },
+  spacing: { base: 'space' },
+  radius: { base: 'radius', semantic: 'radius' },
+  shadow: { base: 'shadow', semantic: 'shadow' },
+  grid: { semantic: 'page' },
+};
+
 export const isTokenName = (name: string) => /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/.test(name);
 
+const within = (a: string[], b: string[]) => a.every((k, i) => b[i] === k);
+/** The token in the tier a path would nest into or around, if any. */
+const clashing = (path: string[], tier: Tier, tokens: Token[]) => tokens.find((t) => t.tier === tier && (within(path, t.path) || within(t.path, path)));
+
 /**
- * A custom token's path, nested like the tokens beside it whose names it continues (`font-size-hero` →
- * `font.size.hero` beside `font-size-md`, `container-narrow` → `container.narrow`), else without the
- * root its name repeats (`shadow-toast` → `shadow.toast`). Color keeps the whole name, since its
- * collection exports name variables by path, and so does a name whose path would nest into or around
- * another token's in the tier (`shadow-edge` beside `shadow.edge.color`).
+ * The path typed with slashes, under its root unless typed with it (text/ui/demo, or ui/demo for a text
+ * style → text.ui.demo), and the token it would nest into or around, in which case it stays flat.
  */
-function customPath(c: CustomToken, tokens: Token[]): string[] {
+export function typedPath(c: CustomToken, textStyle: boolean, tokens: Token[]): { path: string[]; clash?: Token } | null {
+  if (!c.path) return null;
+  const root = textStyle ? 'text' : CUSTOM_ROOT[c.group];
+  const path = c.path[0] === root && c.group !== 'color' ? c.path : [root, ...c.path];
+  return { path, clash: clashing(path, textStyle ? 'semantic' : c.tier, tokens) };
+}
+
+/**
+ * A custom token's path: as typed with slashes, else nested like the tokens beside it whose names it
+ * continues (`font-size-hero` → `font.size.hero` beside `font-size-md`, `container-narrow` →
+ * `container.narrow`), else without the root its name repeats (`shadow-toast` → `shadow.toast`). Color
+ * keeps the whole name, since its collection exports name variables by path, and so does a name whose
+ * path would nest into or around another token's in the tier (`shadow-edge` beside `shadow.edge.color`).
+ * A text style (text-button → text.button) keeps its name when the key is taken.
+ */
+export function customTokenPath(c: CustomToken, textStyle: boolean, tokens: Token[]): string[] {
+  const typed = typedPath(c, textStyle, tokens);
+  if (typed && !typed.clash) return typed.path;
+  if (textStyle) {
+    const key = c.name.startsWith('text-') ? c.name.slice(5) : c.name;
+    return ['text', tokens.some((t) => t.tier === 'semantic' && t.path[0] === 'text' && t.path[1] === key) ? c.name : key];
+  }
   const root = CUSTOM_ROOT[c.group];
-  if (c.group === 'color') return [root, c.name];
+  if (c.group === 'color' || typed) return [root, c.name];
   let stem = c.name.startsWith(`${root}-`) ? root : '';
   let path = stem ? [root, c.name.slice(root.length + 1)] : [root, c.name];
   // The longest name stem a sibling shares (`line-height` of `line-height-md`), and the group it sits in
@@ -1028,17 +1065,27 @@ function customPath(c: CustomToken, tokens: Token[]): string[] {
       path = [...t.path.slice(0, -1), c.name.slice(s.length + 1)];
     }
   }
-  const within = (a: string[], b: string[]) => a.every((k, i) => b[i] === k);
-  return tokens.some((t) => t.tier === c.tier && (within(path, t.path) || within(t.path, path))) ? [root, c.name] : path;
+  return clashing(path, c.tier, tokens) ? [root, c.name] : path;
 }
 
 /**
- * A purpose pointing at a text style: a style of its own (text-button → text.button), whose property
+ * The nesting a custom token's name carries, as the slash-separated end of its path that spells the name
+ * (text/ui/demo for text-ui-demo at text.ui.demo, size/hero for size-hero at font.size.hero); null when flat.
+ */
+export function nestedName(t: Token): string | null {
+  for (let i = 0; i < t.path.length - 1; i++) {
+    const tail = t.path.slice(i);
+    if (tail.join('-') === t.name) return tail.join('/');
+  }
+  return null;
+}
+
+/**
+ * A purpose pointing at a text style: a style of its own (text-button → text.button, text/ui/demo → text.ui.demo), whose property
  * tokens start out where the style's point. Re-pointing one, say its weight, is an ordinary alias edit.
  */
 function customTextStyle(c: CustomToken, style: Token, tokens: Token[], byName: Map<string, Token>): Token[] {
-  const key = c.name.startsWith('text-') ? c.name.slice(5) : c.name;
-  const path = ['text', tokens.some((t) => t.tier === 'semantic' && t.path[0] === 'text' && t.path[1] === key) ? c.name : key];
+  const path = customTokenPath(c, true, tokens);
   const parts = typographyParts(c.name);
   const own = (Object.keys(TYPOGRAPHY_PARTS) as (keyof TypographyParts)[]).flatMap((k) => {
     const from = byName.get((style.value as TypographyParts)[k]);
@@ -1075,7 +1122,7 @@ function addCustomTokens(tokens: Token[], custom: CustomToken[] | undefined, gro
         tier,
         group: c.group,
         name: c.name,
-        path: customPath(c, out),
+        path: customTokenPath(c, false, out),
         type: target.type,
         ref: target.name,
         darkRef: target.pair,

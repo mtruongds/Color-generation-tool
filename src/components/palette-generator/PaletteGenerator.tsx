@@ -577,7 +577,7 @@ export function PaletteGenerator({
    * Edits a custom token. A rename re-points every token that aliased the old name, and a text
    * style's re-pointed properties move to the new name (text-button-weight → text-cta-weight).
    */
-  const updateToken = useCallback((name: string, patch: Partial<Pick<CustomToken, 'name' | 'ref' | 'description'>>) => {
+  const updateToken = useCallback((name: string, patch: Partial<Pick<CustomToken, 'name' | 'ref' | 'description' | 'path'>>) => {
     setFoundations((prev) => {
       const renamed = patch.name && patch.name !== name ? patch.name : null;
       const follow = (ref: string) => (renamed && ref === name ? renamed : ref);
