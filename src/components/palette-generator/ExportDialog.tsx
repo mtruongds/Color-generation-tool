@@ -126,7 +126,7 @@ const SHEET_MODES: Partial<Record<SheetGroup, string>> = {
 
 function sheetHint(group: SheetGroup, part: SheetPart) {
   const names = SHEET_COLLECTIONS[group];
-  if (part === 'text-styles') return `One text style per role for the Text Styles tab, bound to ${names.semantic}. Import ${names.semantic} first.`;
+  if (part === 'text-styles') return `One text style per role, plus your own, under text/ for the Text Styles tab, bound to ${names.semantic}. Import ${names.semantic} first.`;
   if (part === 'primitive') return 'Raw values in one mode, with no scope. Import this first.';
   if (part === 'base') return `Roles aliasing ${names.primitive}, with no scope. Import ${names.primitive} first.${SHEET_MODES[group] ?? ''}`;
   return `Purposes aliasing ${names.base}, scoped for Figma's pickers. Import ${names.base} first.`;

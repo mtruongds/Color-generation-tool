@@ -94,6 +94,7 @@ import {
   type FontRole,
   type Product,
   DEFAULT_PRODUCT,
+  TYPOGRAPHY_PARTS,
   brandSolid,
   colorTokenInfo,
   productShadowTints,
@@ -572,15 +573,20 @@ export function PaletteGenerator({
     toast.success(`Added ${token.name}`);
   }, []);
 
-  /** Edits a custom token. A rename re-points every token that aliased the old name. */
+  /**
+   * Edits a custom token. A rename re-points every token that aliased the old name, and a text
+   * style's re-pointed properties move to the new name (text-button-weight → text-cta-weight).
+   */
   const updateToken = useCallback((name: string, patch: Partial<Pick<CustomToken, 'name' | 'ref' | 'description'>>) => {
     setFoundations((prev) => {
       const renamed = patch.name && patch.name !== name ? patch.name : null;
       const follow = (ref: string) => (renamed && ref === name ? renamed : ref);
+      const parts = new Set(Object.values(TYPOGRAPHY_PARTS).map((suffix) => `${name}-${suffix}`));
+      const own = (key: string) => (renamed && parts.has(key) ? renamed + key.slice(name.length) : key);
       return {
         ...prev,
         customTokens: prev.customTokens?.map((t) => (t.name === name ? { ...t, ...patch } : { ...t, ref: follow(t.ref) })),
-        aliases: renamed && prev.aliases ? Object.fromEntries(Object.entries(prev.aliases).map(([k, v]) => [k, follow(v)])) : prev.aliases,
+        aliases: renamed && prev.aliases ? Object.fromEntries(Object.entries(prev.aliases).map(([k, v]) => [own(k), follow(v)])) : prev.aliases,
       };
     });
   }, []);

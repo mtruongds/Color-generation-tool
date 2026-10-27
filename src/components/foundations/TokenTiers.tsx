@@ -23,6 +23,7 @@ import {
   isTokenName,
   resolveShadowLayers,
   resolveToken,
+  resolveTypography,
 } from '../../lib/tokens';
 
 const ALL_GROUPS: TokenGroup[] = ['color', 'typography', 'spacing', 'radius', 'shadow', 'grid'];
@@ -36,7 +37,7 @@ const TIER_META: Record<Tier, { label: string; blurb: string; tone: string }> = 
 /** Example names for the add form, in each group's naming style. */
 const NAME_HINTS: Record<TokenGroup, Record<'base' | 'semantic', string>> = {
   color: { base: 'brand-9', semantic: 'bg-card' },
-  typography: { base: 'font-size-hero', semantic: 'text-hero-size' },
+  typography: { base: 'font-size-hero', semantic: 'text-button' },
   spacing: { base: 'space-4xl', semantic: 'padding-section' },
   radius: { base: 'radius-3xl', semantic: 'radius-input' },
   shadow: { base: 'shadow-3xl', semantic: 'container-toast' },
@@ -46,9 +47,15 @@ const NAME_HINTS: Record<TokenGroup, Record<'base' | 'semantic', string>> = {
 /** Long primitive lists (every color step, both modes) start folded. */
 const FOLD_OVER = 60;
 
-function formatValue(t: Token | undefined): string {
+/** `byName` resolves a text style's properties. */
+function formatValue(t: Token | undefined, byName?: Map<string, Token>): string {
   if (!t || t.value === undefined) return '—';
   switch (t.type) {
+    case 'typography': {
+      if (!byName) return 'Text style';
+      const v = resolveTypography(t, byName);
+      return `${v.family.split(',')[0].replace(/["']/g, '')} · ${v.size}/${v.lineHeight} · ${v.weight}`;
+    }
     case 'dimension':
       return `${t.value}px`;
     case 'letterSpacing':
@@ -64,8 +71,16 @@ function formatValue(t: Token | undefined): string {
   }
 }
 
-function Preview({ t }: { t: Token | undefined }) {
+function Preview({ t, byName }: { t: Token | undefined; byName: Map<string, Token> }) {
   if (!t || t.value === undefined) return null;
+  if (t.type === 'typography') {
+    const v = resolveTypography(t, byName);
+    return (
+      <span className="w-6 shrink-0 text-center text-sm leading-none text-foreground" style={{ fontFamily: v.family, fontWeight: v.weight }}>
+        Aa
+      </span>
+    );
+  }
   if (t.type === 'color') return <span className="size-4 shrink-0 rounded-[4px] border border-black/10" style={{ background: String(t.value) }} />;
   if (t.type === 'shadow') {
     return <span className="h-4 w-6 shrink-0 rounded-[3px] bg-card" style={{ boxShadow: (t.value as ShadowLayer[]).map(layerToCss).join(', ') }} />;
@@ -73,8 +88,12 @@ function Preview({ t }: { t: Token | undefined }) {
   return null;
 }
 
-/** The token an alias lands on. A shadow level's colors come from its slots, so they follow the mode. */
+/**
+ * The token an alias lands on. A shadow level's colors come from its slots, so they follow the mode;
+ * a text style is built from its own properties, even when it points at another style.
+ */
 function resolveShown(t: Token, byName: Map<string, Token>, isDark: boolean): Token | undefined {
+  if (t.type === 'typography') return t;
   const landed = resolveToken(t, byName, isDark);
   return landed?.type === 'shadow' ? { ...landed, value: resolveShadowLayers(landed, byName, isDark) } : landed;
 }
@@ -101,8 +120,8 @@ function Resolved({ t, byName, isDark }: { t: Token; byName: Map<string, Token>;
   const chain = t.tier === 'primitive' ? [] : aliasChain(t, byName, isDark);
   const value = (
     <span className="flex items-center gap-2 font-mono text-xs whitespace-nowrap text-muted-foreground tabular">
-      <Preview t={resolved} />
-      {formatValue(resolved)}
+      <Preview t={resolved} byName={byName} />
+      {formatValue(resolved, byName)}
       {last && wide && (
         <span className="text-muted-foreground/70">
           → {formatValue(resolveToken(wide, byName, isDark))} ≥{last.minWidth}
@@ -118,7 +137,7 @@ function Resolved({ t, byName, isDark }: { t: Token; byName: Map<string, Token>;
         <span className="block min-w-0 cursor-default">{value}</span>
       </TooltipTrigger>
       <TooltipContent align="start" className="font-mono text-[0.6875rem]">
-        {[...chain, formatValue(resolved)].join('  →  ')}
+        {[...chain, formatValue(resolved, byName)].join('  →  ')}
       </TooltipContent>
     </Tooltip>
   );
@@ -178,6 +197,14 @@ export function TokenTiers({
   };
   const [filter, setFilter] = useState<RowFilter>('all');
   const [folded, setFolded] = useState<Partial<Record<Tier, boolean>>>({});
+  /** Text styles showing their property tokens. */
+  const [openStyles, setOpenStyles] = useState<Set<string>>(new Set());
+  const toggleStyle = (name: string) =>
+    setOpenStyles((open) => {
+      const next = new Set(open);
+      if (!next.delete(name)) next.add(name);
+      return next;
+    });
 
   // Every group, so new names can't clash with a custom property elsewhere
   const allTokens = useMemo(
@@ -251,7 +278,8 @@ export function TokenTiers({
       {TIERS.map((tier) => {
         const all = tokens.filter((t) => t.tier === tier);
         if (all.length === 0 && tier === 'primitive') return null;
-        const rows = all.filter(matches);
+        // A text style's properties fold under it, unless searching or filtering lists every match flat
+        const rows = all.filter((t) => matches(t) && (narrowing || !t.partOf || openStyles.has(t.partOf)));
         // A filter that leaves a tier empty hides it, rather than showing an empty table
         if (filter !== 'all' && rows.length === 0) return null;
         const isFolded = !narrowing && (folded[tier] ?? (tier === 'primitive' && all.length > FOLD_OVER));
@@ -344,8 +372,19 @@ export function TokenTiers({
                               : 'shadow-[inset_0_2px_0_var(--primary)]'),
                         )}
                       >
-                        <td className={cn('px-4 py-0', t.custom && customHere > 1 && 'cursor-grab active:cursor-grabbing')}>
+                        <td className={cn('px-4 py-0', t.partOf && !narrowing && 'pl-10', t.custom && customHere > 1 && 'cursor-grab active:cursor-grabbing')}>
                           <span className="flex items-center gap-1.5">
+                            {t.type === 'typography' && !narrowing && (
+                              <button
+                                type="button"
+                                aria-expanded={openStyles.has(t.name)}
+                                aria-label={`${openStyles.has(t.name) ? 'Hide' : 'Show'} ${t.name} properties`}
+                                onClick={() => toggleStyle(t.name)}
+                                className="-ml-1 shrink-0 rounded p-0.5 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                              >
+                                <ChevronRight className={cn('size-3.5 transition-transform', openStyles.has(t.name) && 'rotate-90')} />
+                              </button>
+                            )}
                             {t.defaultRef && <span className="size-1.5 shrink-0 rounded-full bg-amber-500" aria-label="Edited" />}
                             <button
                               type="button"
@@ -388,7 +427,7 @@ export function TokenTiers({
                         </td>
                         {hasUsage && (
                           <td className="truncate px-4 py-0 text-xs text-muted-foreground" title={t.description}>
-                            {t.description}
+                            {!t.partOf && t.description}
                           </td>
                         )}
                       </tr>
@@ -532,8 +571,10 @@ function AddTokenRow({
   onAdd: (token: CustomToken) => void;
 }) {
   const [open, setOpen] = useState(false);
-  // A new shadow token is a shadow, so its color slots and raw layer colors aren't targets
-  const targets = aliasTargets(tier, group, tokens, group === 'shadow' ? 'shadow' : undefined);
+  // A new shadow token is a shadow, so its color slots and raw layer colors aren't targets; a new
+  // semantic text token is a text style, built from the one it points at
+  const kind = group === 'shadow' ? 'shadow' : group === 'typography' && tier === 'semantic' ? 'typography' : undefined;
+  const targets = aliasTargets(tier, group, tokens, kind);
 
   if (!open) {
     return (
@@ -637,7 +678,7 @@ function TokenFormRow({
           byName={taken}
           isDark={isDark}
           label="Aliases"
-          placeholder={group === 'shadow' ? 'Pick a shadow' : `Pick a ${TIER_META[tier === 'base' ? 'primitive' : 'base'].label.toLowerCase()} token`}
+          placeholder={group === 'shadow' ? 'Pick a shadow' : group === 'typography' && tier === 'semantic' ? 'Pick a text style' : `Pick a ${TIER_META[tier === 'base' ? 'primitive' : 'base'].label.toLowerCase()} token`}
           onChange={setRef}
         />
       </td>
@@ -709,7 +750,7 @@ function AliasPicker({
             <CommandEmpty className="py-6 text-center text-xs text-muted-foreground">No matching token</CommandEmpty>
             {options.map((o) => {
               const resolved = resolveShown(o, byName, isDark);
-              const shown = formatValue(resolved);
+              const shown = formatValue(resolved, byName);
               return (
                 <CommandItem
                   key={o.name}
@@ -722,7 +763,7 @@ function AliasPicker({
                   className="gap-2 font-mono text-xs"
                 >
                   <Check className={cn('size-3.5 shrink-0', o.name === value ? 'opacity-100' : 'opacity-0')} />
-                  <Preview t={resolved} />
+                  <Preview t={resolved} byName={byName} />
                   <span className="max-w-[65%] shrink-0 truncate" title={o.name}>{o.name}</span>
                   {o.name === defaultRef && <span className="shrink-0 text-muted-foreground">· default</span>}
                   <span className="ml-auto min-w-0 truncate pl-4 text-right text-muted-foreground tabular" title={shown}>

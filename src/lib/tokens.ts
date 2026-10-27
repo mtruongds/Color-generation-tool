@@ -22,7 +22,8 @@ import type { PaletteConfig } from '../components/palette-generator/types';
  * One token model for every export. Tokens come in three tiers:
  *   primitive — raw values, named so a config change never renames them (brand-scale-9, font-size-step-0, space-4)
  *   base      — roles that alias primitives (brand-9, font-family-heading, space-md)
- *   semantic  — purposes that alias base tokens (bg-brand, text-h1-size, padding-card)
+ *   semantic  — purposes that alias base tokens (bg-brand, text-h1-size, padding-card); text styles are
+ *               composites of those (text-h1), as shadow levels are of their color slots
  * Formatters (CSS, Tailwind, JSON, Figma) only read this model.
  */
 
@@ -31,7 +32,28 @@ export const TIERS: Tier[] = ['primitive', 'base', 'semantic'];
 
 export type TokenGroup = 'color' | 'typography' | 'spacing' | 'radius' | 'shadow' | 'grid';
 
-export type TokenType = 'color' | 'dimension' | 'number' | 'fontFamily' | 'fontWeight' | 'letterSpacing' | 'shadow';
+export type TokenType = 'color' | 'dimension' | 'number' | 'fontFamily' | 'fontWeight' | 'letterSpacing' | 'shadow' | 'typography';
+
+/** A text style's properties, each the name of the token that holds it. */
+export interface TypographyParts {
+  family: string;
+  size: string;
+  lineHeight: string;
+  weight: string;
+  tracking: string;
+}
+
+/** Each property's token, as a suffix on the style's name (`text-h1-line-height`). */
+export const TYPOGRAPHY_PARTS: Record<keyof TypographyParts, string> = {
+  family: 'family',
+  size: 'size',
+  lineHeight: 'line-height',
+  weight: 'weight',
+  tracking: 'tracking',
+};
+
+const typographyParts = (style: string) =>
+  Object.fromEntries(Object.entries(TYPOGRAPHY_PARTS).map(([k, suffix]) => [k, `${style}-${suffix}`])) as unknown as TypographyParts;
 
 export interface Token {
   tier: Tier;
@@ -42,7 +64,7 @@ export interface Token {
   path: string[];
   type: TokenType;
   /** Raw value for primitives: px for dimensions, em for letter spacing. */
-  value?: string | number | ShadowLayer[];
+  value?: string | number | ShadowLayer[] | TypographyParts;
   /** Name of the token this one aliases. */
   ref?: string;
   /** Alias used in dark mode, when it differs. */
@@ -64,11 +86,16 @@ export interface Token {
   pair?: string;
   /** Added by the user rather than the generator. */
   custom?: boolean;
+  /** The text style this token is one property of. */
+  partOf?: string;
   /** The alias in each extra product that points somewhere else: base color roles, radius steps, text style families. */
   products?: { product: string; ref: string; darkRef?: string }[];
 }
 
-/** A base or semantic token the user added. Its type and dark alias follow the token it points to. */
+/**
+ * A base or semantic token the user added. Its type and dark alias follow the token it points to. One
+ * pointing at a text style is a style of its own (text-button), with property tokens that start out as that style's.
+ */
 export interface CustomToken {
   tier: 'base' | 'semantic';
   group: TokenGroup;
@@ -560,21 +587,25 @@ function typographyTokens(f: Foundations): Token[] {
     );
   }
 
-  // Semantic: one text style per role in the UI
+  // Semantic: one text style per role in the UI. Like a shadow level, the style is a composite whose
+  // properties are tokens beside it, so each can be re-pointed and Figma binds to them.
   for (const s of styles) {
     const role = s.role === 'heading' ? 'heading' : 'body';
     const size = sizeRole(s.step);
+    const style = `text-${s.name}`;
     const t = (prop: string, type: TokenType, ref: string, tw?: string): Token => ({
       tier: 'semantic',
       group: 'typography',
-      name: `text-${s.name}-${prop}`,
+      name: `${style}-${prop}`,
       path: ['text', s.name, prop],
       type,
       ref,
       tw,
       description: prop === 'size' ? s.usage : undefined,
+      partOf: style,
     });
     tokens.push(
+      { tier: 'semantic', group: 'typography', name: style, path: ['text', s.name], type: 'typography', value: typographyParts(style), description: s.usage },
       { ...t('family', 'fontFamily', `font-family-${role}`), products: productRoles.get(role) },
       t('size', 'dimension', `font-size-${size}`, `text-${s.name}`),
       t('line-height', 'dimension', `line-height-${size}`, `text-${s.name}--line-height`),
@@ -917,13 +948,21 @@ export const TIER_BELOW: Partial<Record<Tier, Tier>> = { base: 'primitive', sema
 /** Shadow levels are composites in base: geometry plus color slots, not an alias. */
 const isShadowLevel = (t: Token) => t.group === 'shadow' && t.tier === 'base' && t.type === 'shadow' && !t.ref;
 
-/** Whether a token in `tier` may point at `target`: the tier below, or for a base shadow a level beside it. */
-const canAlias = (tier: Tier, target: Token) => target.tier === TIER_BELOW[tier] || (tier === 'base' && isShadowLevel(target));
+/** Text styles are composites in semantic: their properties are the tokens beside them. */
+const isTextStyle = (t: Token) => t.group === 'typography' && t.tier === 'semantic' && t.type === 'typography';
 
-/** Why a token can't be re-pointed, or null when it can. Primitives and shadow levels are locked. */
+/**
+ * Whether a token in `tier` may point at `target`: the tier below, for a base shadow a level beside
+ * it, and for a semantic text style another style.
+ */
+const canAlias = (tier: Tier, target: Token) =>
+  target.tier === TIER_BELOW[tier] || (tier === 'base' && isShadowLevel(target)) || (tier === 'semantic' && isTextStyle(target));
+
+/** Why a token can't be re-pointed, or null when it can. Primitives, shadow levels and generated text styles are locked. */
 export function aliasLock(t: Token): string | null {
   if (t.tier === 'primitive') return 'Raw value — change it in the editor';
-  return isShadowLevel(t) ? 'Built from the shadow settings — change it in the editor' : null;
+  if (isShadowLevel(t)) return 'Built from the shadow settings — change it in the editor';
+  return isTextStyle(t) && !t.custom ? 'Built from its properties — re-point those' : null;
 }
 
 /**
@@ -938,7 +977,7 @@ export function aliasTargets(tier: Tier, group: TokenGroup, tokens: Token[], typ
 
 /** Groups that share a type across families (font size vs line height, gutter vs margin) need a narrower match. */
 function family(t: Token): string | undefined {
-  if (t.group === 'typography') return t.path[1];
+  if (t.group === 'typography') return t.type === 'typography' ? undefined : t.path[1];
   if (t.group === 'grid') return t.path[0] === 'grid' ? t.path.at(-1) : t.path[0];
   return undefined;
 }
@@ -947,7 +986,8 @@ function family(t: Token): string | undefined {
 export function aliasOptions(t: Token, tokens: Token[]): Token[] {
   const original = tokens.find((o) => o.name === (t.defaultRef ?? t.ref));
   const fam = original && family(original);
-  return aliasTargets(t.tier, t.group, tokens, t.type).filter((o) => !fam || family(o) === fam);
+  // A text style can't point at itself, or at a style that points at it
+  return aliasTargets(t.tier, t.group, tokens, t.type).filter((o) => (!fam || family(o) === fam) && o.name !== t.name && o.ref !== t.name);
 }
 
 /** Re-points one token, keeping its dark pair. Picking one target replaces per-breakpoint values. */
@@ -968,7 +1008,7 @@ function applyAliases(tokens: Token[], aliases: Record<string, string> | undefin
   return tokens.map((t) => {
     const ref = aliases[t.name];
     const target = ref ? byName.get(ref) : undefined;
-    if (!target || ref === t.ref || aliasLock(t)) return t;
+    if (!target || ref === t.ref || t.custom || aliasLock(t)) return t;
     if (!canAlias(t.tier, target) || target.group !== t.group || target.type !== t.type) return t;
     return { ...pointAt(t, target), defaultRef: t.ref };
   });
@@ -1007,6 +1047,28 @@ function customPath(c: CustomToken, tokens: Token[]): string[] {
   return [root, taken ? c.name : key];
 }
 
+/**
+ * A purpose pointing at a text style: a style of its own (text-button → text.button), whose property
+ * tokens start out where the style's point. Re-pointing one, say its weight, is an ordinary alias edit.
+ */
+function customTextStyle(c: CustomToken, style: Token, tokens: Token[], byName: Map<string, Token>): Token[] {
+  const key = c.name.startsWith('text-') ? c.name.slice(5) : c.name;
+  const path = ['text', tokens.some((t) => t.tier === 'semantic' && t.path[0] === 'text' && t.path[1] === key) ? c.name : key];
+  const parts = typographyParts(c.name);
+  const own = (Object.keys(TYPOGRAPHY_PARTS) as (keyof TypographyParts)[]).flatMap((k) => {
+    const from = byName.get((style.value as TypographyParts)[k]);
+    if (!from) return [];
+    const { defaultRef, description, tw, ...rest } = from;
+    // The usage goes on the size too, as on generated styles, so the Figma variable carries it
+    const usage = k === 'size' && c.description ? { description: c.description } : {};
+    return [{ ...rest, ...usage, name: parts[k], path: [...path, TYPOGRAPHY_PARTS[k]], partOf: c.name }];
+  });
+  return [
+    { tier: 'semantic', group: 'typography', name: c.name, path, type: 'typography', ref: style.name, value: parts, description: c.description || undefined, custom: true },
+    ...own,
+  ];
+}
+
 /** Adds the user's tokens, base before semantic so a custom semantic can point at a custom base. Invalid ones are skipped. */
 function addCustomTokens(tokens: Token[], custom: CustomToken[] | undefined, groups: TokenGroup[]): Token[] {
   if (!custom?.length) return tokens;
@@ -1017,6 +1079,13 @@ function addCustomTokens(tokens: Token[], custom: CustomToken[] | undefined, gro
       if (c.tier !== tier || !groups.includes(c.group) || !isTokenName(c.name) || byName.has(c.name)) continue;
       const target = byName.get(c.ref);
       if (!target || !canAlias(tier, target) || target.group !== c.group) continue;
+      if (isTextStyle(target)) {
+        const style = customTextStyle(c, target, out, byName);
+        if (style.some((t) => byName.has(t.name))) continue;
+        out.push(...style);
+        for (const t of style) byName.set(t.name, t);
+        continue;
+      }
       const t: Token = {
         tier,
         group: c.group,
@@ -1054,7 +1123,8 @@ export function buildTokens(
     ...(has('shadow') ? shadowTokens(palettes, f, opts.modes) : []),
     ...(has('grid') ? gridTokens(f) : []),
   ], f.aliases);
-  return addCustomTokens(generated, f.customTokens, opts.groups);
+  // Again after the custom tokens, for edits to the properties of the user's text styles
+  return applyAliases(addCustomTokens(generated, f.customTokens, opts.groups), f.aliases);
 }
 
 /** Follows aliases down to the primitive, in light or dark mode. */
@@ -1062,6 +1132,17 @@ export function resolveToken(t: Token, byName: Map<string, Token>, isDark = fals
   let cur: Token | undefined = t;
   for (let i = 0; cur?.ref && i < 4; i++) cur = byName.get(isDark && cur.darkRef ? cur.darkRef : cur.ref);
   return cur;
+}
+
+/** A text style's values at the widest breakpoint, each property followed down to its primitive. */
+export function resolveTypography(t: Token, byName: Map<string, Token>) {
+  const parts = t.value as TypographyParts;
+  const at = (k: keyof TypographyParts) => {
+    let cur = byName.get(parts[k]);
+    for (let i = 0; cur?.ref && i < 4; i++) cur = byName.get(cur.responsive?.at(-1)?.ref ?? cur.ref);
+    return cur?.value;
+  };
+  return { family: String(at('family') ?? ''), size: Number(at('size')), lineHeight: Number(at('lineHeight')), weight: Number(at('weight')), tracking: Number(at('tracking')) };
 }
 
 /** Role and primitive name for each palette, for the inspector. */

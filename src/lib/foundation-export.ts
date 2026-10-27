@@ -2,7 +2,17 @@ import chroma from 'chroma-js';
 import type { ColorFormat } from './color-utils';
 import type { GeneratedPalette } from './export-utils';
 import { type Foundations, type ShadowLayer, generateTypeScale, layerToCss } from './foundations';
-import { TIERS, type Token, type TokenGroup, buildTokens, productSlug, productsOf, resolveShadowLayers, resolveToken } from './tokens';
+import {
+  TIERS,
+  type Token,
+  type TokenGroup,
+  type TypographyParts,
+  buildTokens,
+  productSlug,
+  productsOf,
+  resolveShadowLayers,
+  resolveToken,
+} from './tokens';
 
 export { typeBreakpoint } from './tokens';
 
@@ -27,7 +37,7 @@ const TIER_TITLES: Record<Token['tier'], string> = {
   semantic: 'Semantic — purposes. Use these in components.',
 };
 
-/** Raw primitive value as CSS. Shadows and letter spacing ignore the unit. */
+/** Raw primitive value as CSS. Shadows and letter spacing ignore the unit; a text style is a `font` shorthand of its properties. */
 function cssValue(t: Token, unit: LengthUnit): string {
   switch (t.type) {
     case 'dimension':
@@ -38,6 +48,10 @@ function cssValue(t: Token, unit: LengthUnit): string {
     case 'shadow':
       // Each layer's color is its slot's variable, so levels follow dark mode and products
       return (t.value as ShadowLayer[]).map((l) => layerToCss(l.colorRef ? { ...l, color: `var(--${l.colorRef})` } : l)).join(', ');
+    case 'typography': {
+      const p = t.value as TypographyParts;
+      return `var(--${p.weight}) var(--${p.size})/var(--${p.lineHeight}) var(--${p.family})`;
+    }
     default:
       return String(t.value);
   }
@@ -46,8 +60,9 @@ function cssValue(t: Token, unit: LengthUnit): string {
 /** Every CSS export switches to dark values under this, on <html>, next to `data-product`. */
 const DARK_SELECTOR = '[data-theme="dark"]';
 
+/** A text style that points at another is still built from its own properties, which may differ. */
 const decl = (t: Token, unit: LengthUnit, indent = '  ') =>
-  `${indent}--${t.name}: ${t.ref ? `var(--${t.ref})` : cssValue(t, unit)};`;
+  `${indent}--${t.name}: ${t.ref && t.type !== 'typography' ? `var(--${t.ref})` : cssValue(t, unit)};`;
 
 const GROUP_LABEL: Record<TokenGroup, string> = {
   color: 'Color',
@@ -119,11 +134,12 @@ function productCss(overrides: { name: string; product: string; ref: string; dar
 function utilitiesCss(tokens: Token[]) {
   const names = new Set(tokens.map((t) => t.name));
   let css = '';
-  const styles = [...new Set(tokens.filter((t) => t.group === 'typography' && t.tier === 'semantic').map((t) => t.path[1]))];
+  const styles = tokens.filter((t) => t.type === 'typography');
   if (styles.length) {
     css += '/* ===== Text styles ===== */\n';
     for (const s of styles) {
-      css += `.text-${s} {\n  font-family: var(--text-${s}-family);\n  font-size: var(--text-${s}-size);\n  line-height: var(--text-${s}-line-height);\n  font-weight: var(--text-${s}-weight);\n  letter-spacing: var(--text-${s}-tracking);\n}\n`;
+      const p = s.value as TypographyParts;
+      css += `.${s.name} {\n  font-family: var(--${p.family});\n  font-size: var(--${p.size});\n  line-height: var(--${p.lineHeight});\n  font-weight: var(--${p.weight});\n  letter-spacing: var(--${p.tracking});\n}\n`;
     }
   }
   if (names.has('page-columns')) {
@@ -158,6 +174,7 @@ const DTCG_TYPE: Record<Token['type'], string> = {
   fontWeight: 'fontWeight',
   letterSpacing: 'dimension',
   shadow: 'shadow',
+  typography: 'typography',
 };
 
 function setPath(obj: Record<string, unknown>, path: string[], value: unknown) {
@@ -173,6 +190,25 @@ function aliasResolver(tokens: Token[]) {
     const t = byName.get(name);
     return t ? `{${[t.tier, ...t.path].join('.')}}` : `{${name}}`;
   };
+}
+
+const DTCG_TYPOGRAPHY: Record<keyof TypographyParts, string> = {
+  family: 'fontFamily',
+  size: 'fontSize',
+  lineHeight: 'lineHeight',
+  weight: 'fontWeight',
+  tracking: 'letterSpacing',
+};
+
+/** A text style as one W3C typography token, each property aliasing what its own token points at. */
+function typographyValue(t: Token, byName: Map<string, Token>, alias: (name: string) => string) {
+  const parts = t.value as TypographyParts;
+  return Object.fromEntries(
+    (Object.keys(DTCG_TYPOGRAPHY) as (keyof TypographyParts)[]).flatMap((k) => {
+      const to = byName.get(parts[k])?.ref;
+      return to ? [[DTCG_TYPOGRAPHY[k], alias(to)]] : [];
+    }),
+  );
 }
 
 function jsonValue(t: Token, unit: LengthUnit, alias: (name: string) => string) {
@@ -192,8 +228,26 @@ function jsonValue(t: Token, unit: LengthUnit, alias: (name: string) => string) 
 export function generateJson(palettes: GeneratedPalette[], f: Foundations, opts: ExportOptions) {
   const tokens = buildTokens(palettes, f, { groups: groupsFor(opts.scope), modes: 'both', colorFormat: opts.colorFormat });
   const alias = aliasResolver(tokens);
+  const byName = new Map(tokens.map((t) => [t.name, t]));
   const out: Record<string, unknown> = {};
   for (const t of tokens) {
+    // A text style holds its properties, so they don't also go out on their own
+    if (t.partOf) continue;
+    if (t.type === 'typography') {
+      // Each product with its own fonts swaps the family
+      const products = byName.get((t.value as TypographyParts).family)?.products;
+      setPath(out, [t.tier, ...t.path], {
+        $type: 'typography',
+        $value: typographyValue(t, byName, alias),
+        ...(t.description && { $description: t.description }),
+        ...(products && {
+          $extensions: {
+            'lumina.products': Object.fromEntries(products.map((o) => [o.product, { $value: { fontFamily: alias(o.ref) } }])),
+          },
+        }),
+      });
+      continue;
+    }
     const extensions: Record<string, unknown> = {};
     if (t.darkRef) extensions.modes = { dark: alias(t.darkRef) };
     if (t.products) {
@@ -498,7 +552,8 @@ const SHEET_TYPES: Partial<Record<Token['type'], string>> = { fontFamily: 'STRIN
  * values change: responsive roles get a mode per breakpoint, and Text a mode per product when one has its own fonts.
  */
 export function generateSheetVariablesCsv(palettes: GeneratedPalette[], f: Foundations, group: SheetGroup, tier: Token['tier']) {
-  const all = buildTokens(palettes, f, { groups: [group], modes: 'light', colorFormat: 'hex' });
+  // Figma has no variable type for a text style; Text Styles.csv builds those from these variables
+  const all = buildTokens(palettes, f, { groups: [group], modes: 'light', colorFormat: 'hex' }).filter((t) => t.type !== 'typography');
   const byName = new Map(all.map((t) => [t.name, t]));
   const paths = new Map(TIERS.flatMap((tr) => [...collectionPaths(all.filter((t) => t.tier === tr))]));
   const tokens = all.filter((t) => t.tier === tier);
@@ -547,24 +602,25 @@ export function generateSheetVariablesCsv(palettes: GeneratedPalette[], f: Found
 const FONT_STYLE_NAMES: Record<number, string> = { 300: 'Light', 400: 'Regular', 500: 'Medium', 600: 'Semi Bold', 700: 'Bold', 800: 'Extra Bold' };
 
 /**
- * One text style per semantic style, bound to the Text collection, so sizes follow Typography's
+ * One text style per text style token, bound to the Text collection, so sizes follow Typography's
  * Mobile and Desktop modes. Letter spacing is a raw percent, since Figma reads bound letter spacing as px.
+ * Every style goes under `text/`, as shadows go under `shadow/`: generated ones by label (text/Heading 1),
+ * the user's own by name (text/button).
  */
 export function generateTextStylesCsv(palettes: GeneratedPalette[], f: Foundations) {
   const tokens = buildTokens(palettes, f, { groups: ['typography'], modes: 'light', colorFormat: 'hex' });
   const byName = new Map(tokens.map((t) => [t.name, t]));
   const collection = SHEET_COLLECTIONS.typography.semantic;
-  const paths = collectionPaths(tokens.filter((t) => t.tier === 'semantic'));
-  const labels = new Map(generateTypeScale(f.typography).map((s) => [s.name, s]));
+  const paths = collectionPaths(tokens.filter((t) => t.tier === 'semantic' && t.type !== 'typography'));
+  const labels = new Map(generateTypeScale(f.typography).map((s) => [`text-${s.name}`, s.label]));
   const alias = (t: Token) => `{${collection}:${paths.get(t.name)}}`;
 
   const lines = [['Name', 'Type', 'Description', 'Property', 'Value'].join(',')];
-  const styles = [...new Set(tokens.filter((t) => t.tier === 'semantic').map((t) => t.path[1]))];
-  for (const s of styles) {
-    const prop = (p: string) => byName.get(`text-${s}-${p}`);
-    const style = labels.get(s);
-    const name = style?.label ?? s;
-    const description = style?.usage ?? '';
+  for (const style of tokens.filter((t) => t.type === 'typography')) {
+    const parts = style.value as TypographyParts;
+    const prop = (k: keyof TypographyParts) => byName.get(parts[k]);
+    const name = `text/${style.custom ? style.path.at(-1) : (labels.get(style.name) ?? style.name)}`;
+    const description = style.description ?? '';
     const rows: [string, string][] = [];
     const family = prop('family');
     if (family) rows.push(['Font Family', alias(family)]);
@@ -577,7 +633,7 @@ export function generateTextStylesCsv(palettes: GeneratedPalette[], f: Foundatio
     }
     const size = prop('size');
     if (size) rows.push(['Font Size', alias(size)]);
-    const lineHeight = prop('line-height');
+    const lineHeight = prop('lineHeight');
     if (lineHeight) rows.push(['Line Height', alias(lineHeight)]);
     const tracking = prop('tracking');
     const em = tracking ? resolveToken(tracking, byName)?.value : undefined;
