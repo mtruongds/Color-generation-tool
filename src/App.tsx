@@ -1,48 +1,75 @@
 import { PaletteGenerator } from './components/palette-generator/PaletteGenerator';
+import { PreviewWindow } from './components/foundations/PreviewWindow';
+import { isPreviewPopout } from './lib/preview-window';
+import { EDIT_MODE_KEY, type EditMode, loadEditMode } from './lib/edit-mode';
 import { Toaster } from 'sonner';
-import { useState, useEffect, useLayoutEffect, useCallback } from 'react';
+import { useState, useEffect, useLayoutEffect } from 'react';
 
-export default function App() {
-  const [themeSource, setThemeSource] = useState<'system' | 'manual'>(() => {
-    return localStorage.getItem('lumina_theme') ? 'manual' : 'system';
-  });
+/** The interface's own theme: the app chrome, not the tokens being edited. */
+export type InterfaceTheme = 'system' | 'light' | 'dark';
 
-  const [isDarkMode, setIsDarkMode] = useState(() => {
-    const saved = localStorage.getItem('lumina_theme');
-    if (saved) return saved === 'dark';
-    // Default to system preference
-    return window.matchMedia('(prefers-color-scheme: dark)').matches;
-  });
+const THEME_KEY = 'lumina_theme';
 
-  // Listen for system theme changes when in system mode
+function loadTheme(): InterfaceTheme {
+  try {
+    const saved = localStorage.getItem(THEME_KEY);
+    if (saved === 'light' || saved === 'dark') return saved;
+  } catch {
+    // Blocked storage falls back to the system theme.
+  }
+  return 'system';
+}
+
+function useSystemDark() {
+  const [dark, setDark] = useState(() => window.matchMedia('(prefers-color-scheme: dark)').matches);
   useEffect(() => {
-    if (themeSource !== 'system') return;
     const mq = window.matchMedia('(prefers-color-scheme: dark)');
-    const handler = (e: MediaQueryListEvent) => setIsDarkMode(e.matches);
+    const handler = (e: MediaQueryListEvent) => setDark(e.matches);
     mq.addEventListener('change', handler);
     return () => mq.removeEventListener('change', handler);
-  }, [themeSource]);
+  }, []);
+  return dark;
+}
+
+export default function App() {
+  const [popout] = useState(isPreviewPopout);
+  const [theme, setTheme] = useState<InterfaceTheme>(loadTheme);
+  const systemDark = useSystemDark();
+
+  // A preview window shows the mode being edited, and follows it as the editor switches
+  const [popoutMode, setPopoutMode] = useState<EditMode>(loadEditMode);
+  useEffect(() => {
+    if (!popout) return;
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === EDIT_MODE_KEY) setPopoutMode(loadEditMode());
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, [popout]);
+
+  const isDarkMode = popout ? popoutMode === 'dark' : theme === 'system' ? systemDark : theme === 'dark';
 
   // Theme lives on <html> so portalled UI (dropdowns, dialogs, tooltips) rendered under <body> picks it up too
   useLayoutEffect(() => {
     document.documentElement.classList.toggle('dark', isDarkMode);
   }, [isDarkMode]);
 
-  // Persist manual choice
   useEffect(() => {
-    if (themeSource === 'manual') {
-      localStorage.setItem('lumina_theme', isDarkMode ? 'dark' : 'light');
+    try {
+      if (theme === 'system') localStorage.removeItem(THEME_KEY);
+      else localStorage.setItem(THEME_KEY, theme);
+    } catch {
+      // Blocked storage only forgets the choice.
     }
-  }, [isDarkMode, themeSource]);
-
-  const toggleDarkMode = useCallback(() => {
-    setThemeSource('manual');
-    setIsDarkMode(prev => !prev);
-  }, []);
+  }, [theme]);
 
   return (
     <>
-      <PaletteGenerator isDarkMode={isDarkMode} toggleDarkMode={toggleDarkMode} />
+      {popout ? (
+        <PreviewWindow isDarkMode={isDarkMode} />
+      ) : (
+        <PaletteGenerator interfaceDark={isDarkMode} theme={theme} onThemeChange={setTheme} />
+      )}
       <Toaster
         theme={isDarkMode ? 'dark' : 'light'}
         position="bottom-center"

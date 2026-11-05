@@ -1,87 +1,72 @@
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useState } from 'react';
 import chroma from 'chroma-js';
-import { ArrowRight, Info, Lock, RotateCcw, Unlock } from 'lucide-react';
-import { Button } from '../ui/button';
+import { ArrowRight, Info, Lock, Unlock } from 'lucide-react';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
-import { Slider } from '../ui/slider';
 import { Switch } from '../ui/switch';
 import { Tabs, TabsList, TabsTrigger } from '../ui/tabs';
 import { Textarea } from '../ui/textarea';
 import { normalizeHex, type PaletteRole } from '../../lib/color-utils';
+import { cn } from '../ui/utils';
 import type { GeneratedPalette } from '../../lib/export-utils';
+import { Section, SelectField, SliderField } from '../foundations/inspector-controls';
+import { Select, SelectContent, SelectItem, SelectTrigger } from '../ui/select';
+import { COLOR_ROLES, ROLE_LABELS, type ColorRole } from '../../lib/tokens';
 import type { PaletteConfig } from './types';
 
 const lightnessPercent = (color: string) => Math.round(chroma(color).oklch()[0] * 100);
 
-function Section({ title, children, action }: { title: string; children: React.ReactNode; action?: React.ReactNode }) {
-  return (
-    <section className="space-y-3 border-b px-5 py-5 last:border-b-0">
-      <div className="flex h-5 items-center justify-between">
-        <h3 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">{title}</h3>
-        {action}
-      </div>
-      {children}
-    </section>
-  );
+/** Who fills a role in an extra product, its own pick or one taken from the first product. */
+export interface ProductRoleHolder {
+  role: ColorRole;
+  palette: RolePalette;
+  inherited: boolean;
+  /** The first product's palette for this role, what "inherit" falls back to. */
+  fallback?: RolePalette;
 }
 
-function SliderField({
-  label,
-  value,
-  display,
-  min,
-  max,
-  step,
-  defaultValue,
-  onChange,
-}: {
-  label: string;
-  value: number;
-  display: string;
-  min: number;
-  max: number;
-  step: number;
-  defaultValue: number;
-  onChange: (v: number) => void;
-}) {
-  const id = useId();
-  const changed = value !== defaultValue;
-  return (
-    <div className="space-y-2.5">
-      <div className="flex items-center justify-between">
-        <Label htmlFor={id} className="text-sm font-normal">
-          {label}
-        </Label>
-        <div className="flex items-center gap-1">
-          {changed && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="relative size-6 text-muted-foreground after:absolute after:-inset-2"
-              aria-label={`Reset ${label}`}
-              onClick={() => onChange(defaultValue)}
-            >
-              <RotateCcw className="size-3" />
-            </Button>
-          )}
-          <span className="min-w-[3rem] rounded-md bg-muted px-1.5 py-0.5 text-right font-mono text-xs tabular">
-            {display}
-          </span>
-        </div>
-      </div>
-      <Slider id={id} min={min} max={max} step={step} value={[value]} onValueChange={(v) => onChange(v[0])} />
-    </div>
-  );
+export interface RolePalette {
+  id: string;
+  name: string;
+  baseColor: string;
+  gray: boolean;
 }
+
+const INHERIT = '__inherit';
+
+const ROLE_OPTIONS = [
+  { value: 'auto', label: 'Auto' },
+  ...COLOR_ROLES.map((r) => ({ value: r, label: ROLE_LABELS[r] })),
+  { value: 'none', label: 'None' },
+];
 
 export function PaletteInspector({
   palette,
+  tokens,
   onChange,
+  onSetRole,
+  product,
 }: {
   palette: GeneratedPalette;
+  /** Primitive name and resolved base role of this palette in the export. */
+  tokens?: { primitive: string; role?: ColorRole };
   onChange: (updates: Partial<PaletteConfig>) => void;
+  /** Sets the token role, swapping with the palette that holds it. */
+  onSetRole: (role: ColorRole | 'none' | undefined) => void;
+  /** Set when an extra product is active: roles are picked for it, from the ones the first product has. */
+  product?: {
+    name: string;
+    from: string;
+    /** Every role in the product and the palette filling it. */
+    holders: ProductRoleHolder[];
+    /** Palettes that can fill a role: grays for Neutral, accents for the rest. */
+    palettes: RolePalette[];
+    /** Gives a role to a palette in this product; null inherits it from the first product again. */
+    onAssign: (role: ColorRole, paletteId: string | null) => void;
+  };
 }) {
+  const wantedRole = palette.tokenRole && palette.tokenRole !== 'none' ? palette.tokenRole : undefined;
+  const roleTaken = wantedRole && tokens?.role !== wantedRole;
   const [hexDraft, setHexDraft] = useState(palette.baseColor);
   const hexValid = normalizeHex(hexDraft) !== null;
 
@@ -139,17 +124,16 @@ export function PaletteInspector({
           <Label className="text-sm font-normal">Role</Label>
           <Tabs value={role} onValueChange={(v) => onChange({ role: v as PaletteRole })} className="gap-0">
             <TabsList className="h-8 rounded-lg" aria-label="Palette role">
-              <TabsTrigger value="accent" disabled={palette.locked} className="rounded-md px-3 text-xs">
+              <TabsTrigger value="accent" className="rounded-md px-3 text-xs">
                 Accent
               </TabsTrigger>
-              <TabsTrigger value="gray" disabled={palette.locked} className="rounded-md px-3 text-xs">
+              <TabsTrigger value="gray" className="rounded-md px-3 text-xs">
                 Gray
               </TabsTrigger>
             </TabsList>
           </Tabs>
         </div>
         <p className="-mt-1 text-xs leading-snug text-muted-foreground">
-          {palette.locked && 'Default palette — its role is fixed and it can’t be deleted. '}
           {role === 'gray'
             ? 'Fitted to the Radix gray scales only. Step 9 follows the scale, not the exact base color. Also tints pure black or white accents.'
             : 'Fitted to all Radix scales, with step 9 anchored to the base color.'}
@@ -197,6 +181,40 @@ export function PaletteInspector({
         )}
       </Section>
 
+      <Section title="Tokens">
+        {!product && (
+          <SelectField
+            label="Token role"
+            value={palette.tokenRole ?? 'auto'}
+            options={ROLE_OPTIONS}
+            onChange={(v) => onSetRole(v === 'auto' ? undefined : (v as ColorRole | 'none'))}
+          />
+        )}
+        {product ? (
+          // The role map covers every palette, so this palette's own token line would repeat a row
+          <ProductRoles product={product} />
+        ) : (
+          <>
+            {tokens && (
+              <div className="flex flex-wrap items-center gap-1.5 font-mono text-[0.6875rem] text-muted-foreground">
+                <span className="rounded bg-muted px-1.5 py-0.5">{tokens.primitive}-*</span>
+                <span aria-hidden>→</span>
+                {tokens.role ? (
+                  <span className="rounded bg-muted px-1.5 py-0.5 text-foreground">{tokens.role}-*</span>
+                ) : (
+                  <span className="font-sans">no role, exported as primitives only</span>
+                )}
+              </div>
+            )}
+            <p className="text-xs leading-snug text-muted-foreground">
+              {roleTaken
+                ? `${ROLE_LABELS[wantedRole]} is already used by another palette, so this one has no role.`
+                : 'Picking a role another palette holds swaps the two. Brand · Primary drives bg-brand and focus-ring; Brand · Secondary drives bg-brand-secondary.'}
+            </p>
+          </>
+        )}
+      </Section>
+
       <Section title="Details">
         <div className="space-y-1.5">
           <Label htmlFor="palette-name" className="text-sm font-normal">
@@ -206,7 +224,7 @@ export function PaletteInspector({
             id="palette-name"
             value={palette.name}
             onChange={(e) => onChange({ name: e.target.value })}
-            placeholder="e.g. Primary"
+            placeholder="e.g. Brand"
           />
         </div>
         <div className="space-y-1.5">
@@ -250,6 +268,76 @@ export function PaletteInspector({
         <Info className="mt-0.5 size-3.5 shrink-0" />
         <p>{mixDescription}.</p>
       </div>
+    </div>
+  );
+}
+
+function Swatch({ color, muted }: { color: string; muted?: boolean }) {
+  return <span aria-hidden className={cn('swatch-outline size-3 shrink-0 rounded-full', muted && 'opacity-60')} style={{ backgroundColor: color }} />;
+}
+
+/**
+ * The product's role map, edited in place: each role picks its palette, or inherits the first
+ * product's. Rows keep a fixed order so nothing jumps when a role changes hands.
+ */
+function ProductRoles({ product }: { product: NonNullable<Parameters<typeof PaletteInspector>[0]['product']> }) {
+  const own = product.holders.filter((h) => !h.inherited).length;
+  const brandInherited = product.holders.some((h) => h.inherited && h.role === 'brand');
+  return (
+    <div className="space-y-2">
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="text-sm">Roles in {product.name}</span>
+        <span className="text-xs text-muted-foreground tabular">
+          {own} of {product.holders.length} set
+        </span>
+      </div>
+      <ul className="space-y-1.5">
+        {product.holders.map(({ role, palette: p, inherited, fallback }) => {
+          const options = product.palettes.filter((o) => o.gray === (role === 'neutral'));
+          const inheritFrom = fallback ?? (inherited ? p : undefined);
+          return (
+            <li key={role} className="flex items-center justify-between gap-3">
+              <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">{ROLE_LABELS[role]}</span>
+              <Select value={inherited ? INHERIT : p.id} onValueChange={(v) => product.onAssign(role, v === INHERIT ? null : v)}>
+                <SelectTrigger
+                  size="sm"
+                  aria-label={`${ROLE_LABELS[role]} in ${product.name}`}
+                  className="w-[11rem] min-w-0 px-2.5"
+                >
+                  <span className="flex min-w-0 flex-1 items-center gap-2">
+                    <Swatch color={p.baseColor} muted={inherited} />
+                    {/* Name and tag differ in size, so they share a baseline rather than a center. The tag
+                        sits by the chevron, so inherited rows read as one column */}
+                    <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
+                      <span className={cn('truncate', inherited ? 'text-muted-foreground' : 'font-medium')}>{p.name || 'Untitled'}</span>
+                      {inherited && <span className="ml-auto shrink-0 text-xs text-muted-foreground/70">{product.from}</span>}
+                    </span>
+                  </span>
+                </SelectTrigger>
+                <SelectContent align="end">
+                  {inheritFrom && (
+                    <SelectItem value={INHERIT}>
+                      <Swatch color={inheritFrom.baseColor} muted />
+                      <span className="text-muted-foreground">Inherit · {inheritFrom.name || 'Untitled'}</span>
+                    </SelectItem>
+                  )}
+                  {options.map((o) => (
+                    <SelectItem key={o.id} value={o.id}>
+                      <Swatch color={o.baseColor} />
+                      {o.name || 'Untitled'}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </li>
+          );
+        })}
+      </ul>
+      <p className={cn('text-xs leading-snug', brandInherited ? 'text-amber-700 dark:text-amber-400' : 'text-muted-foreground')}>
+        {brandInherited
+          ? `${product.name} still uses ${product.from}'s brand color. Pick a palette for Brand · Primary to give it its own.`
+          : `Roles left on inherit use ${product.from}'s palettes.`}
+      </p>
     </div>
   );
 }
