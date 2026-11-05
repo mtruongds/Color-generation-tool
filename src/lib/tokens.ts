@@ -951,8 +951,8 @@ const canAlias = (tier: Tier, target: Token) =>
 /** Why a token can't be re-pointed, or null when it can. Primitives, shadow levels and generated text styles are locked. */
 export function aliasLock(t: Token): string | null {
   if (t.tier === 'primitive') return 'Raw value — change it in the editor';
-  if (isShadowLevel(t)) return 'Built from the shadow settings — change it in the editor';
-  return isTextStyle(t) && !t.custom ? 'Built from its properties — re-point those' : null;
+  if (isShadowLevel(t)) return 'Built from the shadow settings';
+  return isTextStyle(t) && !t.custom ? 'Built from its properties' : null;
 }
 
 /**
