@@ -33,9 +33,12 @@ export const formatLength = (px: number, unit: LengthUnit) =>
 
 const TIER_TITLES: Record<Token['tier'], string> = {
   primitive: 'Primitive — raw values. Reference these only from base tokens.',
-  base: 'Base — roles. Each aliases a primitive; dark mode swaps them under [data-theme="dark"].',
+  base: 'Base — roles. Each aliases a primitive.',
   semantic: 'Semantic — purposes. Use these in components.',
 };
+
+/** Added to a tier's title only when the tier has dark values, so spacing or radius alone don't mention dark mode. */
+const DARK_NOTE = ' Dark mode swaps them under [data-theme="dark"].';
 
 /** Raw primitive value as CSS. Shadows and letter spacing ignore the unit; a text style is a `font` shorthand of its properties. */
 function cssValue(t: Token, unit: LengthUnit): string {
@@ -87,7 +90,9 @@ function variablesCss(tokens: Token[], unit: LengthUnit) {
       lines.push(`  /* ${GROUP_LABEL[group]} */`);
       lines.push(...inGroup.map((t) => decl(t, unit)));
     }
-    let css = `/* ===== ${TIER_TITLES[tier]} ===== */\n:root {\n${lines.join('\n')}\n}\n`;
+    const dark = inTier.filter((t) => t.darkRef);
+    const darkNote = dark.length || inTier.some((t) => t.products?.some((o) => o.darkRef)) ? DARK_NOTE : '';
+    let css = `/* ===== ${TIER_TITLES[tier]}${darkNote} ===== */\n:root {\n${lines.join('\n')}\n}\n`;
 
     // Wide-gamut colors for P3 displays
     const p3 = inTier.filter((t) => t.p3);
@@ -98,7 +103,6 @@ function variablesCss(tokens: Token[], unit: LengthUnit) {
     }
 
     // Put data-theme="dark" on <html> so tokens that alias these resolve against the dark values
-    const dark = inTier.filter((t) => t.darkRef);
     if (dark.length) css += `\n${DARK_SELECTOR} {\n${dark.map((t) => `  --${t.name}: var(--${t.darkRef});`).join('\n')}\n}\n`;
 
     // Put data-product on <html> to switch the roles an extra product fills itself

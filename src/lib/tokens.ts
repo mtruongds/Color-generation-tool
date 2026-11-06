@@ -20,7 +20,7 @@ import type { PaletteConfig } from '../components/palette-generator/types';
 
 /*
  * One token model for every export. Tokens come in three tiers:
- *   primitive — raw values, named so a config change never renames them (brand-scale-9, font-size-step-0, space-4)
+ *   primitive — raw values, named so a config change never renames them (brand-scale-9, font-size-step-0, space-scale-4)
  *   base      — roles that alias primitives (brand-9, font-family-heading, space-md)
  *   semantic  — purposes that alias base tokens (bg-brand, text-h1-size, padding-card); text styles and
  *               shadow levels are composites of those (text-h1 of its properties, shadow-md of its color slots)
@@ -642,7 +642,8 @@ function spacingTokens(f: Foundations): Token[] {
     tier: 'primitive' as const,
     group: 'spacing' as const,
     name: s.name,
-    path: ['space', s.name.replace('space-', '')],
+    // The path stays the multiplier: JSON and Figma already set the scale apart by tier and collection
+    path: ['space', s.name.replace('space-scale-', '')],
     type: 'dimension' as const,
     value: s.value,
   }));
@@ -681,14 +682,14 @@ const SEMANTIC_RADIUS: [string, string, string][] = [
 function radiusTokens(f: Foundations): Token[] {
   const scale = generateRadiusScale(f.radius);
   const tokens: Token[] = [];
-  // Primitives are named by multiplier of the base (radius-1 is md), so changing the base keeps every name.
-  // Full has no multiplier; its fixed 9999px value names it.
-  const primName = (r: (typeof scale)[number]) => `radius-${r.value === RADIUS_FULL ? RADIUS_FULL : String(r.multiplier).replace('.', '_')}`;
+  // Primitives are named by multiplier of the base (radius-scale-1 is md), so changing the base keeps every name.
+  // Full has no multiplier; its fixed 9999px value names it. `-scale-` keeps them apart from the roles (radius-md).
+  const primName = (r: (typeof scale)[number]) => `radius-scale-${r.value === RADIUS_FULL ? RADIUS_FULL : String(r.multiplier).replace('.', '_')}`;
   for (const r of scale) {
     const name = primName(r);
-    tokens.push({ tier: 'primitive', group: 'radius', name, path: ['radius', name.replace('radius-', '')], type: 'dimension', value: r.value });
+    tokens.push({ tier: 'primitive', group: 'radius', name, path: ['radius', name.replace('radius-scale-', '')], type: 'dimension', value: r.value });
   }
-  // An extra product's own radius gets the steps that differ, plus the product's position (radius-1-2), like its fonts
+  // An extra product's own radius gets the steps that differ, plus the product's position (radius-scale-1-2), like its fonts
   const productRadius = new Map<string, { product: string; ref: string }[]>();
   productsOf(f)
     .slice(1)
@@ -697,7 +698,7 @@ function radiusTokens(f: Foundations): Token[] {
       for (const r of generateRadiusScale({ ...f.radius, base: product.radius })) {
         if (r.value === scale.find((s) => s.name === r.name)!.value) continue;
         const name = `${primName(r)}-${i + 2}`;
-        tokens.push({ tier: 'primitive', group: 'radius', name, path: ['radius', name.replace('radius-', '')], type: 'dimension', value: r.value, description: `${product.name} radius` });
+        tokens.push({ tier: 'primitive', group: 'radius', name, path: ['radius', name.replace('radius-scale-', '')], type: 'dimension', value: r.value, description: `${product.name} radius` });
         productRadius.set(r.name, [...(productRadius.get(r.name) ?? []), { product: product.name, ref: name }]);
       }
     });

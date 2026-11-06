@@ -237,7 +237,7 @@ export function fontStack(family: string, kind: 'sans' | 'serif' | 'mono' = 'san
 export type SpacingProgression = 'linear' | 'geometric';
 
 export interface SpacingConfig {
-  /** Base unit in px. Token `space-1` equals one unit. */
+  /** Base unit in px. Token `space-scale-1` equals one unit. */
   base: number;
   progression: SpacingProgression;
 }
@@ -255,8 +255,11 @@ export interface SpacingToken {
   value: number;
 }
 
-/** Primitives are named by multiplier, not px, so changing the base keeps every name: space-4 is 4 × base. */
-export const spacingTokenName = (multiplier: number) => `space-${String(multiplier).replace('.', '_')}`;
+/**
+ * Primitives are named by multiplier, not px, so changing the base keeps every name: space-scale-4 is 4 × base.
+ * `-scale-` keeps them apart from the roles (space-md), like color's brand-scale-9 and brand-9.
+ */
+export const spacingTokenName = (multiplier: number) => `space-scale-${String(multiplier).replace('.', '_')}`;
 
 export function generateSpacingScale(c: SpacingConfig): SpacingToken[] {
   return SPACING_MULTIPLIERS[c.progression].map((m) => {
@@ -652,7 +655,7 @@ function normalizeCustomTokens(raw: unknown): CustomToken[] {
       (c): c is CustomToken =>
         !!c && typeof c === 'object' && (c.tier === 'base' || c.tier === 'semantic') && typeof c.group === 'string' && typeof c.name === 'string' && typeof c.ref === 'string',
     )
-    .map((c) => ({ ...c, ref: renameRoles(c.ref), path: Array.isArray(c.path) && c.path.length > 1 && c.path.every((k: unknown) => typeof k === 'string' && /^[a-z0-9-]+$/.test(k)) ? c.path : undefined }))
+    .map((c) => ({ ...c, ref: renamePrimitives(renameRoles(c.ref)), path: Array.isArray(c.path) && c.path.length > 1 && c.path.every((k: unknown) => typeof k === 'string' && /^[a-z0-9-]+$/.test(k)) ? c.path : undefined }))
     // Shadow levels moved from base to semantic, so a base shadow aliasing one (shadow-3xl → shadow-2xl)
     // moved with them; base shadows alias the raw layer colors (elevation-…)
     .map((c) => (c.group === 'shadow' && c.tier === 'base' && c.ref.startsWith('shadow-') ? { ...c, tier: 'semantic' as const } : c));
@@ -675,12 +678,19 @@ const renameRoles = (name: string) =>
       return level ? `shadow-${level.name}` : m;
     });
 
+/**
+ * Renamed primitives: spacing and radius steps gained `-scale-` (space-4 → space-scale-4, radius-1-2 → radius-scale-1-2).
+ * Only applied to what a token points at, since a primitive is never itself re-pointed and a user's own role could be named space-4.
+ */
+const renamePrimitives = (name: string) =>
+  name.replace(/^space-(\d+(?:_\d+)?)$/, 'space-scale-$1').replace(/^radius-(\d+(?:_\d+)?(?:-\d+)?)$/, 'radius-scale-$1');
+
 function normalizeAliases(raw: unknown): Record<string, string> {
   if (!raw || typeof raw !== 'object') return {};
   return Object.fromEntries(
     Object.entries(raw)
       .filter(([, v]) => typeof v === 'string')
-      .map(([k, v]) => [renameRoles(k), renameRoles(v as string)]),
+      .map(([k, v]) => [renameRoles(k), renamePrimitives(renameRoles(v as string))]),
   );
 }
 
