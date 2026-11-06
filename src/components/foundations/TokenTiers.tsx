@@ -247,9 +247,18 @@ export function TokenTiers({
   }, [tokens]);
 
   const q = query.trim().toLowerCase();
+  /** Keyword search: split on spaces and name separators; every keyword must appear (as a substring) somewhere in the token. */
+  const terms = q.split(/[\s._\-/]+/).filter(Boolean);
+  const matchesQuery = (t: Token) => {
+    if (!terms.length) return true;
+    const haystack = [t.name, ...(nestedNames.get(t.name) ?? []), t.ref, t.darkRef, t.description]
+      .filter(Boolean)
+      .join('\n')
+      .toLowerCase();
+    return terms.every((term) => haystack.includes(term));
+  };
   const matches = (t: Token) =>
-    (filter === 'all' || (filter === 'edited' ? !!t.defaultRef : !!t.custom)) &&
-    (!q || t.name.includes(q) || nestedNames.get(t.name)?.includes(q) || t.ref?.includes(q) || t.description?.toLowerCase().includes(q));
+    (filter === 'all' || (filter === 'edited' ? !!t.defaultRef : !!t.custom)) && matchesQuery(t);
   /** Searching or filtering opens every tier, so matches never hide in a folded one. */
   const narrowing = !!q || filter !== 'all';
 
