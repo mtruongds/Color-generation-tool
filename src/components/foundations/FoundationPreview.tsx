@@ -36,13 +36,14 @@ import {
   RADIUS_FULL,
   computeGridLayout,
   generateSpacingScale,
+  generateTypeScale,
   resolveFoundations,
   sortedBreakpoints,
   spacingTokenName,
 } from '../../lib/foundations';
 import { typeCss } from './FoundationSample';
 import type { ColorScale } from '../../lib/color-utils';
-import { type FoundationRow, StepTokenLayer, scaleVars } from '../palette-generator/PalettePreview';
+import { type FoundationRow, type RowEditor, type TokenOption, StepTokenLayer, scaleVars } from '../palette-generator/PalettePreview';
 import { ComponentGallery } from './ComponentGallery';
 
 export type PreviewKey = Exclude<FoundationKey, 'color'>;
@@ -392,6 +393,82 @@ export function FoundationPreview({
     return rows;
   };
 
+  /** Text styles and spacing steps the tooltip's pickers offer. */
+  const typeNames = useMemo(() => generateTypeScale(foundations.typography).map((s) => s.name), [foundations.typography]);
+  const spaceOptions = useMemo<TokenOption[]>(
+    () => [{ token: '0', value: '0px', note: '0px' }, ...generateSpacingScale(foundations.spacing).map((s) => ({ token: s.name, value: `${s.value}px`, note: `${s.value}px` }))],
+    [foundations.spacing],
+  );
+
+  /**
+   * The tokens a pinned tooltip lets the user try on an element: text style, padding, gap, radius
+   * and elevation. Colors and grid placement stay read-only. Swaps live only in the preview.
+   */
+  const edit = (_el: HTMLElement, rows: FoundationRow[]): RowEditor[] =>
+    rows.flatMap((row): RowEditor[] => {
+      // Tags such as "p: space-4" name an intent rather than a value read off the element
+      if (row.token.includes(':')) return [];
+      /** The options, plus the current value when it isn't one of them (an off-scale px). */
+      const withCurrent = (options: TokenOption[], token: string, value: string) =>
+        options.some((o) => o.token === token) ? options : [{ token, value }, ...options];
+      /** One picker per value of a shorthand such as "space-2 space-4". */
+      const parts = (options: TokenOption[]) => {
+        const values = row.value?.split(' ') ?? [];
+        return row.token.split(' ').map((current, i) => ({ current, options: withCurrent(options, current, values[i] ?? current) }));
+      };
+
+      switch (row.label) {
+        case 'Text style': {
+          const options = typeNames.map((name) => ({ token: `text-${name}`, value: name, note: `${typeCss(t[name], mobile).fontSize}px` }));
+          return [
+            {
+              label: row.label,
+              parts: [{ current: row.token, options: withCurrent(options, row.token, row.token.replace(/^text-/, '')) }],
+              apply: ([name]) => {
+                const css = typeCss(t[name], mobile);
+                return {
+                  css: {
+                    'font-family': String(css.fontFamily),
+                    'font-size': `${css.fontSize}px`,
+                    'line-height': String(css.lineHeight),
+                    'font-weight': String(css.fontWeight),
+                    'letter-spacing': css.letterSpacing ? String(css.letterSpacing) : 'normal',
+                  },
+                  attrs: { 'data-fx-typography': `text-${name}`, 'data-fx-typography-value': `${css.fontSize}px / ${css.lineHeight} · ${css.fontWeight}` },
+                };
+              },
+            },
+          ];
+        }
+        case 'Padding':
+          return [{ label: row.label, parts: parts(spaceOptions), apply: (v) => ({ css: { padding: v.join(' ') } }) }];
+        case 'Gap': {
+          // A grid's column gap reads "gutter": keep it on offer, it's the breakpoint's own token
+          const options = row.token.endsWith(' gutter') ? [...spaceOptions, { token: 'gutter', value: `${bp.gutter}px`, note: `${bp.gutter}px` }] : spaceOptions;
+          return [
+            {
+              label: row.label,
+              parts: parts(options),
+              apply: (v): { css: Record<string, string> } => ({ css: v.length === 1 ? { gap: v[0] } : { 'row-gap': v[0], 'column-gap': v[1] } }),
+            },
+          ];
+        }
+        case 'Radius': {
+          const options = [
+            { token: '0', value: '0px', note: '0px' },
+            ...Object.entries(radius).map(([name, px]) => ({ token: `radius-${name}`, value: `${px}px`, note: px === RADIUS_FULL ? 'pill' : `${px}px` })),
+          ];
+          return [{ label: row.label, parts: parts(options), apply: (v) => ({ css: { 'border-radius': v.join(' ') } }) }];
+        }
+        case 'Elevation': {
+          const options = Object.entries(shadow).map(([name, css]) => ({ token: shadowName(name), value: css }));
+          return [{ label: row.label, parts: [{ current: row.token, options }], apply: ([v]) => ({ css: { 'box-shadow': v } }) }];
+        }
+        default:
+          return [];
+      }
+    });
+
   /** Which step a text color reads from, for step tooltips. */
   const stepOf = (color?: string) => {
     if (!color || color === 'var(--foreground)') return 'g12';
@@ -569,6 +646,8 @@ export function FoundationPreview({
         gray={gray}
         showTokens={showTokens && !dragging}
         inspect={inspect}
+        edit={edit}
+        resetKey={`${page}:${bp.name}:${mobile}`}
         style={{ width, transform: scale < 1 ? `scale(${scale})` : undefined, transformOrigin: 'top left' }}
       >
         <div

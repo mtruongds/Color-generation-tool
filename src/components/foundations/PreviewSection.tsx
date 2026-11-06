@@ -301,7 +301,7 @@ export function PreviewSection({
               <Switch checked={tooltipsOn} onCheckedChange={setTooltipsOn} aria-label="Token tooltips" />
             </label>
           </TooltipTrigger>
-          <TooltipContent>Hover any element to see its accent and gray steps, text style, spacing, radius, elevation and grid columns</TooltipContent>
+          <TooltipContent>Hover any element to see its accent and gray steps, text style, spacing, radius, elevation and grid columns. Click one to try other tokens in the preview</TooltipContent>
         </Tooltip>
 
         {/* How big to show it */}

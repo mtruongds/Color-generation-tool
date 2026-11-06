@@ -1,6 +1,7 @@
-import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type React from 'react';
 import { createPortal } from 'react-dom';
+import { ChevronDown } from 'lucide-react';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '../ui/select';
 import { cn } from '../ui/utils';
 import { resolveColorRoles } from '../../lib/tokens';
@@ -110,15 +111,82 @@ function PaletteSelect({
 // Step tooltips
 // ============================================================
 
+/** A token a foundation value can switch to in the preview. `value` is the CSS it becomes. */
+export interface TokenOption {
+  token: string;
+  value: string;
+  /** Shown after the token in the picker, e.g. "16px". */
+  note?: string;
+}
+
+/** One value of a row, e.g. the top padding of "space-2 space-4". */
+export interface TokenPart {
+  current: string;
+  options: TokenOption[];
+}
+
+/** A tooltip row the user can try other tokens on: its values and the CSS and tags they turn into. */
+export interface RowEditor {
+  label: FoundationRow['label'];
+  parts: TokenPart[];
+  /** CSS properties (kebab-case) and attributes for the picked values, one per part. */
+  apply: (values: string[]) => { css: Record<string, string>; attrs?: Record<string, string> };
+}
+
+/** Tokens tried on one element. Lives only in the preview: never saved, never exported. */
+interface Override {
+  /** The element before the first change, to undo to. */
+  before: { style: string | null; attrs: Record<string, string | null> };
+  /** Each changed row: the token it started on, and what was applied. */
+  rows: Partial<Record<FoundationRow['label'], { was: string; css: Record<string, string>; attrs: Record<string, string> }>>;
+}
+
+/**
+ * Elements are found again by their position under the layer, since React rebuilds many of them
+ * on every render and a stored node would go stale.
+ */
+function pathOf(el: Element, root: Element): string {
+  const steps: number[] = [];
+  for (let n = el; n !== root && n.parentElement; n = n.parentElement) steps.unshift(Array.prototype.indexOf.call(n.parentElement.children, n));
+  return steps.join('/');
+}
+
+function atPath(root: Element, path: string): HTMLElement | null {
+  let n: Element | undefined = root;
+  for (const i of path ? path.split('/') : []) n = n?.children[Number(i)];
+  return (n as HTMLElement | undefined) ?? null;
+}
+
+function paint(el: HTMLElement, o: Override) {
+  for (const row of Object.values(o.rows)) {
+    if (!row) continue;
+    for (const [k, v] of Object.entries(row.css)) if (el.style.getPropertyValue(k) !== v) el.style.setProperty(k, v);
+    for (const [k, v] of Object.entries(row.attrs)) if (el.getAttribute(k) !== v) el.setAttribute(k, v);
+  }
+}
+
+function unpaint(el: HTMLElement, o: Override) {
+  if (o.before.style === null) el.removeAttribute('style');
+  else el.setAttribute('style', o.before.style);
+  for (const [k, v] of Object.entries(o.before.attrs)) {
+    if (v === null) el.removeAttribute(k);
+    else el.setAttribute(k, v);
+  }
+}
+
 /**
  * Wraps a preview so hovering any element tagged with `data-tokens` outlines it and shows
  * which accent and gray steps it uses, plus any foundation tokens it carries (`data-fx-*`).
+ * With `edit`, clicking an element pins the tooltip so its foundation tokens can be swapped,
+ * to see what each one does. Swaps stay in the preview.
  */
 export function StepTokenLayer({
   accent,
   gray,
   showTokens,
   inspect,
+  edit,
+  resetKey,
   className,
   style,
   children,
@@ -128,44 +196,259 @@ export function StepTokenLayer({
   showTokens: boolean;
   /** Reads foundation tokens off an element's own styles, for elements nobody tagged. */
   inspect?: (el: HTMLElement) => FoundationRow[];
+  /** The rows of an element that can try other tokens. */
+  edit?: (el: HTMLElement, rows: FoundationRow[]) => RowEditor[];
+  /** Swaps are dropped when this changes, e.g. on another page or layout. */
+  resetKey?: string;
   className?: string;
   style?: React.CSSProperties;
   children: React.ReactNode;
 }) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const popRef = useRef<HTMLDivElement>(null);
   const [hover, setHover] = useState<HoverState | null>(null);
+  const [pinned, setPinned] = useState<{ path: string; x: number; y: number } | null>(null);
+  const overrides = useRef(new Map<string, Override>());
+  const [version, setVersion] = useState(0);
+  const bump = () => setVersion((v) => v + 1);
+
+  const reapply = useCallback(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    for (const [path, o] of overrides.current) {
+      const el = atPath(root, path);
+      if (el) paint(el, o);
+    }
+  }, []);
+
+  // React rewrites elements from props, so put the swaps back after each render and each rebuild
+  useLayoutEffect(reapply);
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    const observer = new MutationObserver(reapply);
+    observer.observe(root, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [reapply]);
+
+  const resetAll = useCallback(() => {
+    const root = rootRef.current;
+    for (const [path, o] of overrides.current) {
+      const el = root && atPath(root, path);
+      if (el) unpaint(el, o);
+    }
+    overrides.current.clear();
+    setPinned(null);
+    setVersion((v) => v + 1);
+  }, []);
+
+  // Positions point at other elements on another page or layout
+  useEffect(() => {
+    if (overrides.current.size) resetAll();
+  }, [resetKey, resetAll]);
 
   useEffect(() => {
-    if (!showTokens) setHover(null);
+    if (showTokens) return;
+    setHover(null);
+    setPinned(null);
   }, [showTokens]);
+
+  const pinnedEl = pinned && rootRef.current ? atPath(rootRef.current, pinned.path) : null;
 
   // Outline the hovered element itself (see [data-token-hover] in index.css) so the dashed
   // ring always tracks the element, instead of a fixed overlay sized from a stale rect
-  const hoveredEl = hover?.el;
+  const outlined = pinnedEl ?? hover?.el;
   useEffect(() => {
-    if (!hoveredEl) return;
-    hoveredEl.setAttribute('data-token-hover', '');
-    return () => hoveredEl.removeAttribute('data-token-hover');
-  }, [hoveredEl]);
+    if (!outlined) return;
+    outlined.setAttribute('data-token-hover', '');
+    return () => outlined.removeAttribute('data-token-hover');
+  }, [outlined]);
 
-  // The tooltip is fixed-positioned, so drop it once the page scrolls under it
+  // Tooltip and popover are fixed-positioned, so drop them once the page scrolls under them
+  const open = !!hover || !!pinned;
   useEffect(() => {
-    if (!hover) return;
-    const clear = () => setHover(null);
+    if (!open) return;
+    const clear = () => {
+      setHover(null);
+      setPinned(null);
+    };
     window.addEventListener('scroll', clear, { capture: true, passive: true });
     return () => window.removeEventListener('scroll', clear, { capture: true });
-  }, [hover]);
+  }, [open]);
 
-  const onMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!showTokens) return;
+  // A pinned popover closes on Escape or a press anywhere else
+  useEffect(() => {
+    if (!pinned) return;
+    const onDown = (e: PointerEvent) => {
+      if (!popRef.current?.contains(e.target as Node)) setPinned(null);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setPinned(null);
+    };
+    document.addEventListener('pointerdown', onDown, true);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('pointerdown', onDown, true);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [pinned]);
+
+  const target = (e: React.MouseEvent<HTMLDivElement>) => {
     const el = (e.target as HTMLElement).closest<HTMLElement>(HOVER_SELECTOR);
-    if (!el || !e.currentTarget.contains(el)) return setHover(null);
-    setHover({ el, tokens: el.dataset.tokens ?? '', foundations: foundationRows(el, e.currentTarget, inspect), x: e.clientX, y: e.clientY });
+    return el && e.currentTarget.contains(el) ? el : null;
   };
 
+  const onMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!showTokens || pinned) return;
+    const el = target(e);
+    if (!el) return setHover(null);
+    const foundations = foundationRows(el, e.currentTarget, inspect);
+    const editable = !!edit && edit(el, foundations).length > 0;
+    setHover({ el, tokens: el.dataset.tokens ?? '', foundations, editable, x: e.clientX, y: e.clientY });
+  };
+
+  // Clicking an element with swappable tokens pins its tooltip instead of pressing it
+  const onClickCapture = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!showTokens || !edit) return;
+    const el = target(e);
+    if (!el || !edit(el, foundationRows(el, e.currentTarget, inspect)).length) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setHover(null);
+    setPinned({ path: pathOf(el, e.currentTarget), x: e.clientX, y: e.clientY });
+  };
+
+  const resetRow = (path: string, label: FoundationRow['label']) => {
+    const o = overrides.current.get(path);
+    const el = rootRef.current && atPath(rootRef.current, path);
+    if (!o) return;
+    delete o.rows[label];
+    if (el) unpaint(el, o);
+    if (Object.keys(o.rows).length) {
+      if (el) paint(el, o);
+    } else overrides.current.delete(path);
+    bump();
+  };
+
+  const change = (path: string, el: HTMLElement, editor: RowEditor, now: string, tokens: string[]) => {
+    const o = overrides.current.get(path) ?? { before: { style: el.getAttribute('style'), attrs: {} }, rows: {} };
+    const was = o.rows[editor.label]?.was ?? now;
+    // Picking the starting tokens again is an undo
+    if (tokens.join(' ') === was) return resetRow(path, editor.label);
+    const values = tokens.map((t, i) => editor.parts[i].options.find((opt) => opt.token === t)?.value ?? t);
+    const { css, attrs = {} } = editor.apply(values);
+    for (const k of Object.keys(attrs)) if (!(k in o.before.attrs)) o.before.attrs[k] = el.getAttribute(k);
+    o.rows[editor.label] = { was, css, attrs };
+    overrides.current.set(path, o);
+    unpaint(el, o);
+    paint(el, o);
+    bump();
+  };
+
+  let popover: React.ReactNode = null;
+  if (pinned && pinnedEl && rootRef.current) {
+    const rows = foundationRows(pinnedEl, rootRef.current, inspect);
+    const editors = new Map((edit?.(pinnedEl, rows) ?? []).map((r) => [r.label, r]));
+    const o = overrides.current.get(pinned.path);
+    popover = (
+      <FloatingCard innerRef={popRef} x={pinned.x} y={pinned.y} interactive deps={[pinned, version]}>
+        <ColorRows tokens={pinnedEl.dataset.tokens ?? ''} accent={accent} gray={gray} />
+        {rows.length > 0 && (
+          <div className={cn('grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-1.5', pinnedEl.dataset.tokens && 'border-t pt-1.5')}>
+            {rows.map((row) => {
+              const editor = editors.get(row.label);
+              const was = o?.rows[row.label]?.was;
+              return (
+                <Fragment key={row.label}>
+                  <span className="text-muted-foreground">{row.label}</span>
+                  <span className="flex items-center gap-1.5">
+                    {editor ? (
+                      editor.parts.map((part, i) => (
+                        // Own chevron in reserved space: the native arrow sits over long labels
+                        <span key={i} className="relative inline-flex">
+                          <select
+                            aria-label={`${row.label}${editor.parts.length > 1 ? ` ${i + 1}` : ''}`}
+                            value={part.current}
+                            onChange={(e) =>
+                              change(pinned.path, pinnedEl, editor, row.token, editor.parts.map((p, j) => (j === i ? e.target.value : p.current)))
+                            }
+                            className={cn(
+                              'h-6 max-w-44 cursor-pointer appearance-none truncate rounded border bg-background pr-6 pl-1.5 font-mono text-[0.625rem] font-medium text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
+                              was && 'border-ring',
+                            )}
+                          >
+                            {part.options.map((opt) => (
+                              <option key={opt.token} value={opt.token}>
+                                {opt.note ? `${opt.token} · ${opt.note}` : opt.token}
+                              </option>
+                            ))}
+                          </select>
+                          <ChevronDown className="pointer-events-none absolute top-1/2 right-1.5 size-3 -translate-y-1/2 text-muted-foreground" aria-hidden />
+                        </span>
+                      ))
+                    ) : (
+                      <span className="rounded bg-muted px-1 py-0.5 font-mono text-[0.625rem] font-medium">{row.token}</span>
+                    )}
+                    {was ? (
+                      <button
+                        type="button"
+                        onClick={() => resetRow(pinned.path, row.label)}
+                        className="cursor-pointer rounded px-1 font-mono text-[0.625rem] text-muted-foreground hover:bg-muted hover:text-foreground"
+                        title={`Back to ${was}`}
+                      >
+                        was {was} ↺
+                      </button>
+                    ) : (
+                      !editor && row.value && <span className="font-mono text-[0.625rem] text-muted-foreground">{row.value}</span>
+                    )}
+                  </span>
+                </Fragment>
+              );
+            })}
+          </div>
+        )}
+        <div className="flex items-center gap-3 border-t pt-1.5 text-[0.6875rem] text-muted-foreground">
+          <span>Preview only · not saved or exported</span>
+          {overrides.current.size > 0 && (
+            <button type="button" onClick={resetAll} className="ml-auto cursor-pointer font-medium text-foreground hover:underline">
+              Reset all ({overrides.current.size})
+            </button>
+          )}
+        </div>
+      </FloatingCard>
+    );
+  }
+
   return (
-    <div className={className} style={style} onMouseMove={onMouseMove} onMouseLeave={() => setHover(null)}>
+    <div
+      ref={rootRef}
+      className={className}
+      style={style}
+      onMouseMove={onMouseMove}
+      onClickCapture={onClickCapture}
+      onMouseLeave={() => setHover(null)}
+    >
       {children}
-      {hover && <StepTooltip hover={hover} accent={accent} gray={gray} />}
+      {hover && !pinned && (
+        <FloatingCard x={hover.x} y={hover.y} deps={[hover.tokens, hover.foundations]}>
+          <ColorRows tokens={hover.tokens} accent={accent} gray={gray} />
+          {hover.foundations.length > 0 && (
+            <div className={cn('grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-1', hover.tokens && 'border-t pt-1.5')}>
+              {hover.foundations.map((row) => (
+                <Fragment key={row.label}>
+                  <span className="text-muted-foreground">{row.label}</span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="rounded bg-muted px-1 py-0.5 font-mono text-[0.625rem] font-medium">{row.token}</span>
+                    {row.value && <span className="font-mono text-[0.625rem] text-muted-foreground">{row.value}</span>}
+                  </span>
+                </Fragment>
+              ))}
+            </div>
+          )}
+          {hover.editable && <div className="border-t pt-1.5 text-[0.6875rem] text-muted-foreground">Click to try other tokens</div>}
+        </FloatingCard>
+      )}
+      {popover}
     </div>
   );
 }
@@ -174,6 +457,8 @@ interface HoverState {
   el: HTMLElement;
   tokens: string;
   foundations: FoundationRow[];
+  /** Whether a click pins it to swap tokens. */
+  editable: boolean;
   x: number;
   y: number;
 }
@@ -240,58 +525,80 @@ function resolveToken(token: string, accent: ColorScale, gray: ColorScale) {
   return { label: 'Background', color: accent.background };
 }
 
-function StepTooltip({ hover, accent, gray }: { hover: HoverState; accent: ColorScale; gray: ColorScale }) {
-  const ref = useRef<HTMLDivElement>(null);
+/** The accent and gray steps a `data-tokens` description names, each with its swatch. */
+function ColorRows({ tokens, accent, gray }: { tokens: string; accent: ColorScale; gray: ColorScale }) {
+  if (!tokens) return null;
+  return (
+    <>
+      {tokens.split(' · ').map((row, i) => (
+    <div key={i} className="flex items-center gap-1">
+      {row.split(TOKEN_RE).map((part, j) => {
+        if (j % 2 === 0) return part ? <span key={j} className="text-muted-foreground">{part}</span> : null;
+        const { label, color } = resolveToken(part, accent, gray);
+        return (
+          <span key={j} className="inline-flex items-center gap-1 rounded bg-muted px-1 py-0.5">
+            {/* Color and checkerboard as layers of one box, so the checker can't fringe the rounded edge */}
+            <span
+              className="size-3 shrink-0 rounded-sm shadow-[inset_0_0_0_1px_rgb(0_0_0/0.1)]"
+              style={{
+                background: `linear-gradient(${color}, ${color}), repeating-conic-gradient(#e5e5e5 0% 25%, #ffffff 0% 50%) 0 0 / 0.375rem 0.375rem`,
+              }}
+            />
+            <span className="font-medium">{label}</span>
+            <span className="font-mono text-[0.625rem] text-muted-foreground uppercase">{color}</span>
+          </span>
+        );
+      })}
+    </div>
+      ))}
+    </>
+  );
+}
+
+/** A card beside the point (x, y), flipping to stay inside the viewport. */
+function FloatingCard({
+  x,
+  y,
+  deps,
+  interactive = false,
+  innerRef,
+  children,
+}: {
+  x: number;
+  y: number;
+  /** Re-measure when these change. */
+  deps: unknown[];
+  interactive?: boolean;
+  innerRef?: React.RefObject<HTMLDivElement>;
+  children: React.ReactNode;
+}) {
+  const ownRef = useRef<HTMLDivElement>(null);
+  const ref = innerRef ?? ownRef;
   const [size, setSize] = useState({ width: 0, height: 0 });
 
   // Measure before paint so the first frame isn't placed with a 0×0 size and then jump
   useLayoutEffect(() => {
     if (ref.current) setSize({ width: ref.current.offsetWidth, height: ref.current.offsetHeight });
-  }, [hover.tokens, hover.foundations]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, deps);
 
-  // Follow the cursor, flipping to stay inside the viewport
   const gap = 14;
-  const left = hover.x + gap + size.width > window.innerWidth - 8 ? hover.x - gap - size.width : hover.x + gap;
-  const top = hover.y + gap + size.height > window.innerHeight - 8 ? hover.y - gap - size.height : hover.y + gap;
+  const left = x + gap + size.width > window.innerWidth - 8 ? x - gap - size.width : x + gap;
+  const top = y + gap + size.height > window.innerHeight - 8 ? y - gap - size.height : y + gap;
 
   // Portal to <body> so `fixed` is always relative to the viewport, whatever the ancestors' CSS
   return createPortal(
     <div
       ref={ref}
-      role="tooltip"
-      className="pointer-events-none fixed z-50 w-max max-w-[calc(100vw-1rem)] whitespace-nowrap space-y-1.5 rounded-lg border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-lg"
+      role={interactive ? 'dialog' : 'tooltip'}
+      aria-label={interactive ? 'Try other tokens' : undefined}
+      className={cn(
+        'fixed z-50 w-max max-w-[calc(100vw-1rem)] space-y-1.5 rounded-lg border bg-popover px-3 py-2 text-xs whitespace-nowrap text-popover-foreground shadow-lg',
+        !interactive && 'pointer-events-none',
+      )}
       style={{ left: Math.max(8, left), top: Math.max(8, top) }}
     >
-      {hover.tokens && hover.tokens.split(' · ').map((row, i) => (
-        <div key={i} className="flex items-center gap-1">
-          {row.split(TOKEN_RE).map((part, j) => {
-            if (j % 2 === 0) return part ? <span key={j} className="text-muted-foreground">{part}</span> : null;
-            const { label, color } = resolveToken(part, accent, gray);
-            return (
-              <span key={j} className="inline-flex items-center gap-1 rounded bg-muted px-1 py-0.5">
-                <span className="checkerboard size-3 overflow-hidden rounded-sm">
-                  <span className="block size-full shadow-[inset_0_0_0_1px_rgb(0_0_0/0.15)]" style={{ backgroundColor: color }} />
-                </span>
-                <span className="font-medium">{label}</span>
-                <span className="font-mono text-[0.625rem] text-muted-foreground uppercase">{color}</span>
-              </span>
-            );
-          })}
-        </div>
-      ))}
-      {hover.foundations.length > 0 && (
-        <div className={cn('grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-1', hover.tokens && 'border-t pt-1.5')}>
-          {hover.foundations.map((row) => (
-            <Fragment key={row.label}>
-              <span className="text-muted-foreground">{row.label}</span>
-              <span className="flex items-center gap-1.5">
-                <span className="rounded bg-muted px-1 py-0.5 font-mono text-[0.625rem] font-medium">{row.token}</span>
-                {row.value && <span className="font-mono text-[0.625rem] text-muted-foreground">{row.value}</span>}
-              </span>
-            </Fragment>
-          ))}
-        </div>
-      )}
+      {children}
     </div>,
     document.body,
   );
