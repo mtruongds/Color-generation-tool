@@ -8,7 +8,7 @@ import { useState, useEffect, useLayoutEffect } from 'react';
 /** The interface's own theme: the app chrome, not the tokens being edited. */
 export type InterfaceTheme = 'system' | 'light' | 'dark';
 
-const THEME_KEY = 'lumina_theme';
+const THEME_KEY = 'monism_theme';
 
 function loadTheme(): InterfaceTheme {
   try {

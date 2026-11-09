@@ -34,7 +34,7 @@ function Text() {
   return (
     <div className="flex-[1_0_0] h-[28px] min-h-px min-w-px relative" data-name="Text">
       <div className="bg-clip-padding border-0 border-[transparent] border-solid relative size-full">
-        <p className="absolute font-['Inter:Semi_Bold',sans-serif] font-semibold leading-[28px] left-0 not-italic text-[#0a0a0a] text-[20px] top-0 tracking-[-0.9492px]">Lumina</p>
+        <p className="absolute font-['Inter:Semi_Bold',sans-serif] font-semibold leading-[28px] left-0 not-italic text-[#0a0a0a] text-[20px] top-0 tracking-[-0.9492px]">Monism</p>
       </div>
     </div>
   );

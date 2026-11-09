@@ -44,7 +44,7 @@ export interface NewFontFile {
 // IndexedDB
 // ============================================================
 
-const DB_NAME = 'lumina-custom-fonts';
+const DB_NAME = 'monism-custom-fonts';
 const STORE = 'faces';
 
 function openDb(): Promise<IDBDatabase> {

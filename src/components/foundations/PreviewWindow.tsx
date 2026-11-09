@@ -23,7 +23,7 @@ export function PreviewWindow({ isDarkMode }: { isDarkMode: boolean }) {
   const [foundations, setFoundations] = useState(loadFoundations);
 
   useEffect(() => {
-    document.title = 'Preview · Lumina';
+    document.title = 'Preview · Monism';
     // `storage` only fires for writes made by another window, which is exactly the editor
     const onStorage = (e: StorageEvent) => {
       if (e.key === PALETTES_KEY) setPalettes(loadPalettes());

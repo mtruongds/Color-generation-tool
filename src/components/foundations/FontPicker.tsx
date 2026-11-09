@@ -202,7 +202,7 @@ function usePreviewFamily(files: PendingFile[]) {
       setFamily(null);
       return;
     }
-    const name = `__lumina-preview-${++previewCount}`;
+    const name = `__monism-preview-${++previewCount}`;
     const faces = files.map((f) => new FontFace(name, f.data, { weight: f.weight, style: f.style }));
     let live = true;
     Promise.allSettled(faces.map((face) => face.load())).then(() => {
@@ -268,7 +268,7 @@ function FontUploadDialog({
     for (const file of accepted) {
       const data = await file.arrayBuffer();
       try {
-        await new FontFace('__lumina-check', data).load();
+        await new FontFace('__monism-check', data).load();
       } catch {
         setError(`${file.name} isn't a font the browser can read.`);
         return;

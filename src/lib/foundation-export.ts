@@ -257,7 +257,7 @@ export function generateJson(palettes: GeneratedPalette[], f: Foundations, opts:
         ...(t.description && { $description: t.description }),
         ...(products && {
           $extensions: {
-            'lumina.products': Object.fromEntries(products.map((o) => [o.product, { $value: { fontFamily: alias(o.ref) } }])),
+            'monism.products': Object.fromEntries(products.map((o) => [o.product, { $value: { fontFamily: alias(o.ref) } }])),
           },
         }),
       });
@@ -266,12 +266,12 @@ export function generateJson(palettes: GeneratedPalette[], f: Foundations, opts:
     const extensions: Record<string, unknown> = {};
     if (t.darkRef) extensions.modes = { dark: alias(t.darkRef) };
     if (t.products) {
-      extensions['lumina.products'] = Object.fromEntries(
+      extensions['monism.products'] = Object.fromEntries(
         t.products.map((o) => [o.product, { $value: alias(o.ref), ...(o.darkRef && { dark: alias(o.darkRef) }) }]),
       );
     }
     if (t.responsive) {
-      extensions['lumina.responsive'] = [
+      extensions['monism.responsive'] = [
         ...(t.baseLabel ? [{ label: t.baseLabel, minWidth: 0, value: alias(t.ref!) }] : []),
         ...t.responsive.map((r) => ({ label: r.label, minWidth: r.minWidth, value: alias(r.ref) })),
       ];

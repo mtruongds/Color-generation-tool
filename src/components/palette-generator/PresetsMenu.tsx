@@ -102,20 +102,20 @@ export function PresetsMenu({
 
   const exportPresets = (items: SavedPreset[], filename: string) => {
     const data = {
-      _meta: { app: 'Lumina', version: 1, exportedAt: new Date().toISOString() },
+      _meta: { app: 'Monism', version: 1, exportedAt: new Date().toISOString() },
       presets: items,
     };
     downloadFile(JSON.stringify(data, null, 2), filename, 'application/json');
   };
 
   const exportAll = () => {
-    exportPresets(presets, `lumina-presets-${new Date().toISOString().slice(0, 10)}.json`);
+    exportPresets(presets, `monism-presets-${new Date().toISOString().slice(0, 10)}.json`);
     toast.success(`Exported ${presets.length} preset(s)`);
   };
 
   const exportOne = (preset: SavedPreset) => {
     const slug = preset.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'preset';
-    exportPresets([preset], `lumina-preset-${slug}.json`);
+    exportPresets([preset], `monism-preset-${slug}.json`);
     toast.success(`Exported “${preset.name}”`);
   };
 
@@ -234,7 +234,7 @@ export function PresetsMenu({
               <Library className="size-5 text-muted-foreground" />
               <p className="text-sm font-medium">No presets yet</p>
               <p className="max-w-[16rem] text-xs text-muted-foreground">
-                Save your current palettes, or import a preset file exported from Lumina.
+                Save your current palettes, or import a preset file exported from Monism.
               </p>
             </div>
           ) : (

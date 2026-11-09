@@ -8,7 +8,7 @@ import { resolveColorRoles } from '../../lib/tokens';
 import { type ColorScale, getSurfaceColor } from '../../lib/color-utils';
 import type { GeneratedPalette } from '../../lib/export-utils';
 
-export const TOOLTIPS_KEY = 'lumina_preview_tooltips';
+export const TOOLTIPS_KEY = 'monism_preview_tooltips';
 
 export function loadTooltipsOn() {
   try {

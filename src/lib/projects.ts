@@ -31,7 +31,7 @@ export interface ProjectStore {
   projects: Project[];
 }
 
-export const PROJECTS_KEY = 'lumina_projects';
+export const PROJECTS_KEY = 'monism_projects';
 const MAX_VERSIONS = 50;
 
 export const newProjectId = () => Math.random().toString(36).slice(2, 11);
@@ -80,14 +80,14 @@ export function uniqueProjectName(base: string, projects: Project[]) {
 // ============================================================
 
 interface ProjectFile {
-  _meta: { app: 'Lumina'; kind: 'project'; version: 1; exportedAt: string };
+  _meta: { app: 'Monism'; kind: 'project'; version: 1; exportedAt: string };
   name: string;
   data: ProjectData;
 }
 
 export function projectFileContent(project: Pick<Project, 'name'>, data: ProjectData) {
   const file: ProjectFile = {
-    _meta: { app: 'Lumina', kind: 'project', version: 1, exportedAt: new Date().toISOString() },
+    _meta: { app: 'Monism', kind: 'project', version: 1, exportedAt: new Date().toISOString() },
     name: project.name,
     data,
   };
@@ -95,7 +95,7 @@ export function projectFileContent(project: Pick<Project, 'name'>, data: Project
 }
 
 export const projectFileName = (name: string) =>
-  `${name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'project'}.lumina.json`;
+  `${name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'project'}.monism.json`;
 
 /** Reads a project file, or a preset file's first preset, into a name and its data. */
 export function parseProjectFile(text: string): { name: string; data: Omit<ProjectData, 'backgrounds'> & Partial<Pick<ProjectData, 'backgrounds'>> } {
@@ -108,7 +108,7 @@ export function parseProjectFile(text: string): { name: string; data: Omit<Proje
   if (preset && Array.isArray(preset.palettes)) {
     return { name: String(preset.name || 'Imported project'), data: { palettes: preset.palettes, foundations: preset.foundations } };
   }
-  throw new Error('Not a Lumina project or preset file');
+  throw new Error('Not a Monism project or preset file');
 }
 
 /** Opens a file picker and resolves with the chosen file's text. */

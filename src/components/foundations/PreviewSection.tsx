@@ -40,9 +40,9 @@ import {
   type ViewportSize,
 } from './FoundationPreview';
 
-const PAGE_KEY = 'lumina_preview_page';
-const VIEW_KEY = 'lumina_preview_view';
-const PRODUCT_KEY = 'lumina_preview_product';
+const PAGE_KEY = 'monism_preview_page';
+const VIEW_KEY = 'monism_preview_view';
+const PRODUCT_KEY = 'monism_preview_product';
 /** Product select value for palettes picked by hand. */
 const CUSTOM = 'custom';
 

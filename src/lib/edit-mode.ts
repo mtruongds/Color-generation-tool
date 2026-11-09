@@ -4,14 +4,14 @@
  */
 export type EditMode = 'light' | 'dark';
 
-export const EDIT_MODE_KEY = 'lumina_edit_mode';
+export const EDIT_MODE_KEY = 'monism_edit_mode';
 
 export function loadEditMode(): EditMode {
   try {
     const saved = localStorage.getItem(EDIT_MODE_KEY);
     if (saved === 'light' || saved === 'dark') return saved;
     // First visit: start in the mode the interface shows
-    const legacy = localStorage.getItem('lumina_theme');
+    const legacy = localStorage.getItem('monism_theme');
     if (legacy === 'light' || legacy === 'dark') return legacy;
   } catch {
     // Fall through to the system preference.

@@ -2,7 +2,7 @@ import { toast } from 'sonner';
 
 /** Query that makes the app render only the preview, for a second window. */
 const POPOUT_QUERY = 'popout=preview';
-const WINDOW_NAME = 'lumina-preview';
+const WINDOW_NAME = 'monism-preview';
 
 export function isPreviewPopout() {
   return new URLSearchParams(window.location.search).get('popout') === 'preview';

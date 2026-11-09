@@ -1698,7 +1698,7 @@ export function FoundationPreview({
                   ))}
                 </div>
                 <Text s="caption" as="p" style={{ marginTop: space(10), color: MUTED }}>
-                  © 2026 Northwind. Built with Lumina tokens.
+                  © 2026 Northwind. Built with Monism tokens.
                 </Text>
               </footer>
             </main>
@@ -1980,7 +1980,7 @@ export function FoundationPreview({
               </div>
 
               <Text s="caption" as="p" style={{ marginTop: space(16), color: MUTED }}>
-                © 2026 Northwind. Built with Lumina tokens.
+                © 2026 Northwind. Built with Monism tokens.
               </Text>
             </main>
           )}

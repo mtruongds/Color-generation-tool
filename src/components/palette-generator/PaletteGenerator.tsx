@@ -115,11 +115,11 @@ import { GridCanvas, GridInspector } from '../foundations/GridFoundation';
 // Re-export for backward compat
 export type { PaletteConfig } from './types';
 
-export const PALETTES_KEY = 'lumina_palettes';
-export const BACKGROUNDS_KEY = 'lumina_backgrounds';
-export const FOUNDATIONS_KEY = 'lumina_foundations';
-const FOUNDATION_VIEW_KEY = 'lumina_foundation_view';
-const PANEL_WIDTH_KEY = 'lumina_panel_width';
+export const PALETTES_KEY = 'monism_palettes';
+export const BACKGROUNDS_KEY = 'monism_backgrounds';
+export const FOUNDATIONS_KEY = 'monism_foundations';
+const FOUNDATION_VIEW_KEY = 'monism_foundation_view';
+const PANEL_WIDTH_KEY = 'monism_panel_width';
 /** Docked controls panel width in px: default, and the range the drag handle allows. */
 const PANEL_WIDTH = { default: 360, min: 280, max: 560 };
 const clampPanelWidth = (w: number) => Math.round(Math.min(PANEL_WIDTH.max, Math.max(PANEL_WIDTH.min, w)));
@@ -912,7 +912,7 @@ export function PaletteGenerator({
         foundations: normalizeFoundations(data.foundations),
       });
     } catch {
-      toast.error('That file isn’t a Lumina project or preset.');
+      toast.error('That file isn’t a Monism project or preset.');
     }
   }, [newProject]);
 
@@ -1283,7 +1283,7 @@ export function PaletteGenerator({
               aria-hidden
             />
           </div>
-          <span className="text-[0.9375rem] font-semibold tracking-tight md:-ml-3">Lumina</span>
+          <span className="text-[0.9375rem] font-semibold tracking-tight md:-ml-3">Monism</span>
           <span className="rounded-full border px-1.5 py-px text-[0.625rem] font-medium text-muted-foreground max-xl:hidden">Beta</span>
         </div>
 
@@ -1565,6 +1565,10 @@ export function PaletteGenerator({
               </>
             )}
           </div>
+
+          <footer className="mx-auto px-4 pb-6 text-center text-xs text-muted-foreground sm:px-6 md:px-8">
+            © {new Date().getFullYear()} Monism. All rights reserved.
+          </footer>
 
           <Button
             variant="outline"

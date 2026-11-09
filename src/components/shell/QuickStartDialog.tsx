@@ -100,7 +100,7 @@ export function QuickStartDialog({
             <Sparkles className="size-4" /> Start from your brand color
           </DialogTitle>
           <DialogDescription>
-            Pick a few things and Lumina generates color, type, spacing, radius, shadow and grid. You can fine-tune everything after.
+            Pick a few things and Monism generates color, type, spacing, radius, shadow and grid. You can fine-tune everything after.
           </DialogDescription>
         </DialogHeader>
 

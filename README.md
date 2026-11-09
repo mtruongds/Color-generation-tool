@@ -1,4 +1,4 @@
-# Lumina — Design Foundations Generator
+# Monism — Design Foundations Generator
 
 Generate the foundations of a design system from a few inputs, preview them live, and export design tokens:
 
