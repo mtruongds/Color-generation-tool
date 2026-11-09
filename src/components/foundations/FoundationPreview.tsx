@@ -94,6 +94,11 @@ function dashboardGrid(grid: GridConfig): GridConfig {
   return { ...grid, sidebar: 240, sidebarFrom: from };
 }
 
+/** The grid a page lays out on: the dashboard always gets a sidebar, full-width sites never do. */
+export function pageGrid(page: FoundationPage, grid: GridConfig): GridConfig {
+  return page === 'dashboard' ? dashboardGrid(grid) : { ...grid, sidebar: 0 };
+}
+
 /**
  * Viewport size: a preset, or a width in px dragged by hand. A frame wider than the panel is
  * scaled down to fit it.
@@ -107,7 +112,7 @@ const VIEWPORT_MIN = 320;
 const PHONE_MAX = 767;
 
 /** The grid's largest breakpoint, and never narrower than a 1280px laptop. */
-function desktopWidthFor(grid: GridConfig) {
+export function desktopWidthFor(grid: GridConfig) {
   return Math.max(1280, sortedBreakpoints(grid).at(-1)?.minWidth ?? 0);
 }
 
@@ -319,7 +324,7 @@ export function FoundationPreview({
     };
   }, [foundations.spacing, radius, shadow]);
   // Landing and article are full-width sites, so only the dashboard takes the grid's sidebar
-  const layout = computeGridLayout(page === 'dashboard' ? dashboardGrid(foundations.grid) : { ...foundations.grid, sidebar: 0 }, frameWidth);
+  const layout = computeGridLayout(pageGrid(page, foundations.grid), frameWidth);
   const { breakpoint: bp } = layout;
   const appSidebar = layout.sidebar;
   const cols = bp.columns;

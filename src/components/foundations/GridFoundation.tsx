@@ -11,33 +11,31 @@ import {
   computeGridLayout,
   sortedBreakpoints,
 } from '../../lib/foundations';
+import { VIEWPORT_MOBILE, VIEWPORT_TABLET, desktopWidthFor, pageGrid } from './FoundationPreview';
 import { CanvasHeading, NumberInput, Section, SelectField, SliderField, SwitchField } from './inspector-controls';
 
 const DEFAULTS = DEFAULT_FOUNDATIONS.grid;
 const MIN_VIEWPORT = 320;
 const MAX_VIEWPORT = 1920;
 
-/** A sensible width to preview each breakpoint at. */
-const previewWidth = (b: Breakpoint) => (b.minWidth === 0 ? 375 : b.minWidth);
+/** A sensible width to preview each breakpoint at: the first at the Preview page's phone width. */
+const previewWidth = (b: Breakpoint) => (b.minWidth === 0 ? VIEWPORT_MOBILE : b.minWidth);
 
-type PreviewView = 'columns' | 'dashboard' | 'website';
+/** Dashboard and Landing are wireframes of the Preview page's pages, laid out the same way. */
+type PreviewView = 'columns' | 'dashboard' | 'landing';
 
 const VIEWS: { value: PreviewView; label: string }[] = [
   { value: 'columns', label: 'Columns' },
   { value: 'dashboard', label: 'Dashboard' },
-  { value: 'website', label: 'Website' },
+  { value: 'landing', label: 'Landing' },
 ];
 
-const DEVICES = [
-  { label: 'Mobile', width: 375 },
-  { label: 'Tablet', width: 768 },
-  { label: 'Desktop', width: 1440 },
-];
+/** At or below this viewport the mockups stack, where the Preview page switches to its phone layout. */
+const PHONE_MAX = 767;
 
-/** Below this content width the mockups switch to their stacked, single-column arrangement. */
-const NARROW_CONTENT = 600;
-
-type BlockKind = 'title' | 'nav' | 'kpi' | 'chart' | 'list' | 'table' | 'hero' | 'image' | 'card' | 'band' | 'footer';
+type BlockKind =
+  | 'topbar' | 'header' | 'banner' | 'stats' | 'chart' | 'list' | 'table' | 'form' | 'plan'
+  | 'nav' | 'hero' | 'proof' | 'label' | 'text' | 'heading' | 'pricing' | 'band' | 'footer';
 
 /** Span is given on a 12-column grid as [wide, narrow] and rescaled to the breakpoint's column count. */
 interface Block {
@@ -46,25 +44,33 @@ interface Block {
   height: number;
 }
 
-const kpis = (n: number): Block[] => Array.from({ length: n }, () => ({ kind: 'kpi', span: [3, 6], height: 44 }));
-const cards = (n: number): Block[] => Array.from({ length: n }, () => ({ kind: 'card', span: [4, 12], height: 72 }));
-const footerCols = (n: number): Block[] => Array.from({ length: n }, () => ({ kind: 'footer', span: [3, 6], height: 36 }));
+const full = (kind: BlockKind, height: number): Block => ({ kind, span: [12, 12], height });
 
+/** Section by section, the same order and spans as the Preview page's Dashboard and Landing. */
 const MOCKUPS: Record<Exclude<PreviewView, 'columns'>, Block[]> = {
   dashboard: [
-    { kind: 'title', span: [12, 12], height: 20 },
-    ...kpis(4),
-    { kind: 'chart', span: [8, 12], height: 96 },
-    { kind: 'list', span: [4, 12], height: 96 },
-    { kind: 'table', span: [12, 12], height: 88 },
+    full('topbar', 18),
+    full('header', 22),
+    full('banner', 18),
+    full('stats', 44),
+    { kind: 'chart', span: [8, 12], height: 100 },
+    { kind: 'list', span: [4, 12], height: 100 },
+    full('table', 88),
+    { kind: 'form', span: [8, 12], height: 72 },
+    { kind: 'plan', span: [4, 12], height: 72 },
   ],
-  website: [
-    { kind: 'nav', span: [12, 12], height: 22 },
-    { kind: 'hero', span: [6, 12], height: 96 },
-    { kind: 'image', span: [6, 12], height: 96 },
-    ...cards(3),
-    { kind: 'band', span: [12, 12], height: 40 },
-    ...footerCols(4),
+  landing: [
+    full('nav', 20),
+    { kind: 'hero', span: [10, 12], height: 64 },
+    full('proof', 72),
+    { kind: 'label', span: [5, 12], height: 28 },
+    { kind: 'text', span: [7, 12], height: 28 },
+    { kind: 'label', span: [5, 12], height: 28 },
+    { kind: 'text', span: [7, 12], height: 28 },
+    { kind: 'heading', span: [6, 12], height: 20 },
+    full('pricing', 64),
+    full('band', 40),
+    ...Array.from({ length: 4 }, (): Block => ({ kind: 'footer', span: [3, 6], height: 32 })),
   ],
 };
 
@@ -72,43 +78,54 @@ const Line = ({ w, strong }: { w: string; strong?: boolean }) => (
   <div className={cn('h-1.5 rounded-full', strong ? 'bg-foreground/25' : 'bg-foreground/10')} style={{ width: w }} />
 );
 
+/** Wireframe blocks: quiet gray boxes, so the columns drawn over them stay the main read. */
 function MockBlock({ kind, accent }: { kind: BlockKind; accent: Accent }) {
   const tint = (pct: number) => `color-mix(in oklab, ${accent.solid} ${pct}%, transparent)`;
   const box = 'h-full overflow-hidden rounded-md border bg-card p-2';
+  const button = (w = 'w-10') => <div className={cn('h-3 shrink-0 rounded', w)} style={{ background: tint(55) }} />;
 
   switch (kind) {
-    case 'title':
+    case 'topbar':
+      return (
+        <div className="flex h-full items-center gap-2 border-b pb-1">
+          <div className="h-2 w-1/4 rounded-full bg-foreground/10" />
+          <div className="flex-1" />
+          <div className="size-2.5 rounded-full bg-foreground/15" />
+          <div className="size-2.5 rounded-full bg-foreground/15" />
+        </div>
+      );
+    case 'header':
       return (
         <div className="flex h-full items-center justify-between">
           <Line w="30%" strong />
-          <div className="h-full w-12 rounded" style={{ background: accent.solid }} />
+          {button('w-14')}
         </div>
       );
-    case 'nav':
+    case 'banner':
       return (
-        <div className="flex h-full items-center gap-2 border-b pb-1">
-          <div className="size-3 rounded-sm" style={{ background: accent.solid }} />
-          <div className="flex-1" />
-          <Line w="8%" />
-          <Line w="8%" />
-          <Line w="8%" />
-          <div className="h-full w-10 rounded" style={{ background: tint(30) }} />
+        <div className="flex h-full items-center gap-2 rounded-md px-2" style={{ background: tint(10) }}>
+          <div className="size-2 shrink-0 rounded-full" style={{ background: tint(55) }} />
+          <Line w="45%" />
         </div>
       );
-    case 'kpi':
+    case 'stats':
       return (
-        <div className={cn(box, 'flex flex-col justify-between')}>
-          <Line w="50%" />
-          <div className="h-2.5 w-2/3 rounded-full bg-foreground/25" />
+        <div className="flex h-full divide-x overflow-hidden rounded-md border bg-card">
+          {[0, 1, 2, 3].map((i) => (
+            <div key={i} className="flex flex-1 flex-col justify-between p-2">
+              <Line w="50%" />
+              <div className="h-2.5 w-2/3 rounded-full bg-foreground/25" />
+            </div>
+          ))}
         </div>
       );
     case 'chart':
       return (
         <div className={cn(box, 'flex flex-col gap-2')}>
           <Line w="25%" strong />
-          <div className="flex flex-1 items-end gap-[6%]">
-            {[40, 65, 50, 80, 60, 90, 70, 55].map((h, i) => (
-              <div key={i} className="flex-1 rounded-t-sm" style={{ height: `${h}%`, background: tint(i === 5 ? 80 : 35) }} />
+          <div className="flex flex-1 items-end gap-[4%]">
+            {[38, 52, 45, 61, 48, 30, 26, 57, 66, 59, 72, 64, 81, 74].map((h, i) => (
+              <div key={i} className="flex-1 rounded-t-sm" style={{ height: `${h}%`, background: tint(i === 12 ? 70 : 30) }} />
             ))}
           </div>
         </div>
@@ -142,32 +159,90 @@ function MockBlock({ kind, accent }: { kind: BlockKind; accent: Accent }) {
           ))}
         </div>
       );
+    case 'form':
+      return (
+        <div className={cn(box, 'flex flex-col gap-1.5')}>
+          <Line w="30%" strong />
+          <div className="h-3 rounded border bg-background" />
+          <div className="h-3 rounded border bg-background" />
+        </div>
+      );
+    case 'plan':
+      return (
+        <div className={cn(box, 'flex flex-col gap-1.5')}>
+          <Line w="40%" strong />
+          <Line w="70%" />
+          <div className="mt-auto">{button('w-full')}</div>
+        </div>
+      );
+    case 'nav':
+      return (
+        <div className="flex h-full items-center gap-2 border-b pb-1">
+          <div className="size-3 shrink-0 rounded-[3px]" style={{ background: tint(55) }} />
+          <Line w="12%" strong />
+          <div className="flex-1" />
+          <Line w="8%" />
+          <Line w="8%" />
+          <Line w="8%" />
+          {button()}
+        </div>
+      );
     case 'hero':
       return (
         <div className="flex h-full flex-col justify-center gap-2">
-          <div className="h-3 w-11/12 rounded-full bg-foreground/30" />
-          <div className="h-3 w-2/3 rounded-full bg-foreground/30" />
-          <Line w="80%" />
+          <div className="h-3 w-11/12 rounded-full bg-foreground/25" />
+          <div className="h-3 w-2/3 rounded-full bg-foreground/25" />
           <Line w="60%" />
-          <div className="mt-1 h-4 w-16 rounded" style={{ background: accent.solid }} />
+          {button('w-16')}
         </div>
       );
-    case 'image':
-      return <div className="h-full rounded-md" style={{ background: tint(22) }} />;
-    case 'card':
+    case 'proof':
       return (
-        <div className={cn(box, 'flex flex-col gap-1.5')}>
-          <div className="mb-1 size-4 rounded" style={{ background: tint(35) }} />
-          <Line w="60%" strong />
+        <div className={cn(box, 'flex flex-col justify-center gap-2')}>
+          <div className="flex h-5 gap-0.5">
+            {Array.from({ length: 12 }, (_, i) => (
+              <div key={i} className="flex-1 rounded-sm" style={{ background: tint(8 + i * 7) }} />
+            ))}
+          </div>
+          <Line w="50%" />
+        </div>
+      );
+    case 'label':
+      return (
+        <div className="flex h-full flex-col gap-1.5 border-t pt-1.5">
+          <Line w="55%" strong />
+        </div>
+      );
+    case 'text':
+      return (
+        <div className="flex h-full flex-col gap-1.5 border-t pt-1.5">
           <Line w="90%" />
-          <Line w="75%" />
+          <Line w="70%" />
+        </div>
+      );
+    case 'heading':
+      return (
+        <div className="flex h-full items-end">
+          <Line w="70%" strong />
+        </div>
+      );
+    case 'pricing':
+      return (
+        <div className="flex h-full divide-x overflow-hidden rounded-md border bg-card">
+          {[false, true].map((pro, i) => (
+            <div key={i} className="flex flex-1 flex-col gap-1.5 p-2" style={pro ? { background: tint(8) } : undefined}>
+              <Line w="30%" strong />
+              <Line w="60%" />
+              <div className="mt-auto">{pro ? button('w-16') : <div className="h-3 w-16 rounded border" />}</div>
+            </div>
+          ))}
         </div>
       );
     case 'band':
       return (
-        <div className="flex h-full items-center justify-center gap-3 rounded-md" style={{ background: tint(12) }}>
+        <div className="flex h-full items-center justify-center gap-3 rounded-md" style={{ background: tint(18) }}>
           <Line w="30%" strong />
-          <div className="h-4 w-14 rounded" style={{ background: accent.solid }} />
+          {button('w-14')}
         </div>
       );
     case 'footer':
@@ -182,9 +257,18 @@ function MockBlock({ kind, accent }: { kind: BlockKind; accent: Accent }) {
 }
 
 export function GridCanvas({ config, accent }: { config: GridConfig; accent: Accent }) {
-  const [viewport, setViewport] = useState(1280);
+  const desktopWidth = desktopWidthFor(config);
+  const [viewport, setViewport] = useState(desktopWidth);
   const [view, setView] = useState<PreviewView>('columns');
-  const layout = useMemo(() => computeGridLayout(config, viewport), [config, viewport]);
+  // The same device widths as the Preview page's toolbar
+  const devices = [
+    { label: 'Mobile', width: VIEWPORT_MOBILE },
+    { label: 'Tablet', width: VIEWPORT_TABLET },
+    { label: 'Desktop', width: desktopWidth },
+  ];
+  // Each page lays out on the grid the Preview page gives it: the dashboard always has a sidebar, the landing never
+  const shownConfig = useMemo(() => (view === 'columns' ? config : pageGrid(view, config)), [view, config]);
+  const layout = useMemo(() => computeGridLayout(shownConfig, viewport), [shownConfig, viewport]);
   const breakpoints = sortedBreakpoints(config);
   const { breakpoint: bp } = layout;
   const pct = (px: number) => `${(px / viewport) * 100}%`;
@@ -208,7 +292,7 @@ export function GridCanvas({ config, accent }: { config: GridConfig; accent: Acc
               </TabsList>
             </Tabs>
             <div className="flex gap-1" role="group" aria-label="Device width">
-              {DEVICES.map((d) => (
+              {devices.map((d) => (
                 <button
                   key={d.label}
                   type="button"
@@ -249,7 +333,7 @@ export function GridCanvas({ config, accent }: { config: GridConfig; accent: Acc
           <div
             className={cn(
               'relative mx-auto overflow-hidden rounded-lg border bg-background transition-[max-width] duration-300',
-              view === 'columns' ? 'h-64 sm:h-72' : 'h-[26rem]',
+              view === 'columns' ? 'h-64 sm:h-72' : 'h-[30rem]',
             )}
             style={{ maxWidth: viewport }}
           >
@@ -270,11 +354,13 @@ export function GridCanvas({ config, accent }: { config: GridConfig; accent: Acc
                 }}
               />
             ))}
+            {/* Wireframe under the columns, so the grid stays the main read */}
+            {view !== 'columns' && <Mockup view={view} layout={layout} accent={accent} pct={pct} narrow={viewport <= PHONE_MAX} />}
             {/* Columns */}
             {Array.from({ length: bp.columns }, (_, i) => (
               <div
                 key={i}
-                className={cn('absolute inset-y-0 flex items-end justify-center pb-2', view !== 'columns' && 'opacity-40')}
+                className="pointer-events-none absolute inset-y-0 flex items-end justify-center pb-2"
                 style={{
                   left: pct(layout.offset + i * (layout.column + bp.gutter)),
                   width: pct(layout.column),
@@ -287,19 +373,20 @@ export function GridCanvas({ config, accent }: { config: GridConfig; accent: Acc
                 </span>
               </div>
             ))}
-            {/* Mockup — a real CSS grid laid over the column area; percentage gaps resolve against its width */}
-            {view !== 'columns' && (
-              <Mockup view={view} layout={layout} accent={accent} pct={pct} />
-            )}
             {/* Content cap */}
             {config.maxWidth > 0 && layout.content >= config.maxWidth && (
+              // A dimension line across the top, so it never doubles up on the column edges below
               <div
-                className="absolute top-0 border-x border-dashed border-foreground/40"
-                style={{ left: pct(layout.offset), width: pct(layout.content), height: 18 }}
+                className="pointer-events-none absolute top-1 flex h-3.5 items-center"
+                style={{ left: pct(layout.offset), width: pct(layout.content) }}
               >
-                <span className="absolute inset-x-0 top-0.5 text-center font-mono text-[0.625rem] text-muted-foreground">
+                <span className="h-full w-px shrink-0 bg-foreground/40" />
+                <span className="h-px flex-1 border-t border-dashed border-foreground/40" />
+                <span className="shrink-0 rounded-sm bg-background px-1 font-mono text-[0.625rem] leading-none text-muted-foreground">
                   max {config.maxWidth}px
                 </span>
+                <span className="h-px flex-1 border-t border-dashed border-foreground/40" />
+                <span className="h-full w-px shrink-0 bg-foreground/40" />
               </div>
             )}
           </div>
@@ -512,31 +599,32 @@ function Mockup({
   layout,
   accent,
   pct,
+  narrow,
 }: {
   view: Exclude<PreviewView, 'columns'>;
   layout: ReturnType<typeof computeGridLayout>;
   accent: Accent;
   pct: (px: number) => string;
+  narrow: boolean;
 }) {
   const { breakpoint: bp, content, offset, sidebar } = layout;
-  const narrow = content < NARROW_CONTENT;
   const span = ([wide, small]: [number, number]) =>
     Math.min(bp.columns, Math.max(1, Math.round(((narrow ? small : wide) / 12) * bp.columns)));
 
   return (
     <>
       {sidebar > 0 && (
-        <div className="absolute inset-y-0 left-0 flex flex-col gap-2 overflow-hidden p-2 pt-7" style={{ width: pct(sidebar) }}>
+        <div className="absolute inset-y-0 left-0 flex flex-col gap-2 overflow-hidden p-2 pt-7 opacity-70" style={{ width: pct(sidebar) }}>
           {[60, 75, 50, 70, 55].map((w, i) => (
             <div key={i} className="flex items-center gap-1.5">
-              <div className="size-2 shrink-0 rounded-sm" style={{ background: i === 0 ? accent.solid : 'var(--border)' }} />
+              <div className="size-2 shrink-0 rounded-sm" style={{ background: i === 0 ? `color-mix(in oklab, ${accent.solid} 55%, transparent)` : 'var(--border)' }} />
               <Line w={`${w}%`} strong={i === 0} />
             </div>
           ))}
         </div>
       )}
       <div
-        className="absolute top-6 bottom-0 grid content-start gap-y-2 overflow-hidden"
+        className="absolute top-6 bottom-0 grid content-start gap-y-2 overflow-hidden opacity-70"
         style={{
           left: pct(offset),
           width: pct(content),
