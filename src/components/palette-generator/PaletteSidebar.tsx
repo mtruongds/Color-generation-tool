@@ -10,7 +10,7 @@ import {
 } from '@dnd-kit/core';
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { ArrowDownToLine, ArrowUpToLine, CopyPlus, GripVertical, MoreHorizontal, Plus, Tag, Trash2 } from 'lucide-react';
+import { ArrowDownToLine, ArrowUpToLine, CopyPlus, GripVertical, Ellipsis, Plus, Tag, Trash2 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
 import {
@@ -300,7 +300,7 @@ function SortablePaletteItem({
               aria-label={`${p.name} options`}
               className="relative z-10 size-7 shrink-0 text-muted-foreground after:absolute after:-inset-1.5 hover:text-foreground"
             >
-              <MoreHorizontal />
+              <Ellipsis />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" side="right" className="w-56">

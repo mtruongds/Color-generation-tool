@@ -5,7 +5,9 @@ import {
   BookOpen,
   Command as CommandIcon,
   Download,
+  FileDown,
   FilePlus2,
+  FileUp,
   FolderOpen,
   History,
   ListTree,
@@ -22,7 +24,6 @@ import {
   Sparkles,
   Sun,
   Undo2,
-  Upload,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '../ui/button';
@@ -1136,8 +1137,8 @@ export function PaletteGenerator({
     ...projectStore.projects
       .filter((p) => p.id !== activeProject.id)
       .map((p) => ({ id: `project-${p.id}`, group: 'Project', label: `Open ${p.name}`, icon: FolderOpen, run: () => switchProject(p.id) })),
-    { id: 'import', group: 'Project', label: 'Open project file…', icon: Upload, run: importProject },
-    { id: 'download', group: 'Project', label: 'Download project file', icon: Download, run: downloadProject },
+    { id: 'import', group: 'Project', label: 'Open project file…', icon: FileUp, run: importProject },
+    { id: 'download', group: 'Project', label: 'Download project file', icon: FileDown, run: downloadProject },
     { id: 'preview-window', group: 'App', label: 'Open preview in a new window', icon: AppWindow, run: openPreviewWindow },
     ...(['system', 'light', 'dark'] as const)
       .filter((t) => t !== theme)

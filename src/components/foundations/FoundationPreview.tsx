@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowRight,
-  BarChart3,
+  ChartColumn,
   Bell,
   Check,
-  CheckCircle2,
+  CircleCheck,
   ChevronDown,
   ChevronRight,
   ChevronsUpDown,
@@ -15,7 +15,7 @@ import {
   Info,
   LayoutDashboard,
   Menu,
-  MoreHorizontal,
+  Ellipsis,
   Plus,
   Quote,
   Search,
@@ -759,7 +759,7 @@ export function FoundationPreview({
                     {[
                       { icon: LayoutDashboard, label: 'Overview', count: null },
                       { icon: FolderKanban, label: 'Projects', count: 24 },
-                      { icon: BarChart3, label: 'Reports', count: null },
+                      { icon: ChartColumn, label: 'Reports', count: null },
                       { icon: Users, label: 'Team', count: 8 },
                       { icon: Settings, label: 'Settings', count: null },
                     ].map(({ icon: Icon, label, count }, i) => {
@@ -910,7 +910,9 @@ export function FoundationPreview({
                       packages finish up to 4× faster.{' '}
                       <span className="cursor-pointer underline decoration-(--a7) underline-offset-2 hover:decoration-(--a11)">Read the changelog</span>
                     </Text>
-                    <X className="mt-0.5 size-4 shrink-0 cursor-pointer" style={{ color: 'var(--a11)' }} />
+                    <button type="button" className="mt-0.5 grid shrink-0 cursor-pointer place-items-center self-start rounded-sm" style={{ color: 'var(--a11)' }} aria-label="Dismiss">
+                      <X className="size-4" aria-hidden />
+                    </button>
                   </div>
 
                   {/* Stats: one strip with hairline dividers */}
@@ -1152,7 +1154,7 @@ export function FoundationPreview({
                                 )}
                                 <td style={{ padding: `${space(3)}px ${space(4)}px`, width: 1 }}>
                                   <span {...btn('ghost', 'icon')} aria-label="More">
-                                    <MoreHorizontal className="size-4" />
+                                    <Ellipsis className="size-4" />
                                   </span>
                                 </td>
                               </tr>
@@ -1290,7 +1292,7 @@ export function FoundationPreview({
                   {...steps('toast: background · border: g6 · icon: a11 · action: a11')}
                   {...mark('shadow', shadowName('lg'))} {...mark('radius', 'radius-lg')}
                 >
-                  <CheckCircle2 className="mt-0.5 size-4 shrink-0" style={{ color: 'var(--a11)' }} />
+                  <CircleCheck className="mt-0.5 size-4 shrink-0" style={{ color: 'var(--a11)' }} />
                   <div className="min-w-0 flex-1">
                     <Text s="body-sm" tagged={false} style={{ fontWeight: 500 }}>
                       Website redesign deployed

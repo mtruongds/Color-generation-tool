@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ChevronDown, Download, FolderOpen, Library, Merge, Save, Trash2, Upload } from 'lucide-react';
+import { ChevronDown, FileDown, FileUp, FolderOpen, Library, Merge, Save, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -177,10 +177,10 @@ export function PresetsMenu({
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem onSelect={importFile}>
-            <Upload /> Import from file
+            <FileUp /> Import from file
           </DropdownMenuItem>
           <DropdownMenuItem onSelect={exportAll} disabled={presets.length === 0}>
-            <Download /> Export all presets
+            <FileDown /> Export all presets
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -283,7 +283,7 @@ export function PresetsMenu({
                       title="Export"
                       onClick={() => exportOne(preset)}
                     >
-                      <Download />
+                      <FileDown />
                     </Button>
                     <Button
                       variant="ghost"

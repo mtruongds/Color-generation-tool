@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import {
-  AlertCircle,
+  CircleAlert,
   Bold,
   Calendar,
   Check,
@@ -14,7 +14,7 @@ import {
   Italic,
   LogOut,
   Mail,
-  MoreHorizontal,
+  Ellipsis,
   Plus,
   Search,
   Settings,
@@ -481,7 +481,7 @@ export function ComponentGallery({ kit }: { kit: PreviewKit }) {
             </div>
             {alertShown && (
               <div className="flex" style={{ gap: space(3), padding: space(3.5), borderRadius: radius.md, border: HAIRLINE }} {...steps('alert: background · border g6')}>
-                <AlertCircle className="mt-0.5 size-4 shrink-0" />
+                <CircleAlert className="mt-0.5 size-4 shrink-0" />
                 <span className="min-w-0 flex-1">
                   <Text s="body-sm" tagged={false} style={{ fontWeight: 600 }}>
                     Your session expires soon
@@ -490,7 +490,9 @@ export function ComponentGallery({ kit }: { kit: PreviewKit }) {
                     Save your work to keep it.
                   </Text>
                 </span>
-                <X className="size-4 shrink-0 cursor-pointer" style={{ color: MUTED }} onClick={() => setAlertShown(false)} aria-label="Dismiss" />
+                <button type="button" className="grid shrink-0 cursor-pointer place-items-center self-start rounded-sm" style={{ color: MUTED }} onClick={() => setAlertShown(false)} aria-label="Dismiss">
+                  <X className="size-4" aria-hidden />
+                </button>
               </div>
             )}
           </div>
@@ -729,7 +731,7 @@ export function ComponentGallery({ kit }: { kit: PreviewKit }) {
           <nav aria-label="Breadcrumb" className="flex flex-wrap items-center" style={{ ...typeOf(t['body-sm']), gap: space(1.5), color: MUTED }}>
             <span className="fx-link cursor-pointer">Home</span>
             <ChevronRight className="size-3.5" />
-            <MoreHorizontal className="size-4" />
+            <Ellipsis className="size-4" />
             <ChevronRight className="size-3.5" />
             <span className="fx-link cursor-pointer">Components</span>
             <ChevronRight className="size-3.5" />
@@ -750,7 +752,7 @@ export function ComponentGallery({ kit }: { kit: PreviewKit }) {
                 </span>
               );
             })}
-            <MoreHorizontal className="size-4" style={{ color: MUTED }} />
+            <Ellipsis className="size-4" style={{ color: MUTED }} />
             <span {...btn('ghost', 'sm')} onClick={() => setPageNo((p) => Math.min(3, p + 1))}>
               Next <ChevronRight className="size-4" />
             </span>

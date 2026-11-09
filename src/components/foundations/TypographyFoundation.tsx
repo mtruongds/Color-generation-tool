@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
-import { Monitor, Plus, RotateCcw, Smartphone, X } from 'lucide-react';
+import { AArrowDown, AArrowUp, Monitor, RotateCcw, Smartphone, X } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Switch } from '../ui/switch';
@@ -508,10 +508,10 @@ function StepsSection({
       </div>
       <div className="grid grid-cols-2 gap-2">
         <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => add(1)}>
-          <Plus className="size-3" /> Larger step
+          <AArrowUp className="size-3" /> Larger step
         </Button>
         <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => add(-1)}>
-          <Plus className="size-3" /> Smaller step
+          <AArrowDown className="size-3" /> Smaller step
         </Button>
       </div>
     </Section>

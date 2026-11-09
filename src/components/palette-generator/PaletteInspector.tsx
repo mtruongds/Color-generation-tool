@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import chroma from 'chroma-js';
-import { ArrowRight, Info, Lock, Unlock } from 'lucide-react';
+import { ArrowRight, Info, Lock, LockOpen } from 'lucide-react';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Switch } from '../ui/switch';
@@ -146,7 +146,7 @@ export function PaletteInspector({
                 {palette.lockStep9 ? (
                   <Lock className="mt-0.5 size-3.5 text-muted-foreground" />
                 ) : (
-                  <Unlock className="mt-0.5 size-3.5 text-muted-foreground" />
+                  <LockOpen className="mt-0.5 size-3.5 text-muted-foreground" />
                 )}
                 <div>
                   <Label htmlFor="lock-step9" className="text-sm font-medium">

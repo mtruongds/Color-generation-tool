@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import * as SelectPrimitive from '@radix-ui/react-select';
-import { CheckIcon, Settings2, Trash2, Upload, X } from 'lucide-react';
+import { Check, Settings2, Trash2, Upload, X } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../ui/dialog';
 import { Input } from '../ui/input';
@@ -52,7 +52,7 @@ function FontItem({ value, children, tag, className }: { value: string; children
     >
       <span className="absolute right-2 flex size-3.5 items-center justify-center">
         <SelectPrimitive.ItemIndicator>
-          <CheckIcon className="size-4" />
+          <Check className="size-4" />
         </SelectPrimitive.ItemIndicator>
       </span>
       <span className="min-w-0 flex-1 truncate">

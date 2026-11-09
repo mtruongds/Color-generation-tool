@@ -3,15 +3,16 @@ import {
   Check,
   ChevronDown,
   Copy,
-  Download,
+  CopyPlus,
+  FileDown,
   FilePlus2,
+  FileUp,
   History,
   Pencil,
   RotateCcw,
   Save,
   Sparkles,
   Trash2,
-  Upload,
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -131,13 +132,13 @@ export function ProjectMenu({
             <Pencil /> Rename…
           </DropdownMenuItem>
           <DropdownMenuItem onSelect={onDuplicate}>
-            <Copy /> Duplicate
+            <CopyPlus /> Duplicate
           </DropdownMenuItem>
           <DropdownMenuItem onSelect={onImport}>
-            <Upload /> Open project file…
+            <FileUp /> Open project file…
           </DropdownMenuItem>
           <DropdownMenuItem onSelect={onDownload}>
-            <Download /> Download project file
+            <FileDown /> Download project file
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem variant="destructive" disabled={projects.length <= 1} onSelect={() => open('delete')}>
