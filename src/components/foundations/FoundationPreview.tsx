@@ -531,6 +531,8 @@ export function FoundationPreview({
             : size === 'icon'
               ? space(2)
               : `${space(2)}px ${space(3.5)}px`,
+      // icon buttons stay square even when a flex row stretches them to a taller sibling (e.g. next to a field)
+      ...(size === 'icon' && { aspectRatio: '1 / 1', flexShrink: 0 }),
       ...(kind === 'solid' && { boxShadow: shadow.xs }),
     } as React.CSSProperties,
     ...steps(BUTTONS[kind][1]),
@@ -895,9 +897,9 @@ export function FoundationPreview({
                       background: 'var(--a3)',
                       border: '1px solid var(--a6)',
                     })}
-                    {...steps('banner: a3 · border: a6 · icon: a9 · text: a12 / a11')}
+                    {...steps('banner: a3 · border: a6 · icon: a11 · text: a12 / a11')}
                   >
-                    <Info className="mt-0.5 size-4 shrink-0" style={{ color: 'var(--a9)' }} />
+                    <Info className="mt-0.5 size-4 shrink-0" style={{ color: 'var(--a11)' }} />
                     <Text s="body-sm" tagged={false} className="min-w-0 flex-1" style={{ color: 'var(--a11)' }}>
                       <span style={{ color: 'var(--a12)', fontWeight: 500 }}>Build cache is now on by default.</span> Builds on unchanged
                       packages finish up to 4× faster.{' '}
@@ -1280,10 +1282,10 @@ export function FoundationPreview({
                     border: '1px solid var(--g6)',
                     boxShadow: shadow.lg,
                   }}
-                  {...steps('toast: background · border: g6 · icon: a9 · action: a11')}
+                  {...steps('toast: background · border: g6 · icon: a11 · action: a11')}
                   {...mark('shadow', shadowName('lg'))} {...mark('radius', 'radius-lg')}
                 >
-                  <CheckCircle2 className="mt-0.5 size-4 shrink-0" style={{ color: 'var(--a9)' }} />
+                  <CheckCircle2 className="mt-0.5 size-4 shrink-0" style={{ color: 'var(--a11)' }} />
                   <div className="min-w-0 flex-1">
                     <Text s="body-sm" tagged={false} style={{ fontWeight: 500 }}>
                       Website redesign deployed
@@ -1823,9 +1825,9 @@ export function FoundationPreview({
                   {/* Pull quote, set between hairlines instead of a colored bar */}
                   <blockquote
                     {...mergeStyle(pad(8, 'py: quote'), { marginBlock: space(10), paddingBlock: space(8), borderBlock: HAIRLINE })}
-                    {...steps('rules: g6 · mark: a9')}
+                    {...steps('rules: g6 · mark: a11')}
                   >
-                    <Quote aria-hidden className="size-6" style={{ color: 'var(--a9)', fill: 'var(--a9)', marginBottom: space(4) }} />
+                    <Quote aria-hidden className="size-6" style={{ color: 'var(--a11)', fill: 'var(--a11)', marginBottom: space(4) }} />
                     <Text s="h3" tagged={false} as="p" style={{ fontWeight: 500 }}>
                       The moment our tokens had names instead of values, design reviews got shorter.
                     </Text>

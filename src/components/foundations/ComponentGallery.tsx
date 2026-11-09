@@ -650,7 +650,7 @@ export function ComponentGallery({ kit }: { kit: PreviewKit }) {
                 <div className="min-w-0 flex-1 truncate bg-(--g3)" style={{ ...typeOf(t['body-sm']), fontFamily: mono, padding: fieldPad, borderRadius: radius.md }}>
                   northwind.co/s/9Fx2
                 </div>
-                <span {...btn('solid', 'icon')} aria-label="Copy">
+                <span {...btn('solid', 'icon')} style={{ ...btn('solid', 'icon').style, padding: space(2.5) }} aria-label="Copy">
                   <Copy className="size-4" />
                 </span>
               </div>

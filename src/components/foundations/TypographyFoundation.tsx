@@ -31,6 +31,7 @@ import {
 import { typeCss } from './FoundationSample';
 import type { FontRole, Product } from '../../lib/tokens';
 import { CanvasHeading, NumberInput, Section, SegmentedField, SelectField, SliderField, SwitchField } from './inspector-controls';
+import { FontSelectField } from './FontPicker';
 
 const DEFAULTS = DEFAULT_FOUNDATIONS.typography;
 
@@ -298,16 +299,19 @@ export function TypographyInspector({
       <Section title="Fonts">
         {FONT_FIELDS.map(([role, label, field]) => {
           const options = role === 'mono' ? monoFonts : textFonts;
+          const kind = role === 'mono' ? 'mono' : 'text';
           if (!product || !first) {
-            return <SelectField key={role} label={label} value={config[field]} options={options} onChange={(v) => onChange({ [field]: v })} />;
+            return <FontSelectField key={role} label={label} role={kind} value={config[field]} options={options} onChange={(v) => onChange({ [field]: v })} />;
           }
           // An extra product shows its own font, or the first product's as an inherited choice
           return (
-            <SelectField
+            <FontSelectField
               key={role}
               label={label}
+              role={kind}
               value={product.fonts?.[role] ?? INHERIT}
-              options={[{ value: INHERIT, label: `${config[field]} · ${first.name}` }, ...options]}
+              leading={[{ value: INHERIT, label: `${config[field]} · ${first.name}` }]}
+              options={options}
               onChange={(v) => products!.onSetFont(role, v === INHERIT ? undefined : v)}
             />
           );

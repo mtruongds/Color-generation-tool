@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { findCustomFont } from './custom-fonts';
 
 export type FontKind = 'sans' | 'serif' | 'mono';
 
@@ -23,8 +24,10 @@ export const FONT_OPTIONS: { family: string; kind: FontKind }[] = [
   { family: 'Fira Code', kind: 'mono' },
 ];
 
+export const isBuiltInFont = (family: string) => FONT_OPTIONS.some((f) => f.family.toLowerCase() === family.trim().toLowerCase());
+
 export const fontKind = (family: string): FontKind =>
-  FONT_OPTIONS.find((f) => f.family === family)?.kind ?? 'sans';
+  FONT_OPTIONS.find((f) => f.family === family)?.kind ?? findCustomFont(family)?.kind ?? 'sans';
 
 /** Already in index.html, or not a web font. */
 const PRELOADED = new Set(['Inter', 'JetBrains Mono', 'System UI']);
@@ -34,7 +37,8 @@ export function useGoogleFonts(families: string[]) {
   const key = families.join('|');
   useEffect(() => {
     for (const family of new Set(families)) {
-      if (PRELOADED.has(family)) continue;
+      // Uploaded fonts aren't on Google Fonts, and their names shouldn't leave the browser
+      if (PRELOADED.has(family) || !isBuiltInFont(family)) continue;
       const id = `gf-${family.replace(/\s+/g, '-').toLowerCase()}`;
       if (document.getElementById(id)) continue;
       const link = document.createElement('link');

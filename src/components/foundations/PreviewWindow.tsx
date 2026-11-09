@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { generatePaletteScale, getScaleContext } from '../../lib/export-utils';
 import { useGoogleFonts } from '../../lib/fonts';
+import { useCustomFonts } from '../../lib/custom-fonts';
 import { allFontFamilies } from '../../lib/foundations';
 import {
   BACKGROUNDS_KEY,
@@ -34,6 +35,8 @@ export function PreviewWindow({ isDarkMode }: { isDarkMode: boolean }) {
   }, []);
 
   useGoogleFonts(allFontFamilies(foundations));
+  // Uploaded fonts load from this browser; re-render once they're in so fallbacks pick the right kind
+  useCustomFonts();
 
   const generatedPalettes = useMemo(() => {
     const context = getScaleContext(palettes, backgrounds);

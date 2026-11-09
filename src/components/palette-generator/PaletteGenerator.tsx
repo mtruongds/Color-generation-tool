@@ -48,6 +48,7 @@ import { PresetsMenu } from './PresetsMenu';
 import { BackgroundControl } from './BackgroundControl';
 import type { PaletteConfig } from './types';
 import { useGoogleFonts } from '../../lib/fonts';
+import { useCustomFonts } from '../../lib/custom-fonts';
 import { type EditMode, loadEditMode, saveEditMode } from '../../lib/edit-mode';
 import { isTextEditing, useHistory } from '../../lib/history';
 import {
@@ -372,6 +373,8 @@ export function PaletteGenerator({
 
   // Every product's fonts, so switching products doesn't wait on a download
   useGoogleFonts(allFontFamilies(foundations));
+  // Uploaded fonts load from this browser; re-render once they're in so fallbacks pick the right kind
+  useCustomFonts();
 
   useEffect(() => {
     const el = mainRef.current;
