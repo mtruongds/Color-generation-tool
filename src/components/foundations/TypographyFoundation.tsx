@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { Monitor, Plus, RotateCcw, Smartphone, X } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -51,10 +51,34 @@ const SAMPLE: Record<string, string> = {
 const sampleFor = (s: TypeStyle) =>
   SAMPLE[s.name] ?? (s.role === 'heading' ? 'A step of your own' : 'Body text on a step you added to the scale.');
 
+/**
+ * One viewport for the whole Typography view: the canvas tabs and the Rhythm breakpoint read and set
+ * the same value, so editing mobile line heights always previews mobile.
+ */
+let sharedViewport: TypeViewport =
+  typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches ? 'mobile' : 'desktop';
+const viewportListeners = new Set<() => void>();
+const setSharedViewport = (v: TypeViewport) => {
+  sharedViewport = v;
+  viewportListeners.forEach((l) => l());
+};
+const subscribeViewport = (l: () => void) => {
+  viewportListeners.add(l);
+  return () => viewportListeners.delete(l);
+};
+function useTypeViewport() {
+  return [useSyncExternalStore(subscribeViewport, () => sharedViewport), setSharedViewport] as const;
+}
+
+/** Width the mobile preview is drawn at, so wrapping and line length match a phone. */
+const PHONE_WIDTH = 375;
+
+/** `62/76 · −0.025em` for one platform. */
+const metrics = (size: number, lh: number, tracking: number) =>
+  `${size}/${lh}${tracking !== 0 ? ` · ${tracking > 0 ? '+' : ''}${tracking}em` : ''}`;
+
 export function TypographyCanvas({ config }: { config: TypographyConfig }) {
-  const [viewport, setViewport] = useState<'desktop' | 'mobile'>(() =>
-    window.matchMedia('(max-width: 767px)').matches ? 'mobile' : 'desktop',
-  );
+  const [viewport, setViewport] = useTypeViewport();
   const styles = useMemo(() => generateTypeScale(config), [config]);
   const mobile = viewport === 'mobile';
   const [showGrid, setShowGrid] = useState(true);
@@ -98,30 +122,46 @@ export function TypographyCanvas({ config }: { config: TypographyConfig }) {
             </TabsList>
           </Tabs>
         </CanvasHeading>
-        <div className="divide-y overflow-hidden rounded-2xl border bg-card shadow-card">
+        <div
+          className="mx-auto divide-y overflow-hidden rounded-2xl border bg-card shadow-card"
+          style={mobile ? { maxWidth: PHONE_WIDTH } : undefined}
+        >
           {styles.map((s) => {
-            const size = mobile ? s.mobileSize : s.size;
-            const lh = mobile ? s.mobileLineHeight : s.lineHeight;
+            const platforms = [
+              { key: 'desktop', label: 'Web', Icon: Monitor, value: metrics(s.size, s.lineHeight, s.tracking) },
+              { key: 'mobile', label: 'Mobile', Icon: Smartphone, value: metrics(s.mobileSize, s.mobileLineHeight, s.mobileTracking) },
+            ] as const;
             return (
               <button
                 key={s.name}
                 type="button"
                 onClick={() => copyToClipboard(`text-${s.name}`, 'Token')}
-                className="group grid w-full grid-cols-1 gap-2 px-5 py-4 text-left transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset md:grid-cols-[13rem_minmax(0,1fr)] md:items-center md:gap-6"
+                className={`group grid w-full grid-cols-1 gap-2 px-5 py-4 text-left transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset ${
+                  mobile ? '' : 'md:grid-cols-[14rem_minmax(0,1fr)] md:items-center md:gap-6'
+                }`}
               >
                 <div className="min-w-0">
-                  <div className="font-mono text-xs font-medium">text-{s.name}</div>
-                  <div className="mt-1 font-mono text-[0.6875rem] whitespace-nowrap text-muted-foreground tabular">
-                    {size}/{lh} · {s.weightName}
-                    {s.tracking !== 0 && ` · ${s.tracking > 0 ? '+' : ''}${s.tracking}em`}
+                  <div className="font-mono text-xs font-medium">
+                    text-{s.name} <span className="font-normal text-muted-foreground">· {s.weightName}</span>
+                    {s.overridden && <span className="font-normal text-muted-foreground"> · custom</span>}
                   </div>
-                  <div className="mt-0.5 font-mono text-[0.6875rem] whitespace-nowrap text-muted-foreground/70 tabular">
-                    step {s.step}
-                    {row > 0 && ` · ${lh / row} rows`}
-                    {s.overridden && ' · custom size'}
-                  </div>
+                  {/* Both platforms, the one being previewed first-class */}
+                  <dl className={`mt-1 font-mono text-[0.6875rem] tabular ${mobile ? 'flex flex-wrap gap-x-4' : ''}`}>
+                    {platforms.map((p) => (
+                      <div
+                        key={p.key}
+                        className={`flex items-center gap-1.5 whitespace-nowrap ${p.key === viewport ? 'text-foreground' : 'text-muted-foreground/70'}`}
+                      >
+                        <dt className="flex items-center" title={p.label}>
+                          <p.Icon className="size-3" aria-hidden />
+                          <span className="sr-only">{p.label}</span>
+                        </dt>
+                        <dd>{p.value}</dd>
+                      </div>
+                    ))}
+                  </dl>
                 </div>
-                <div className="min-w-0 md:truncate" style={typeCss(s, mobile)}>
+                <div className={`min-w-0 ${mobile ? '' : 'md:truncate'}`} style={typeCss(s, mobile)}>
                   {sampleFor(s)}
                 </div>
               </button>
@@ -129,9 +169,10 @@ export function TypographyCanvas({ config }: { config: TypographyConfig }) {
           })}
         </div>
         <p className="mt-2 text-xs text-muted-foreground">
-          Sizes are base × ratio<sup>step</sup>, rounded to whole pixels; sizes below body step down at half the
+          Sizes are base × ratio<sup>step</sup>, rounded to even pixels (body keeps the base); sizes below body step down at half the
           ratio. A size typed in the Steps panel replaces the computed one for that step. Line heights are size ×
           multiplier, rounded to the nearest {row > 0 ? `${row}px grid row` : 'pixel'}. Click a row to copy its token.
+          {mobile && ` Mobile is previewed at ${PHONE_WIDTH}px wide.`}
         </p>
       </div>
 
@@ -145,7 +186,10 @@ export function TypographyCanvas({ config }: { config: TypographyConfig }) {
             </label>
           )}
         </CanvasHeading>
-        <article className={`rounded-2xl border bg-card p-6 shadow-card sm:p-10 ${mobile ? 'mx-auto max-w-sm' : ''}`}>
+        <article
+          className={`mx-auto rounded-2xl border bg-card shadow-card ${mobile ? 'p-6' : 'p-6 sm:p-10'}`}
+          style={mobile ? { maxWidth: PHONE_WIDTH } : undefined}
+        >
           <div
             style={
               row > 0 && showGrid
@@ -421,12 +465,19 @@ function StepsSection({
         )
       }
     >
-      <div className="grid grid-cols-[minmax(0,1fr)_2.5rem_3rem_3rem_1.75rem_1.25rem] items-center gap-x-1 gap-y-1.5">
-        {['Name', 'Step', 'Size', 'Weight', 'Role', ''].map((h, i) => (
-          <span key={i} className="text-[0.625rem] font-medium tracking-wide text-muted-foreground uppercase">
-            {h}
-          </span>
-        ))}
+      <div className="grid grid-cols-[minmax(0,1fr)_2.5rem_3rem_1.75rem_3rem_1.75rem_1.25rem] items-center gap-x-1 gap-y-1.5">
+        {['Name', 'Step', 'Size', 'mobile', 'Weight', 'Role', ''].map((h, i) =>
+          h === 'mobile' ? (
+            <span key={i} className="flex justify-end text-muted-foreground" title="Mobile size, from the mobile ratio">
+              <Smartphone className="size-3" aria-hidden />
+              <span className="sr-only">Mobile size</span>
+            </span>
+          ) : (
+            <span key={i} className="text-[0.625rem] font-medium tracking-wide text-muted-foreground uppercase">
+              {h}
+            </span>
+          ),
+        )}
         {steps.map((s) => {
           const style = styles.find((st) => st.name === s.name)!;
           return (
@@ -509,6 +560,12 @@ function StepRow({
       />
       <NumberInput aria-label={`${s.name} step`} value={s.step} min={-6} max={12} onChange={onStep} />
       <SizeInput name={s.name} size={style.size} computed={computed} overridden={style.overridden} onChange={onSize} />
+      <span
+        className={`text-right font-mono text-xs tabular ${style.mobileSize === style.size ? 'text-muted-foreground/50' : 'text-muted-foreground'}`}
+        aria-label={`${s.name} mobile size ${style.mobileSize}px`}
+      >
+        {style.mobileSize}
+      </span>
       <Select value={s.weight} onValueChange={(v) => onWeight(v as FontWeightName)}>
         <SelectTrigger
           size="sm"
@@ -596,7 +653,7 @@ const RHYTHM_FIELDS: { key: RhythmKey; label: string; min: number; max: number; 
  * its reset goes back to following desktop, and setting it equal to desktop does the same.
  */
 function RhythmFields({ config, onChange }: { config: TypographyConfig; onChange: (patch: Partial<TypographyConfig>) => void }) {
-  const [viewport, setViewport] = useState<TypeViewport>('desktop');
+  const [viewport, setViewport] = useTypeViewport();
   const desktop = rhythmFor(config, 'desktop');
   const current = rhythmFor(config, viewport);
   const own = config.mobileRhythm ?? {};

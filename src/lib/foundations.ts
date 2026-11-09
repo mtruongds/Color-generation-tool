@@ -101,8 +101,10 @@ export interface TypeStyle {
   /** Below md, px. Equal to the desktop values for body sizes. */
   mobileSize: number;
   mobileLineHeight: number;
-  /** em */
+  /** em, from the desktop size. */
   tracking: number;
+  /** em, from the mobile size, so headings that shrink on mobile aren't set as tight as their desktop size. */
+  mobileTracking: number;
   /** The desktop size was typed in rather than computed from the ratio. */
   overridden: boolean;
 }
@@ -126,9 +128,16 @@ function trackingFor(size: number) {
 /** Sizes below body step down at half the ratio, so captions stay readable on large ratios. */
 const stepExponent = (step: number) => (step < 0 ? step / 2 : step);
 
+/**
+ * A computed size in whole px. Body stays exactly the base; every other step lands on an even px,
+ * so sizes halve cleanly to the 4px grid, render crisply at 1.5× and 2× density, and map onto the
+ * even sizes iOS and Android type ramps use. Odd ratios otherwise give 13, 19, 31, 39, 61px.
+ */
+const snapTypeSize = (base: number, raw: number, step: number) => (step === 0 ? base : Math.max(2, Math.round(raw / 2) * 2));
+
 /** Desktop size from the ratio alone, before any override. */
 export const computedTypeSize = (c: Pick<TypographyConfig, 'baseSize' | 'ratio'>, step: number) =>
-  Math.round(c.baseSize * Math.pow(c.ratio, stepExponent(step)));
+  snapTypeSize(c.baseSize, c.baseSize * Math.pow(c.ratio, stepExponent(step)), step);
 
 /** Largest step first; on a shared step, the heading comes before the body style. */
 export const sortTypeSteps = <T extends Pick<TypeStepConfig, 'step' | 'role'>>(steps: T[]) =>
@@ -181,7 +190,7 @@ export function generateTypeScale(c: TypographyConfig): TypeStyle[] {
     const override = c.sizeOverrides[s.step];
     const size = override ?? computed;
     // Only steps above body shrink on mobile; an override keeps the same desktop-to-mobile proportion
-    const mobileComputed = s.step > 0 ? Math.round(c.baseSize * Math.pow(c.mobileRatio, s.step)) : computed;
+    const mobileComputed = s.step > 0 ? snapTypeSize(c.baseSize, c.baseSize * Math.pow(c.mobileRatio, s.step), s.step) : computed;
     const mobileSize = override === undefined ? mobileComputed : Math.max(1, Math.round((override * mobileComputed) / computed));
     const weightName = s.weight;
     return {
@@ -198,6 +207,7 @@ export function generateTypeScale(c: TypographyConfig): TypeStyle[] {
       mobileSize,
       mobileLineHeight: 0,
       tracking: c.opticalTracking ? trackingFor(size) : 0,
+      mobileTracking: c.opticalTracking ? trackingFor(mobileSize) : 0,
       overridden: override !== undefined,
     };
   });

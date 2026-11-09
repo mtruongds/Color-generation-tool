@@ -530,7 +530,11 @@ function typographyTokens(f: Foundations): Token[] {
   }
   for (const [step, st] of bySteps) {
     const code = stepCode(step);
-    tokens.push({ tier: 'primitive', group: 'typography', name: `letter-spacing-${code}`, path: ['font', 'letter-spacing', code], type: 'letterSpacing', value: st.tracking });
+    tokens.push(
+      { tier: 'primitive', group: 'typography', name: `letter-spacing-${code}`, path: ['font', 'letter-spacing', code], type: 'letterSpacing', value: st.tracking },
+      // Tracking follows size, so mobile's smaller headings get their own, looser value
+      { tier: 'primitive', group: 'typography', name: `letter-spacing-${code}-mobile`, path: ['font', 'letter-spacing', `${code}-mobile`], type: 'letterSpacing', value: st.mobileTracking },
+    );
   }
 
   // Base: roles. `code` rather than `mono`, which names the primitive.
@@ -605,7 +609,7 @@ function typographyTokens(f: Foundations): Token[] {
         name: `letter-spacing-${size}`,
         path: ['font', 'letter-spacing', size],
         type: 'letterSpacing',
-        ref: `letter-spacing-${stepCode(step)}`,
+        ...mobileFirst('letter-spacing', step),
       },
     );
   }

@@ -8,6 +8,6 @@ export function typeCss(s: TypeStyle, mobile = false): React.CSSProperties {
     fontSize: mobile ? s.mobileSize : s.size,
     lineHeight: `${mobile ? s.mobileLineHeight : s.lineHeight}px`,
     fontWeight: s.weight,
-    letterSpacing: s.tracking ? `${s.tracking}em` : undefined,
+    letterSpacing: (mobile ? s.mobileTracking : s.tracking) ? `${mobile ? s.mobileTracking : s.tracking}em` : undefined,
   };
 }
