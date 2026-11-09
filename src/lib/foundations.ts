@@ -554,12 +554,7 @@ export interface GridConfig {
   /** Fixed sidebar width in px, applied from `sidebarFrom` up. 0 means none. */
   sidebar: number;
   sidebarFrom: string;
-  /** Column widths snap down to a multiple of this, as on a 4pt or 8pt grid. */
-  unit: GridUnit;
 }
-
-export type GridUnit = 4 | 8;
-export const GRID_UNITS: GridUnit[] = [4, 8];
 
 export const GRID_PRESETS: {
   label: string;
@@ -569,8 +564,6 @@ export const GRID_PRESETS: {
   /** Breakpoint the sidebar starts at when switching to this preset. Defaults to the fourth. */
   sidebarFrom?: string;
 }[] = [
-  // Every preset's tablet and desktop breakpoints, and its max width, divide into whole columns on both
-  // the 4px and 8px grid (see fitColumns). Phones get 4 columns; the odd pixels there go to the margins.
   {
     label: 'Adaptive',
     hint: '4 → 8 → 12 columns, like Material',
@@ -638,33 +631,30 @@ export function breakpointAt(c: GridConfig, viewport: number): Breakpoint {
 export interface GridLayout {
   breakpoint: Breakpoint;
   sidebar: number;
-  /** Page width the columns fill: columns × column + gutters, after sidebar, margins and the cap. */
+  /** Width of the content area the columns divide, after sidebar, margins and the cap. */
   content: number;
-  /** Column width in whole px, a multiple of the grid unit. */
+  /** Fluid column width, as `1fr` gives in CSS. */
   column: number;
   /** Left offset of the content area inside the viewport. */
   offset: number;
-  /** Width left over after snapping the columns, shared out to the margins. */
-  remainder: number;
 }
 
 /**
- * Grid Calculator's rule (gridcalculator.dk) on a 4pt or 8pt grid: the column width is the space left
- * after the gutters, divided by the columns and rounded down to the unit; the page width is then
- * rebuilt from it, so every column lands on whole, on-grid pixels.
+ * Checks a container width against a breakpoint: the fluid column width it gives, and when that isn't
+ * a whole multiple of `step`, the nearest container widths below and above where it is.
+ * Only a suggestion: the grid itself stays fluid.
  */
-export function fitColumns(width: number, columns: number, gutter: number, unit: number) {
-  const raw = (width - gutter * (columns - 1)) / columns;
-  // Too narrow for even one unit per column: fall back to whole pixels
-  const column = Math.max(0, raw >= unit ? Math.floor(raw / unit) * unit : Math.floor(raw));
-  const page = column * columns + gutter * (columns - 1);
-  return { column, page: Math.max(0, page), raw };
-}
-
-/** Page widths near `width` where the columns divide exactly: the one below and the one above. */
-export function spotOnWidths(width: number, columns: number, gutter: number, unit: number) {
-  const { column, page } = fitColumns(width, columns, gutter, unit);
-  return { below: page, above: page === width ? page : page + unit * columns, column };
+export function suggestContainerWidths(width: number, columns: number, gutter: number, step: number) {
+  const gutters = gutter * (columns - 1);
+  const column = (width - gutters) / columns;
+  const below = Math.max(step, Math.floor(column / step) * step);
+  const above = Math.ceil(column / step) * step;
+  return {
+    column,
+    clean: Number.isInteger(column) && column % step === 0,
+    below: below * columns + gutters,
+    above: (above === below ? above + step : above) * columns + gutters,
+  };
 }
 
 export function computeGridLayout(c: GridConfig, viewport: number): GridLayout {
@@ -672,11 +662,10 @@ export function computeGridLayout(c: GridConfig, viewport: number): GridLayout {
   const sidebarFrom = c.breakpoints.find((b) => b.name === c.sidebarFrom)?.minWidth ?? Infinity;
   const sidebar = c.sidebar > 0 && viewport >= sidebarFrom ? c.sidebar : 0;
   const available = viewport - sidebar - breakpoint.margin * 2;
-  const room = Math.max(0, c.maxWidth > 0 ? Math.min(available, c.maxWidth) : available);
-  const { column, page } = fitColumns(room, breakpoint.columns, breakpoint.gutter, c.unit ?? 4);
-  const content = Math.min(room, page);
+  const content = Math.max(0, c.maxWidth > 0 ? Math.min(available, c.maxWidth) : available);
+  const column = Math.max(0, (content - breakpoint.gutter * (breakpoint.columns - 1)) / breakpoint.columns);
   const offset = sidebar + (viewport - sidebar - content) / 2;
-  return { breakpoint, sidebar, content, column, offset, remainder: room - content };
+  return { breakpoint, sidebar, content, column, offset };
 }
 
 // ============================================================
@@ -720,7 +709,6 @@ export const DEFAULT_FOUNDATIONS: Foundations = {
     maxWidth: GRID_PRESETS[0].maxWidth,
     sidebar: 240,
     sidebarFrom: 'lg',
-    unit: 4,
   },
 };
 
@@ -735,7 +723,8 @@ export function normalizeFoundations(raw: unknown): Foundations {
   });
   const grid = merge('grid');
   if (!Array.isArray(grid.breakpoints) || grid.breakpoints.length === 0) grid.breakpoints = DEFAULT_FOUNDATIONS.grid.breakpoints;
-  if (!GRID_UNITS.includes(grid.unit)) grid.unit = DEFAULT_FOUNDATIONS.grid.unit;
+  // Older saves carry a column-snapping unit that's no longer used
+  delete (grid as Partial<GridConfig> & { unit?: unknown }).unit;
   return {
     typography: normalizeTypography(r.typography && typeof r.typography === 'object' ? r.typography : {}),
     spacing: merge('spacing'),

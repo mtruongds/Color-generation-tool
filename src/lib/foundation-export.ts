@@ -135,7 +135,7 @@ function productCss(overrides: { name: string; product: string; ref: string; dar
 }
 
 /** Ready-made classes built only from semantic tokens. */
-function utilitiesCss(tokens: Token[]) {
+function utilitiesCss(tokens: Token[], f: Foundations) {
   const names = new Set(tokens.map((t) => t.name));
   let css = '';
   const styles = tokens.filter((t) => t.type === 'typography');
@@ -148,8 +148,19 @@ function utilitiesCss(tokens: Token[]) {
   }
   if (names.has('page-columns')) {
     css += `${css ? '\n' : ''}/* ===== Layout ===== */\n`;
-    css += `.container {\n  width: 100%;\n  max-width: ${names.has('page-max-width') ? 'calc(var(--page-max-width) + 2 * var(--page-margin))' : 'none'};\n  margin-inline: auto;\n  padding-inline: var(--page-margin);\n}\n`;
+    // border-box: without a reset, width: 100% plus the padding would overflow and widen the columns
+    css += `.container {\n  box-sizing: border-box;\n  width: 100%;\n  max-width: ${names.has('page-max-width') ? 'calc(var(--page-max-width) + 2 * var(--page-margin))' : 'none'};\n  margin-inline: auto;\n  padding-inline: var(--page-margin);\n}\n`;
     css += '.grid {\n  display: grid;\n  grid-template-columns: repeat(var(--page-columns), minmax(0, 1fr));\n  column-gap: var(--page-gutter);\n}\n';
+  }
+  if (names.has('page-sidebar')) {
+    // App shell as on the preview: the sidebar takes its width off the page from its breakpoint up and
+    // .container centers in what's left. Below that the sidebar is hidden (swap in your own menu or drawer).
+    const from = f.grid.breakpoints.find((b) => b.name === f.grid.sidebarFrom);
+    const shown = '.app-shell {\n  grid-template-columns: var(--page-sidebar) minmax(0, 1fr);\n}\n.app-sidebar {\n  display: block;\n}\n';
+    css += '.app-shell {\n  display: grid;\n  grid-template-columns: minmax(0, 1fr);\n}\n.app-sidebar {\n  display: none;\n}\n';
+    css += from && from.minWidth > 0
+      ? `@media (min-width: ${from.minWidth}px) { /* ${from.name} */\n${shown.replace(/^/gm, '  ').replace(/ +$/gm, '')}}\n`
+      : shown;
   }
   return css;
 }
@@ -162,7 +173,7 @@ interface ExportOptions {
 
 export function generateCss(palettes: GeneratedPalette[], f: Foundations, opts: ExportOptions) {
   const tokens = buildTokens(palettes, f, { groups: groupsFor(opts.scope), modes: 'both', colorFormat: opts.colorFormat });
-  const utilities = utilitiesCss(tokens);
+  const utilities = utilitiesCss(tokens, f);
   return `${variablesCss(tokens, opts.unit)}${utilities ? `\n${utilities}` : ''}`;
 }
 
