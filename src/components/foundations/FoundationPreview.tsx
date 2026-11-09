@@ -552,8 +552,9 @@ export function FoundationPreview({
 
   const mergeStyle = (a: PadProps, style: React.CSSProperties): PadProps => ({ ...a, style: { ...style, ...a.style } });
 
+  // The snapped page width, so columns land on whole multiples of the grid unit as on the Layout grid page
   const container: React.CSSProperties = {
-    maxWidth: foundations.grid.maxWidth > 0 ? foundations.grid.maxWidth + bp.margin * 2 : undefined,
+    maxWidth: layout.content + bp.margin * 2,
     marginInline: 'auto',
     paddingInline: bp.margin,
   };

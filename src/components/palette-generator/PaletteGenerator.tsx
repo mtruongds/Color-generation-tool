@@ -1030,7 +1030,7 @@ export function PaletteGenerator({
       }
     />
   ) : (
-    <GridInspector config={foundations.grid} spacingBase={foundations.spacing.base} onChange={(u) => updateFoundation('grid', u)} />
+    <GridInspector config={foundations.grid} onChange={(u) => updateFoundation('grid', u)} />
   );
 
   const inspectorHeader = isColor ? (

@@ -7,9 +7,13 @@ import {
   type Breakpoint,
   DEFAULT_FOUNDATIONS,
   GRID_PRESETS,
+  GRID_UNITS,
   type GridConfig,
+  type GridUnit,
   computeGridLayout,
+  fitColumns,
   sortedBreakpoints,
+  spotOnWidths,
 } from '../../lib/foundations';
 import { VIEWPORT_MOBILE, VIEWPORT_TABLET, desktopWidthFor, pageGrid } from './FoundationPreview';
 import { CanvasHeading, NumberInput, Section, SelectField, SliderField, SwitchField } from './inspector-controls';
@@ -410,10 +414,11 @@ export function GridCanvas({ config, accent }: { config: GridConfig; accent: Acc
           <dl className="mt-5 grid grid-cols-2 gap-x-4 gap-y-3 border-t pt-4 sm:grid-cols-5">
             {[
               ['Columns', bp.columns],
-              ['Column', `${layout.column.toFixed(1)}px`],
+              ['Column', `${layout.column}px`],
               ['Gutter', `${bp.gutter}px`],
-              ['Margin', `${bp.margin}px`],
-              ['Content', `${Math.round(layout.content)}px`],
+              // Margins take the width left over after snapping the columns
+              ['Margin', layout.remainder > 0 ? `${bp.margin} + ${layout.remainder / 2}px` : `${bp.margin}px`],
+              ['Page width', `${layout.content}px`],
             ].map(([label, value]) => (
               <div key={label}>
                 <dt className="text-[0.6875rem] text-muted-foreground">{label}</dt>
@@ -461,12 +466,9 @@ export function GridCanvas({ config, accent }: { config: GridConfig; accent: Acc
 
 export function GridInspector({
   config,
-  spacingBase,
   onChange,
 }: {
   config: GridConfig;
-  /** Gutters and margins that aren't a multiple of this get flagged. */
-  spacingBase: number;
   onChange: (updates: Partial<GridConfig>) => void;
 }) {
   const breakpoints = sortedBreakpoints(config);
@@ -481,7 +483,12 @@ export function GridInspector({
   const lastSidebar = useRef(config.sidebar || DEFAULTS.sidebar);
   if (config.sidebar > 0) lastSidebar.current = config.sidebar;
 
-  const offGrid = breakpoints.filter((b) => b.gutter % spacingBase !== 0 || b.margin % spacingBase !== 0);
+  const unit = config.unit ?? 4;
+  const offGrid = breakpoints.filter((b) => b.gutter % unit !== 0 || b.margin % unit !== 0);
+  // Grid Calculator's check, at the widest breakpoint: does the max width divide into on-grid columns?
+  const widest = breakpoints.at(-1)!;
+  const capFit = config.maxWidth > 0 ? fitColumns(config.maxWidth, widest.columns, widest.gutter, unit) : null;
+  const capSpots = config.maxWidth > 0 ? spotOnWidths(config.maxWidth, widest.columns, widest.gutter, unit) : null;
 
   return (
     <div className="flex flex-col">
@@ -507,6 +514,19 @@ export function GridInspector({
         {preset && <p className="text-xs leading-snug text-muted-foreground">{preset.hint}.</p>}
       </Section>
 
+      <Section title="Grid unit">
+        <SelectField
+          label="Snap columns to"
+          value={String(unit)}
+          options={GRID_UNITS.map((u) => ({ value: String(u), label: `${u}px grid` }))}
+          onChange={(v) => onChange({ unit: Number(v) as GridUnit })}
+        />
+        <p className="text-xs leading-snug text-muted-foreground">
+          Column width = (page − gutters) ÷ columns, rounded down to {unit}px. The page width is rebuilt from it, and
+          what’s left goes to the margins.
+        </p>
+      </Section>
+
       <Section title="Container">
         <SliderField
           label="Max width"
@@ -518,6 +538,38 @@ export function GridInspector({
           defaultValue={DEFAULTS.maxWidth}
           onChange={(maxWidth) => onChange({ maxWidth })}
         />
+        {capFit && capSpots && (
+          <div className="rounded-md border bg-card px-2.5 py-2 text-xs leading-snug">
+            <div className="flex justify-between font-mono tabular">
+              <span className="text-muted-foreground">
+                {widest.name} · {widest.columns} × {capFit.column}px
+              </span>
+              <span>page {capFit.page}px</span>
+            </div>
+            {capFit.page === config.maxWidth ? (
+              <p className="mt-1 text-emerald-700 dark:text-emerald-400">Spot on: the columns divide the max width exactly.</p>
+            ) : (
+              <>
+                <p className="mt-1 text-amber-700 dark:text-amber-400">
+                  The numbers don’t add up: {config.maxWidth}px gives {capFit.raw.toFixed(1)}px columns, so{' '}
+                  {config.maxWidth - capFit.page}px is left over.
+                </p>
+                <div className="mt-1.5 flex gap-1.5">
+                  {[capSpots.below, capSpots.above].map((w) => (
+                    <button
+                      key={w}
+                      type="button"
+                      onClick={() => onChange({ maxWidth: w })}
+                      className="rounded-md border px-2 py-0.5 font-mono text-[0.6875rem] transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      Use {w}px
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        )}
         <SwitchField
           label="Sidebar"
           checked={config.sidebar > 0}
@@ -562,7 +614,7 @@ export function GridInspector({
         {offGrid.length > 0 && (
           <p className="text-xs leading-snug text-amber-700 dark:text-amber-400">
             {offGrid.map((b) => b.name).join(', ')} {offGrid.length === 1 ? 'has' : 'have'} gutters or margins that
-            aren’t a multiple of the {spacingBase}px spacing unit.
+            aren’t a multiple of the {unit}px grid unit.
           </p>
         )}
       </Section>
