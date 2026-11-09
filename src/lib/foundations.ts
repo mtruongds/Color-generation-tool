@@ -27,6 +27,8 @@ export interface TypographyConfig {
   /** Line height as a multiple of font size, before rounding to the grid. */
   headingLineHeight: number;
   bodyLineHeight: number;
+  /** Rhythm below the type breakpoint, where it differs; anything left out follows desktop. */
+  mobileRhythm?: Partial<Rhythm>;
   /** Tightens large sizes and opens up small ones. */
   opticalTracking: boolean;
   /** The text styles, each placed on a scale step. Users add, rename and remove these. */
@@ -36,6 +38,18 @@ export interface TypographyConfig {
 }
 
 export type TypeRole = 'heading' | 'body';
+
+/** The settings that set line heights. Desktop's live on the config; mobile can override each. */
+export type Rhythm = Pick<TypographyConfig, 'lineHeightGrid' | 'headingLineHeight' | 'bodyLineHeight'>;
+export const RHYTHM_KEYS = ['lineHeightGrid', 'headingLineHeight', 'bodyLineHeight'] as const;
+
+export type TypeViewport = 'desktop' | 'mobile';
+
+/** The rhythm a breakpoint uses: desktop's settings, with mobile's own where it set one. */
+export function rhythmFor(c: TypographyConfig, viewport: TypeViewport): Rhythm {
+  const desktop = { lineHeightGrid: c.lineHeightGrid, headingLineHeight: c.headingLineHeight, bodyLineHeight: c.bodyLineHeight };
+  return viewport === 'mobile' ? { ...desktop, ...c.mobileRhythm } : desktop;
+}
 
 export interface TypeStepConfig {
   name: string;
@@ -120,8 +134,49 @@ export const computedTypeSize = (c: Pick<TypographyConfig, 'baseSize' | 'ratio'>
 export const sortTypeSteps = <T extends Pick<TypeStepConfig, 'step' | 'role'>>(steps: T[]) =>
   [...steps].sort((a, b) => b.step - a.step || (a.role === b.role ? 0 : a.role === 'heading' ? -1 : 1));
 
+/** How far a smaller heading's leading ratio may fall below any larger one's before it's corrected. */
+const LEADING_TOLERANCE = 0.02;
+
+/**
+ * Snapping each heading to the grid on its own can round one down and its larger neighbour up,
+ * leaving a smaller heading tighter than a bigger one (31px at 1.16 under 39px at 1.23). Walk the
+ * headings from largest to smallest and, where that happens, take the next grid row that keeps the
+ * ratio from dropping — but never looser than body leading, so small headings don't balloon.
+ */
+function taperHeadingLeading(styles: TypeStyle[], c: Rhythm, size: 'size' | 'mobileSize', lh: 'lineHeight' | 'mobileLineHeight') {
+  const row = c.lineHeightGrid > 0 ? c.lineHeightGrid : 1;
+  const headings = styles.filter((s) => s.role === 'heading').sort((a, b) => b[size] - a[size]);
+  let floor = 0;
+  for (const s of headings) {
+    const px = s[size];
+    const need = (floor - LEADING_TOLERANCE) * px;
+    if (s[lh] < need) {
+      const cap = Math.max(Math.ceil((px * c.headingLineHeight) / row) * row, Math.floor((px * c.bodyLineHeight) / row) * row);
+      s[lh] = Math.max(s[lh], Math.min(Math.ceil(need / row) * row, cap));
+    }
+    // Against the loosest larger heading, not just the next one, so small slips can't add up down the scale
+    floor = Math.max(floor, s[lh] / px);
+  }
+}
+
+/**
+ * Heading leading as a ratio of size: `m + k / size`, a fixed slice of extra space on top of a
+ * proportional one. It meets body leading at the base size and the heading line height at the
+ * largest heading, and falls steadily in between, so small headings get room and large ones
+ * tighten whatever the ratio. Grid snapping then only nudges a curve that's already in order.
+ */
+export function headingLeading(base: number, r: Pick<Rhythm, 'bodyLineHeight' | 'headingLineHeight'>, size: number, largest: number) {
+  const { bodyLineHeight: body, headingLineHeight: top } = r;
+  // No heading above body, or the curve would run the wrong way: one multiplier, as before
+  if (largest <= base || top >= body) return top;
+  const m = (top * largest - body * base) / (largest - base);
+  const k = base * (body - m);
+  // Headings set below body size don't get looser than body text
+  return Math.min(body, Math.max(top, m + k / size));
+}
+
 export function generateTypeScale(c: TypographyConfig): TypeStyle[] {
-  return sortTypeSteps(c.steps).map((s) => {
+  const styles = sortTypeSteps(c.steps).map((s): TypeStyle => {
     const computed = computedTypeSize(c, s.step);
     const override = c.sizeOverrides[s.step];
     const size = override ?? computed;
@@ -129,7 +184,6 @@ export function generateTypeScale(c: TypographyConfig): TypeStyle[] {
     const mobileComputed = s.step > 0 ? Math.round(c.baseSize * Math.pow(c.mobileRatio, s.step)) : computed;
     const mobileSize = override === undefined ? mobileComputed : Math.max(1, Math.round((override * mobileComputed) / computed));
     const weightName = s.weight;
-    const leading = s.role === 'heading' ? c.headingLineHeight : c.bodyLineHeight;
     return {
       name: s.name,
       label: s.label,
@@ -140,13 +194,44 @@ export function generateTypeScale(c: TypographyConfig): TypeStyle[] {
       weight: FONT_WEIGHTS[weightName],
       weightName,
       size,
-      lineHeight: gridLineHeight(size, leading, c.lineHeightGrid),
+      lineHeight: 0,
       mobileSize,
-      mobileLineHeight: gridLineHeight(mobileSize, leading, c.lineHeightGrid),
+      mobileLineHeight: 0,
       tracking: c.opticalTracking ? trackingFor(size) : 0,
       overridden: override !== undefined,
     };
   });
+  // Each breakpoint's curve ends at its own largest heading
+  const largest = (key: 'size' | 'mobileSize') => Math.max(0, ...styles.filter((s) => s.role === 'heading').map((s) => s[key]));
+  for (const [viewport, size, lh] of [
+    ['desktop', 'size', 'lineHeight'],
+    ['mobile', 'mobileSize', 'mobileLineHeight'],
+  ] as const) {
+    const r = rhythmFor(c, viewport);
+    const top = largest(size);
+    for (const s of styles) {
+      const leading = s.role === 'heading' ? headingLeading(c.baseSize, r, s[size], top) : r.bodyLineHeight;
+      s[lh] = gridLineHeight(s[size], leading, r.lineHeightGrid);
+    }
+    taperHeadingLeading(styles, r, size, lh);
+  }
+  return styles;
+}
+
+/**
+ * Headings closer in size than one grid row can't each get their own line height, so the
+ * scale comes out lumpy however it's rounded. Reports the tightest gap per breakpoint.
+ */
+export function typeScaleWarnings(c: TypographyConfig, styles = generateTypeScale(c)) {
+  const warnings: { viewport: TypeViewport; gap: number; row: number }[] = [];
+  for (const [viewport, key] of [['desktop', 'size'], ['mobile', 'mobileSize']] as const) {
+    const row = rhythmFor(c, viewport).lineHeightGrid;
+    if (row <= 1) continue;
+    const sizes = [...new Set(styles.filter((s) => s.role === 'heading').map((s) => s[key]))].sort((a, b) => a - b);
+    const gap = Math.min(...sizes.slice(1).map((px, i) => px - sizes[i]));
+    if (gap < row) warnings.push({ viewport, gap, row });
+  }
+  return warnings;
 }
 
 /**
@@ -207,6 +292,15 @@ function normalizeTypography(raw: LegacyTypography): TypographyConfig {
       : {};
   const ratio = (r: unknown, fallback: number) => (typeof r === 'number' && r > 1 && r <= 4 ? r : fallback);
   const leading = (r: unknown, fallback: number) => (typeof r === 'number' && r >= 1 && r <= 2.5 ? r : fallback);
+  const isGrid = (g: unknown): g is number => Number.isInteger(g) && (g as number) >= 0 && (g as number) <= 16;
+  const isLeading = (r: unknown): r is number => typeof r === 'number' && r >= 1 && r <= 2.5;
+  // Mobile rhythm keeps only valid overrides; a missing one follows desktop
+  const m = c.mobileRhythm && typeof c.mobileRhythm === 'object' ? c.mobileRhythm : {};
+  const mobileRhythm: Partial<Rhythm> = {
+    ...(isGrid(m.lineHeightGrid) && { lineHeightGrid: m.lineHeightGrid }),
+    ...(isLeading(m.headingLineHeight) && { headingLineHeight: m.headingLineHeight }),
+    ...(isLeading(m.bodyLineHeight) && { bodyLineHeight: m.bodyLineHeight }),
+  };
   return {
     ...c,
     headingLineHeight: leading(c.headingLineHeight, DEFAULT_FOUNDATIONS.typography.headingLineHeight),
@@ -214,6 +308,7 @@ function normalizeTypography(raw: LegacyTypography): TypographyConfig {
     lineHeightGrid: Number.isInteger(c.lineHeightGrid) && c.lineHeightGrid >= 0 && c.lineHeightGrid <= 16 ? c.lineHeightGrid : DEFAULT_FOUNDATIONS.typography.lineHeightGrid,
     ratio: ratio(c.ratio, DEFAULT_FOUNDATIONS.typography.ratio),
     mobileRatio: ratio(c.mobileRatio, DEFAULT_FOUNDATIONS.typography.mobileRatio),
+    mobileRhythm,
     steps:
       steps.length > 0
         ? steps.map((s) => ({ ...s, label: s.label || typeStepLabel(s.name), usage: s.usage ?? '', weight: isWeight(s.weight) ? s.weight : roleWeight(s.role) }))

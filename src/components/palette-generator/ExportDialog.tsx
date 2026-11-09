@@ -21,9 +21,9 @@ import {
   type ExportScope,
   type LengthUnit,
   colorCollectionFilename,
-  generateColorCollectionCss,
   generateColorCollectionCsv,
-  generateColorCollectionJson,
+  generateColorCss,
+  generateColorJson,
   generateCss,
   generateEffectStylesCsv,
   generateShadowStylesCss,
@@ -81,23 +81,16 @@ const SCOPE_LABEL: Record<ExportScope, string> = {
   ...(Object.fromEntries(FOUNDATION_ORDER.map((k) => [k, FOUNDATION_META[k].label])) as Record<Exclude<ExportScope, 'all'>, string>),
 };
 
-/** Color exports as CSS, JSON and Sheets split into the Color Palette, Color and Theme collections. */
-const COLLECTION_HINTS: Record<ExportKind, Record<ColorCollection, string>> = {
-  css: {
-    primitive: 'Raw palette steps, light and -dark side by side.',
-    base: 'Roles aliasing Color Palette, light and -dark side by side. Load color-palette.css first.',
-    semantic: 'Purposes aliasing Color, with dark values under [data-theme="dark"]. Load color.css first.',
-  },
-  json: {
-    primitive: 'Raw palette steps, light and -dark side by side, as W3C design tokens.',
-    base: 'Roles aliasing {color-palette.…}, light and -dark side by side. Merge with color-palette.json.',
-    semantic: 'Purposes aliasing {color.…}, with the dark alias in $extensions. Merge with color.json.',
-  },
-  csv: {
-    primitive: 'Raw palette steps, light and -dark side by side, in one mode. _OKLCH is for reference; the plugin skips it.',
-    base: 'Roles aliasing Color Palette, light and -dark side by side. Import Color Palette first.',
-    semantic: 'Purposes aliasing Color, with Light and Dark modes. Import Color first.',
-  },
+/** Color's CSS and JSON hold all three collections in one file; Sheets CSV splits them, one per import. */
+const COLOR_HINTS: Record<'css' | 'json', string> = {
+  css: 'Color Palette, Color and Theme in one file, each aliasing the one before it.',
+  json: 'Color Palette, Color and Theme in one file as W3C design tokens, with Theme\'s dark alias in $extensions.',
+};
+
+const COLLECTION_HINTS: Record<ColorCollection, string> = {
+  primitive: 'Raw palette steps, light and -dark side by side, in one mode. _OKLCH is for reference; the plugin skips it.',
+  base: 'Roles aliasing Color Palette, light and -dark side by side. Import Color Palette first.',
+  semantic: 'Purposes aliasing Color, with Light and Dark modes. Import Color first.',
 };
 
 /** Sheets CSV for the foundations that split into collections like Color. */
@@ -133,8 +126,8 @@ function sheetHint(group: SheetGroup, part: SheetPart) {
 }
 
 function filenameFor(kind: ExportKind, scope: ExportScope, colorTier: ColorCollection, sheetPart: SheetPart) {
-  if (scope === 'color') return colorCollectionFilename(colorTier, kind);
   if (kind === 'csv') {
+    if (scope === 'color') return colorCollectionFilename(colorTier);
     if (scope === 'shadow') return sheetPart === 'effect-styles' ? SHEET_FILENAMES['effect-styles'] : `${SHADOW_COLLECTION}.csv`;
     if (isSheetGroup(scope)) return isTier(sheetPart) ? sheetFilename(scope, sheetPart) : SHEET_FILENAMES[sheetPart];
   }
@@ -176,7 +169,8 @@ export function ExportDialog({
 
   const activeKind = supports(kind, scope) ? kind : 'css';
   const meta = EXPORTS[activeKind];
-  const colorTierKind = scope === 'color' ? activeKind : null;
+  // Only Sheets CSV splits Color into one file per collection
+  const colorTiers = scope === 'color' && activeKind === 'csv';
   const sheetGroup = activeKind === 'csv' && isSheetGroup(scope) ? scope : null;
   const shadowSheet = activeKind === 'csv' && scope === 'shadow';
   const sheetParts: SheetPart[] = sheetGroup
@@ -197,10 +191,10 @@ export function ExportDialog({
     switch (activeKind) {
       case 'css':
         if (scope === 'shadow') return generateShadowStylesCss(palettes, foundations);
-        return scope === 'color' ? generateColorCollectionCss(palettes, foundations, colorTier, colorFormat) : generateCss(palettes, foundations, opts);
+        return scope === 'color' ? generateColorCss(palettes, foundations, colorFormat) : generateCss(palettes, foundations, opts);
       case 'json':
         if (scope === 'shadow') return generateShadowStylesJson(palettes, foundations);
-        return scope === 'color' ? generateColorCollectionJson(palettes, foundations, colorTier, colorFormat) : generateJson(palettes, foundations, opts);
+        return scope === 'color' ? generateColorJson(palettes, foundations, colorFormat) : generateJson(palettes, foundations, opts);
       case 'csv':
         if (scope === 'color' || scope === 'all') return generateColorCollectionCsv(palettes, foundations, colorTier);
         if (scope === 'shadow') return sheetPart === 'effect-styles' ? generateEffectStylesCsv(palettes, foundations) : generateShadowVariablesCsv(palettes, foundations);
@@ -211,7 +205,7 @@ export function ExportDialog({
 
   // Products only change the Color collection, so the notes show where that is exported
   const products = productsOf(foundations);
-  const showsProducts = products.length > 1 && (scope === 'all' || (scope === 'color' && colorTier === 'base'));
+  const showsProducts = products.length > 1 && (scope === 'all' || (scope === 'color' && (!colorTiers || colorTier === 'base')));
   const inheritedBrand = useMemo(
     () => (showsProducts ? inheritedBrandRoles(palettes, products) : []),
     [showsProducts, palettes, products],
@@ -277,7 +271,7 @@ export function ExportDialog({
             </Tabs>
           )}
         </div>
-        {colorTierKind && (
+        {colorTiers && (
           <div className="flex flex-wrap gap-1.5 px-6 pb-3" role="group" aria-label="Collection">
             {(Object.keys(COLOR_COLLECTIONS) as ColorCollection[]).map((t) => (
               <button
@@ -320,8 +314,10 @@ export function ExportDialog({
           </div>
         )}
         <p className="px-6 pb-3 text-xs text-muted-foreground">
-          {colorTierKind
-            ? COLLECTION_HINTS[colorTierKind][colorTier]
+          {colorTiers
+            ? COLLECTION_HINTS[colorTier]
+            : scope === 'color' && activeKind !== 'csv'
+              ? COLOR_HINTS[activeKind]
             : shadowSheet
               ? SHADOW_HINTS[sheetPart]
               : scope === 'shadow'
@@ -330,7 +326,7 @@ export function ExportDialog({
                 ? sheetHint(sheetGroup, sheetPart)
                 : meta.hint}
           {usesColorFormat && <span className="ml-1 font-mono uppercase">({colorFormat})</span>}
-          {activeKind === 'css' && (scope === 'all' || scope === 'shadow' || (scope === 'color' && colorTier === 'semantic')) && (
+          {activeKind === 'css' && (scope === 'all' || scope === 'shadow' || scope === 'color') && (
             <> Put <code className="font-mono">data-theme="dark"</code> on &lt;html&gt; for dark mode.</>
           )}
           {showsProducts && activeKind === 'css' && (

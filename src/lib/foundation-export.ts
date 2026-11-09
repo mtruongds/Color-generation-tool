@@ -288,11 +288,11 @@ export const COLOR_COLLECTIONS: Record<ColorCollection, string> = {
   semantic: 'Theme',
 };
 
-/** `Color Palette` → `color-palette`, for filenames and JSON roots. */
+/** `Color Palette` → `color-palette`, for JSON roots. */
 const collectionSlug = (tier: ColorCollection) => COLOR_COLLECTIONS[tier].toLowerCase().replace(/\s+/g, '-');
 
-export const colorCollectionFilename = (tier: ColorCollection, ext: 'css' | 'json' | 'csv') =>
-  ext === 'csv' ? `${COLOR_COLLECTIONS[tier]}.csv` : `${collectionSlug(tier)}.${ext}`;
+/** Sheets CSV splits Color into one file per collection; CSS and JSON keep all three in `color.css` / `color.json`. */
+export const colorCollectionFilename = (tier: ColorCollection) => `${COLOR_COLLECTIONS[tier]}.csv`;
 
 /**
  * Where each variable can be applied in Figma. Primitives and base tokens get none, so they stay
@@ -379,12 +379,15 @@ function colorCollectionVariables(palettes: GeneratedPalette[], f: Foundations, 
 
 const COLLECTION_TITLES: Record<ColorCollection, string> = {
   primitive: 'Color Palette — raw steps, light and -dark side by side. Reference these only from Color.',
-  base: 'Color — roles aliasing Color Palette, light and -dark side by side. Load color-palette.css first.',
-  semantic: 'Theme — purposes aliasing Color, with dark values under [data-theme="dark"]. Use these in components. Load color.css first.',
+  base: 'Color — roles aliasing Color Palette, light and -dark side by side.',
+  semantic: 'Theme — purposes aliasing Color, with dark values under [data-theme="dark"]. Use these in components.',
 };
 
+/** The three color collections in load order: each aliases the one before it. */
+const COLLECTION_ORDER: ColorCollection[] = ['primitive', 'base', 'semantic'];
+
 /** One color collection as custom properties. Variable names are the collection paths joined with `-`. */
-export function generateColorCollectionCss(palettes: GeneratedPalette[], f: Foundations, tier: ColorCollection, colorFormat: ColorFormat) {
+function generateColorCollectionCss(palettes: GeneratedPalette[], f: Foundations, tier: ColorCollection, colorFormat: ColorFormat) {
   const variables = colorCollectionVariables(palettes, f, tier, colorFormat);
   const value = ({ primitive, alias }: ColorValue) => (alias ? `var(--${alias.path.join('-')})` : String(primitive.value));
   const [firstMode, ...otherModes] = Object.keys(variables[0]?.modes ?? { Default: null });
@@ -418,10 +421,9 @@ export function generateColorCollectionCss(palettes: GeneratedPalette[], f: Foun
 
 /**
  * One color collection as W3C design tokens, rooted at the collection (`color-palette`, `color`,
- * `theme`) so aliases into another collection's file (`{color-palette.indigo.9}`) resolve once the
- * files are merged. Theme keeps its dark alias in `$extensions`, like the full JSON export.
+ * `theme`) so aliases into another collection (`{color-palette.indigo.9}`) resolve in the combined file. Theme keeps its dark alias in `$extensions`, like the full JSON export.
  */
-export function generateColorCollectionJson(palettes: GeneratedPalette[], f: Foundations, tier: ColorCollection, colorFormat: ColorFormat) {
+function colorCollectionTokens(palettes: GeneratedPalette[], f: Foundations, tier: ColorCollection, colorFormat: ColorFormat) {
   const variables = colorCollectionVariables(palettes, f, tier, colorFormat);
   const ref = (v: ColorValue) => (v.alias ? `{${[collectionSlug(v.alias.tier), ...v.alias.path].join('.')}}` : String(v.primitive.value));
   const out: Record<string, unknown> = {};
@@ -438,6 +440,17 @@ export function generateColorCollectionJson(palettes: GeneratedPalette[], f: Fou
       ...(Object.keys(extra).length && { $extensions: { modes: extra } }),
     });
   }
+  return out;
+}
+
+/** All three color collections as custom properties in one file, Color Palette first. */
+export function generateColorCss(palettes: GeneratedPalette[], f: Foundations, colorFormat: ColorFormat) {
+  return COLLECTION_ORDER.map((tier) => generateColorCollectionCss(palettes, f, tier, colorFormat)).join('\n');
+}
+
+/** All three color collections as W3C design tokens in one file, so every alias resolves within it. */
+export function generateColorJson(palettes: GeneratedPalette[], f: Foundations, colorFormat: ColorFormat) {
+  const out = Object.assign({}, ...COLLECTION_ORDER.map((tier) => colorCollectionTokens(palettes, f, tier, colorFormat)));
   return JSON.stringify(out, null, 2);
 }
 

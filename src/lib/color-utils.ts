@@ -124,7 +124,7 @@ function buildRadixCustomScale(baseColor: string, isDark: boolean, options: Scal
     ({ scale: scaleColors, mixedFrom } = getScaleFromColor(baseOklch, grayScales, backgroundColor, tweaks));
     contrastColor = getTextColor(scaleColors[8]);
     surfaceHex = isDark ? '#0000000D' : '#FFFFFFCC';
-    surfaceWideGamut = isDark ? 'color(display-p3 0 0 0 / 5%)' : 'color(display-p3 1 1 1 / 80%)';
+    surfaceWideGamut = isDark ? 'color(display-p3 0 0 0 / 0.05)' : 'color(display-p3 1 1 1 / 0.8)';
   } else {
     ({ scale: scaleColors, mixedFrom } = getScaleFromColor(
       baseOklch,

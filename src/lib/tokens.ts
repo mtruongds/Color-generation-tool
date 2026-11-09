@@ -438,8 +438,9 @@ const sizeRole = (step: number) =>
 
 /**
  * Type primitives are named by scale step, not by px, so changing the base size or ratio keeps
- * every name: step-0 is body, step-1 one step up, step-n1 one step down. Steps above body also
- * get a `-mobile` primitive for the smaller ratio below the type breakpoint.
+ * every name: step-0 is body, step-1 one step up, step-n1 one step down. Every step also gets a
+ * `-mobile` primitive for below the type breakpoint, even when the value matches web, so each
+ * platform has a token of its own.
  */
 /** Base weight names by emphasis; they can't reuse the primitive weight names. */
 const WEIGHT_EMPHASIS: Record<FontWeightName, string> = { regular: 'normal', medium: 'emphasis', semibold: 'strong', bold: 'heavy' };
@@ -457,8 +458,26 @@ function typographyTokens(f: Foundations): Token[] {
   const styles = generateTypeScale(c);
   const bp = typeBreakpoint(f);
   const tokens: Token[] = [];
-  /** One style per scale step — styles on the same step share their size. */
-  const bySteps = [...new Map(styles.map((s) => [s.step, s])).entries()].sort(([a], [b]) => a - b);
+  /** One style per scale step — styles on the same step share their size. The first (the heading, when there is one) names the step. */
+  const owners = new Map<number, TypeStyle>();
+  for (const s of styles) if (!owners.has(s.step)) owners.set(s.step, s);
+  const bySteps = [...owners.entries()].sort(([a], [b]) => a - b);
+  /**
+   * Headings and body text lead differently, so a style sharing a step with another role gets its own
+   * line height, suffixed by role (`line-height-step-1-body`), rather than inheriting the owner's.
+   */
+  const leadingVariants = new Map<string, TypeStyle>();
+  for (const s of styles) {
+    const owner = owners.get(s.step)!;
+    if (s.role !== owner.role && (s.lineHeight !== owner.lineHeight || s.mobileLineHeight !== owner.mobileLineHeight)) {
+      leadingVariants.set(`${s.step}:${s.role}`, s);
+    }
+  }
+  const leadingSuffix = (s: TypeStyle) => (leadingVariants.has(`${s.step}:${s.role}`) ? `-${s.role}` : '');
+  const leadingStyles: [number, TypeStyle, string][] = [
+    ...bySteps.map(([step, s]): [number, TypeStyle, string] => [step, s, '']),
+    ...[...leadingVariants.values()].map((s): [number, TypeStyle, string] => [s.step, s, `-${s.role}`]),
+  ].sort(([a], [b]) => a - b);
 
   // Primitives. Families are named by slot, not by font, so picking another font keeps the name.
   const FAMILY_SLOTS = [
@@ -494,17 +513,16 @@ function typographyTokens(f: Foundations): Token[] {
       productFonts.set(role, [...(productFonts.get(role) ?? []), { product: product.name, ref: name }]);
     }
   });
-  for (const [prop, desktop, mobile] of [
-    ['size', (s: TypeStyle) => s.size, (s: TypeStyle) => s.mobileSize],
-    ['line-height', (s: TypeStyle) => s.lineHeight, (s: TypeStyle) => s.mobileLineHeight],
+  for (const [prop, desktop, mobile, list] of [
+    ['size', (s: TypeStyle) => s.size, (s: TypeStyle) => s.mobileSize, bySteps.map(([step, s]): [number, TypeStyle, string] => [step, s, ''])],
+    ['line-height', (s: TypeStyle) => s.lineHeight, (s: TypeStyle) => s.mobileLineHeight, leadingStyles],
   ] as const) {
     const name = prop === 'size' ? 'font-size' : 'line-height';
-    for (const [step, st] of bySteps) {
-      const code = stepCode(step);
+    for (const [step, st, suffix] of list) {
+      const code = `${stepCode(step)}${suffix}`;
       tokens.push({ tier: 'primitive', group: 'typography', name: `${name}-${code}`, path: ['font', prop, code], type: 'dimension', value: desktop(st) });
-      if (step > 0) {
-        tokens.push({ tier: 'primitive', group: 'typography', name: `${name}-${code}-mobile`, path: ['font', prop, `${code}-mobile`], type: 'dimension', value: mobile(st) });
-      }
+      // Every step gets a mobile primitive, even when it equals web, so each platform has its own token to track
+      tokens.push({ tier: 'primitive', group: 'typography', name: `${name}-${code}-mobile`, path: ['font', prop, `${code}-mobile`], type: 'dimension', value: mobile(st) });
     }
   }
   for (const [name, weight] of Object.entries(FONT_WEIGHTS)) {
@@ -545,12 +563,10 @@ function typographyTokens(f: Foundations): Token[] {
   }
 
   // Base: a t-shirt size scale, one entry per step. Mobile-first, so the responsive switch lives here.
-  /** Points at the mobile primitive and switches to the desktop one from the breakpoint, when they differ. */
-  const mobileFirst = (prim: string, step: number, mobileValue: number, desktopValue: number): Partial<Token> => {
-    const desktopRef = `${prim}-${stepCode(step)}`;
-    return mobileValue === desktopValue
-      ? { ref: desktopRef }
-      : { ref: `${desktopRef}-mobile`, responsive: [{ minWidth: bp, label: 'desktop', ref: desktopRef }], baseLabel: 'mobile' };
+  /** Points at the mobile primitive and switches to the desktop one from the breakpoint, always, so each platform reads its own token. */
+  const mobileFirst = (prim: string, step: number, suffix = ''): Partial<Token> => {
+    const desktopRef = `${prim}-${stepCode(step)}${suffix}`;
+    return { ref: `${desktopRef}-mobile`, responsive: [{ minWidth: bp, label: 'desktop', ref: desktopRef }], baseLabel: 'mobile' };
   };
   for (const [step, s] of bySteps) {
     const size = sizeRole(s.step);
@@ -561,7 +577,7 @@ function typographyTokens(f: Foundations): Token[] {
         name: `font-size-${size}`,
         path: ['font', 'size', size],
         type: 'dimension',
-        ...mobileFirst('font-size', step, s.mobileSize, s.size),
+        ...mobileFirst('font-size', step),
       },
       {
         tier: 'base',
@@ -569,8 +585,20 @@ function typographyTokens(f: Foundations): Token[] {
         name: `line-height-${size}`,
         path: ['font', 'line-height', size],
         type: 'dimension',
-        ...mobileFirst('line-height', step, s.mobileLineHeight, s.lineHeight),
+        ...mobileFirst('line-height', step),
       },
+      ...[...leadingVariants.values()]
+        .filter((v) => v.step === step)
+        .map(
+          (v): Token => ({
+            tier: 'base',
+            group: 'typography',
+            name: `line-height-${size}-${v.role}`,
+            path: ['font', 'line-height', `${size}-${v.role}`],
+            type: 'dimension',
+            ...mobileFirst('line-height', step, `-${v.role}`),
+          }),
+        ),
       {
         tier: 'base',
         group: 'typography',
@@ -602,7 +630,7 @@ function typographyTokens(f: Foundations): Token[] {
       { tier: 'semantic', group: 'typography', name: style, path: ['text', s.name], type: 'typography', value: typographyParts(style), description: s.usage },
       { ...t('family', 'fontFamily', `font-family-${role}`), products: productRoles.get(role) },
       t('size', 'dimension', `font-size-${size}`),
-      t('line-height', 'dimension', `line-height-${size}`),
+      t('line-height', 'dimension', `line-height-${size}${leadingSuffix(s)}`),
       t('weight', 'fontWeight', `font-weight-${WEIGHT_EMPHASIS[s.weightName]}`),
       t('tracking', 'letterSpacing', `letter-spacing-${size}`),
     );

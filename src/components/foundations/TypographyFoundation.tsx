@@ -22,6 +22,10 @@ import {
   sortTypeSteps,
   typeStepLabel,
   typeStepSlug,
+  RHYTHM_KEYS,
+  type TypeViewport,
+  rhythmFor,
+  typeScaleWarnings,
   typeStyleFor,
 } from '../../lib/foundations';
 import { typeCss } from './FoundationSample';
@@ -54,7 +58,7 @@ export function TypographyCanvas({ config }: { config: TypographyConfig }) {
   const styles = useMemo(() => generateTypeScale(config), [config]);
   const mobile = viewport === 'mobile';
   const [showGrid, setShowGrid] = useState(true);
-  const row = config.lineHeightGrid;
+  const row = rhythmFor(config, viewport).lineHeightGrid;
   /** Gaps between blocks round up to whole grid rows, so every line box below stays on the grid. */
   const gap = (px: number) => (row > 0 ? Math.ceil(px / row) * row : px);
   const heading = fontStack(config.headingFamily, fontKind(config.headingFamily));
@@ -293,36 +297,8 @@ export function TypographyInspector({
       <StepsSection config={config} onChange={onChange} />
 
       <Section title="Rhythm" info={<LineHeightInfo config={config} />}>
-        <SliderField
-          label="Grid row"
-          value={config.lineHeightGrid}
-          display={config.lineHeightGrid === 0 ? 'off' : `${config.lineHeightGrid}px`}
-          min={0}
-          max={16}
-          step={1}
-          defaultValue={DEFAULTS.lineHeightGrid}
-          onChange={(lineHeightGrid) => onChange({ lineHeightGrid })}
-        />
-        <SliderField
-          label="Heading line height"
-          value={config.headingLineHeight}
-          display={`${config.headingLineHeight.toFixed(2)}×`}
-          min={1}
-          max={2}
-          step={0.05}
-          defaultValue={DEFAULTS.headingLineHeight}
-          onChange={(headingLineHeight) => onChange({ headingLineHeight })}
-        />
-        <SliderField
-          label="Body line height"
-          value={config.bodyLineHeight}
-          display={`${config.bodyLineHeight.toFixed(2)}×`}
-          min={1}
-          max={2}
-          step={0.05}
-          defaultValue={DEFAULTS.bodyLineHeight}
-          onChange={(bodyLineHeight) => onChange({ bodyLineHeight })}
-        />
+        <RhythmFields config={config} onChange={onChange} />
+        <GridWarnings config={config} />
         <SwitchField
           label="Optical tracking"
           hint="Tightens letter spacing on large sizes and opens it up on small ones."
@@ -607,6 +583,78 @@ function SizeInput({
   );
 }
 
+type RhythmKey = (typeof RHYTHM_KEYS)[number];
+
+const RHYTHM_FIELDS: { key: RhythmKey; label: string; min: number; max: number; step: number; display: (v: number) => string }[] = [
+  { key: 'lineHeightGrid', label: 'Grid row', min: 0, max: 16, step: 1, display: (v) => (v === 0 ? 'off' : `${v}px`) },
+  { key: 'headingLineHeight', label: 'Heading line height', min: 1, max: 2, step: 0.05, display: (v) => `${v.toFixed(2)}×` },
+  { key: 'bodyLineHeight', label: 'Body line height', min: 1, max: 2, step: 0.05, display: (v) => `${v.toFixed(2)}×` },
+];
+
+/**
+ * Grid row and line heights, per breakpoint. Mobile follows desktop until a value is changed there;
+ * its reset goes back to following desktop, and setting it equal to desktop does the same.
+ */
+function RhythmFields({ config, onChange }: { config: TypographyConfig; onChange: (patch: Partial<TypographyConfig>) => void }) {
+  const [viewport, setViewport] = useState<TypeViewport>('desktop');
+  const desktop = rhythmFor(config, 'desktop');
+  const current = rhythmFor(config, viewport);
+  const own = config.mobileRhythm ?? {};
+  const setMobile = (key: RhythmKey, v: number) => {
+    const { [key]: _, ...rest } = own;
+    onChange({ mobileRhythm: v === desktop[key] ? rest : { ...rest, [key]: v } });
+  };
+  const overridden = RHYTHM_KEYS.filter((k) => own[k] !== undefined && own[k] !== desktop[k]).length;
+  return (
+    <>
+      <SegmentedField
+        label="Breakpoint"
+        value={viewport}
+        options={[
+          { value: 'desktop', label: 'Desktop' },
+          { value: 'mobile', label: overridden > 0 ? `Mobile · ${overridden}` : 'Mobile' },
+        ]}
+        onChange={setViewport}
+      />
+      {RHYTHM_FIELDS.map((f) => (
+        <SliderField
+          key={f.key}
+          label={f.label}
+          value={current[f.key]}
+          display={f.display(current[f.key])}
+          min={f.min}
+          max={f.max}
+          step={f.step}
+          defaultValue={viewport === 'mobile' ? desktop[f.key] : DEFAULTS[f.key]}
+          onChange={(v) => (viewport === 'mobile' ? setMobile(f.key, v) : onChange({ [f.key]: v }))}
+        />
+      ))}
+      {viewport === 'mobile' && (
+        <p className="text-xs leading-snug text-muted-foreground">
+          Below the md breakpoint. Each value follows desktop until you change it here; reset to follow desktop again.
+        </p>
+      )}
+    </>
+  );
+}
+
+/** Headings closer in size than a grid row, where some will share a line height however it's rounded. */
+function GridWarnings({ config }: { config: TypographyConfig }) {
+  const warnings = useMemo(() => typeScaleWarnings(config), [config]);
+  if (warnings.length === 0) return null;
+  return (
+    <div className="space-y-1 rounded-lg border border-amber-500/40 bg-amber-500/10 px-2.5 py-2 text-xs leading-snug">
+      {warnings.map((w) => (
+        <p key={w.viewport}>
+          {w.viewport === 'mobile' ? 'Mobile' : 'Desktop'} headings are as little as {w.gap}px apart, closer than the{' '}
+          {w.row}px grid row, so some will share a line height. Raise the {w.viewport === 'mobile' ? 'mobile ratio' : 'ratio'} or
+          use a smaller grid row.
+        </p>
+      ))}
+    </div>
+  );
+}
+
 /** How line heights are worked out, with the math for body and the largest heading, like The Good Line-Height's result. */
 function LineHeightInfo({ config }: { config: TypographyConfig }) {
   const styles = generateTypeScale(config);
@@ -618,6 +666,10 @@ function LineHeightInfo({ config }: { config: TypographyConfig }) {
       <p>
         Line height is size × multiplier, rounded to the nearest {row > 0 ? `${row}px grid row` : 'pixel'}, so every line
         spans whole rows and text keeps one vertical rhythm.
+      </p>
+      <p>
+        Headings taper from the body multiplier at body size to the heading multiplier at the largest heading, so smaller
+        headings get more room and no heading ends up tighter than a bigger one.
       </p>
       <div className="space-y-0.5 font-mono text-[0.6875rem] tabular">
         {[top, body]
