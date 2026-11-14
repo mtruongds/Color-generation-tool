@@ -1,18 +1,24 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import chroma from 'chroma-js';
-import { ArrowRight, Info, Lock, LockOpen } from 'lucide-react';
+import { ArrowRight, Info, Lock, LockOpen, Plus, TriangleAlert, X } from 'lucide-react';
+import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Switch } from '../ui/switch';
 import { Tabs, TabsList, TabsTrigger } from '../ui/tabs';
 import { Textarea } from '../ui/textarea';
-import { normalizeHex, type PaletteRole } from '../../lib/color-utils';
+import { isOverridableStep, normalizeHex, stepOrderIssues, type PaletteRole } from '../../lib/color-utils';
 import { cn } from '../ui/utils';
-import type { GeneratedPalette } from '../../lib/export-utils';
+import {
+  STEP_USAGE,
+  pinStepOverride,
+  tidyStepOverrides,
+  type GeneratedPalette,
+} from '../../lib/export-utils';
 import { Section, SelectField, SliderField } from '../foundations/inspector-controls';
 import { Select, SelectContent, SelectItem, SelectTrigger } from '../ui/select';
 import { COLOR_ROLES, ROLE_LABELS, type ColorRole } from '../../lib/tokens';
-import type { PaletteConfig } from './types';
+import type { PaletteConfig, StepMap, StepOverrides } from './types';
 
 const lightnessPercent = (color: string) => Math.round(chroma(color).oklch()[0] * 100);
 
@@ -46,8 +52,11 @@ export function PaletteInspector({
   onChange,
   onSetRole,
   product,
+  focusStep,
 }: {
   palette: GeneratedPalette;
+  /** A custom step to bring into view and focus, as asked from the canvas; a new nonce asks again. */
+  focusStep?: { step: number; nonce: number };
   /** Primitive name and resolved base role of this palette in the export. */
   tokens?: { primitive: string; role?: ColorRole };
   onChange: (updates: Partial<PaletteConfig>) => void;
@@ -181,6 +190,8 @@ export function PaletteInspector({
         )}
       </Section>
 
+      <CustomSteps palette={palette} onChange={onChange} focusStep={focusStep} />
+
       <Section title="Tokens">
         {!product && (
           <SelectField
@@ -269,6 +280,256 @@ export function PaletteInspector({
         <p>{mixDescription}.</p>
       </div>
     </div>
+  );
+}
+
+const ORDER_CONSEQUENCE = (step: number) =>
+  step === 3 || step === 4
+    ? 'hover and active states will look backwards'
+    : step === 6 || step === 7
+      ? 'borders will look backwards'
+      : "the scale won't step in order toward the solid color";
+
+/**
+ * Hand-set colors for single steps of the mode being edited, for colors a team already ships.
+ * Every other step stays generated, and the pins survive base color and adjustment changes.
+ */
+function CustomSteps({
+  palette,
+  onChange,
+  focusStep,
+}: {
+  palette: GeneratedPalette;
+  onChange: (updates: Partial<PaletteConfig>) => void;
+  focusStep?: { step: number; nonce: number };
+}) {
+  const mode = palette.isDark ? 'dark' : 'light';
+  const otherMode = palette.isDark ? 'light' : 'dark';
+  const o = palette.stepOverrides;
+  const own = o?.[mode] ?? {};
+  const other = o?.[otherMode] ?? {};
+  const unsync = o?.unsync ?? [];
+  const ownSteps = Object.keys(own)
+    .map(Number)
+    .filter((s) => isOverridableStep(s) && own[s]);
+  const syncedHere = palette.scale.synced ?? [];
+  const rows = [...new Set([...ownSteps, ...syncedHere])].sort((a, b) => a - b);
+  const generated = palette.scale.overridden ?? {};
+  const issues = useMemo(() => stepOrderIssues(palette.scale, palette.isDark), [palette.scale, palette.isDark]);
+  const free = Array.from({ length: 12 }, (_, i) => i + 1).filter((s) => isOverridableStep(s) && !rows.includes(s));
+
+  const update = (next: StepOverrides) => onChange({ stepOverrides: tidyStepOverrides(next) });
+  const without = (map: StepMap, step: number) => {
+    const next = { ...map };
+    delete next[step];
+    return next;
+  };
+  const setOwn = (step: number, hex: string) => update({ ...o, [mode]: { ...own, [step]: hex } });
+  /** Steps that stay generated here even though the other mode set them by hand. */
+  const keepGenerated = (steps: number[]) => [...unsync, ...steps.filter((s) => other[s])];
+  /** Back to generated in this mode, without picking up the other mode's color instead. */
+  const removeRow = (step: number) => update({ ...o, [mode]: without(own, step), unsync: keepGenerated([step]) });
+  const resetAll = () => update({ ...o, [mode]: {}, unsync: keepGenerated(rows) });
+  /**
+   * On: the other mode follows this step, replacing a color set there by hand.
+   * Off: the custom color applies to this mode only, and the other mode stays generated.
+   */
+  const setSync = (step: number, on: boolean) =>
+    on
+      ? update({ ...o, [otherMode]: without(other, step), unsync: unsync.filter((s) => s !== step) })
+      : update({ ...o, unsync: [...unsync, step] });
+
+  return (
+    <Section
+      title="Custom steps"
+      info="Replace single generated steps with your own colors, such as legacy colors your product already ships. Other steps stay generated, and these stay set when the base color or adjustments change. Step 9 comes from the base color."
+      action={
+        rows.length > 0 && (
+          <Button variant="ghost" size="sm" className="-mr-2 h-6 px-2 text-xs text-muted-foreground" onClick={resetAll}>
+            Reset all
+          </Button>
+        )
+      }
+    >
+      {rows.length > 0 && (
+        <ul className="space-y-2">
+          {rows.map((step) => {
+            const followsOther = !own[step];
+            return (
+              <StepOverrideRow
+                key={`${mode}-${step}`}
+                step={step}
+                value={followsOther ? palette.scale.colors[step - 1] : own[step]!}
+                generated={generated[step] ?? palette.scale.colors[step - 1]}
+                syncedFrom={followsOther ? { mode: otherMode, color: other[step]! } : undefined}
+                focusNonce={focusStep?.step === step ? focusStep.nonce : undefined}
+                onChange={(hex) => setOwn(step, hex)}
+                onRemove={() => removeRow(step)}
+                sync={{
+                  label: followsOther ? `Follow ${otherMode}` : `Sync ${otherMode}`,
+                  checked: followsOther || (!other[step] && !unsync.includes(step)),
+                  onChange: (on) => setSync(step, on),
+                }}
+              />
+            );
+          })}
+        </ul>
+      )}
+
+      <Select
+        value=""
+        onValueChange={(v) => {
+          const step = Number(v);
+          update(pinStepOverride(o, mode, step, palette.scale.colors[step - 1].toLowerCase()));
+        }}
+      >
+        <SelectTrigger size="sm" className="w-full" aria-label="Set a step by hand">
+          <span className="flex items-center gap-2 text-muted-foreground">
+            <Plus className="size-3.5" />
+            Set a step by hand
+          </span>
+        </SelectTrigger>
+        <SelectContent>
+          {free.map((step) => (
+            <SelectItem key={step} value={String(step)}>
+              <Swatch color={palette.scale.colors[step - 1]} />
+              <span className="font-mono tabular">{step}</span>
+              <span className="text-muted-foreground">{STEP_USAGE[step - 1]}</span>
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
+      {issues.map(({ step, next }) => (
+        <p key={step} className="flex gap-1.5 text-xs leading-snug text-amber-700 dark:text-amber-400">
+          <TriangleAlert className="mt-px size-3.5 shrink-0" />
+          <span>
+            Step {step} is {palette.isDark ? 'lighter' : 'darker'} than step {next}, so {ORDER_CONSEQUENCE(step)}.
+          </span>
+        </p>
+      ))}
+
+      <p className="text-xs leading-snug text-muted-foreground">
+        Editing {mode} mode. Pinned steps sync to {otherMode}.
+      </p>
+    </Section>
+  );
+}
+
+function StepOverrideRow({
+  step,
+  value,
+  generated,
+  syncedFrom,
+  sync,
+  focusNonce,
+  onChange,
+  onRemove,
+}: {
+  step: number;
+  value: string;
+  /** What the generator would put here. */
+  generated: string;
+  /** Set when this mode has no color of its own and follows the other mode's custom color. */
+  syncedFrom?: { mode: string; color: string };
+  /** Whether this step and the other mode's share one custom color. */
+  sync: { label: string; checked: boolean; onChange: (on: boolean) => void };
+  /** Changes when the canvas asks for this row, which then scrolls into view and selects its hex. */
+  focusNonce?: number;
+  onChange: (hex: string) => void;
+  onRemove: () => void;
+}) {
+  const [draft, setDraft] = useState(value);
+  const valid = normalizeHex(draft) !== null;
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (focusNonce === undefined) return;
+    // Wait a frame so a just-opened inspector sheet has mounted and laid out the row
+    const id = requestAnimationFrame(() => {
+      const input = inputRef.current;
+      if (!input) return;
+      input.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      input.focus({ preventScroll: true });
+      input.select();
+    });
+    return () => cancelAnimationFrame(id);
+  }, [focusNonce]);
+
+  useEffect(() => {
+    setDraft((d) => (normalizeHex(d) === value ? d : value));
+  }, [value]);
+
+
+  return (
+    <li className="space-y-2.5 rounded-lg border bg-muted/40 p-3">
+      <div className="flex items-center justify-between gap-2 text-xs">
+        <span className="min-w-0 truncate">
+          <span className="font-medium">Step {step}</span>
+          <span className="text-muted-foreground"> · {STEP_USAGE[step - 1]}</span>
+        </span>
+        <span className="flex shrink-0 items-center">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="relative size-6 text-muted-foreground after:absolute after:-inset-1"
+            aria-label={`Use generated step ${step}`}
+            onClick={onRemove}
+          >
+            <X className="size-3.5" />
+          </Button>
+        </span>
+      </div>
+      <div className="flex gap-2">
+        <label
+          className="relative size-8 shrink-0 cursor-pointer overflow-hidden rounded-md shadow-[inset_0_0_0_1px_rgb(0_0_0/0.1)] focus-within:ring-[3px] focus-within:ring-ring/50"
+          style={{ backgroundColor: value }}
+        >
+          <span className="sr-only">Pick step {step} color</span>
+          <input type="color" value={value} onChange={(e) => onChange(e.target.value)} className="absolute inset-0 cursor-pointer opacity-0" />
+        </label>
+        <Input
+          ref={inputRef}
+          aria-label={`Step ${step} hex`}
+          aria-invalid={!valid}
+          value={draft}
+          spellCheck={false}
+          onChange={(e) => {
+            setDraft(e.target.value);
+            const hex = normalizeHex(e.target.value);
+            if (hex) onChange(hex);
+          }}
+          onBlur={() => setDraft(value)}
+          className="h-8 font-mono uppercase"
+        />
+      </div>
+      {!valid ? (
+        <p className="text-xs text-destructive">Enter a 3 or 6 digit hex value.</p>
+      ) : (
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          {syncedFrom ? (
+            <>
+              <span>From {syncedFrom.mode}</span>
+              <Swatch color={syncedFrom.color} />
+              <span className="font-mono uppercase">{syncedFrom.color}</span>
+            </>
+          ) : (
+            <>
+              <span>Generated</span>
+              <Swatch color={generated} />
+              <span className="font-mono uppercase">{generated}</span>
+            </>
+          )}
+        </div>
+      )}
+      <label
+        htmlFor={`sync-step-${step}`}
+        className="flex cursor-pointer items-center justify-between gap-3 border-t pt-2.5 text-xs text-muted-foreground"
+      >
+        {sync.label}
+        <Switch id={`sync-step-${step}`} checked={sync.checked} onCheckedChange={sync.onChange} />
+      </label>
+    </li>
   );
 }
 

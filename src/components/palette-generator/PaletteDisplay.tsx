@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import { Check, Copy, Lock, SlidersHorizontal, X } from 'lucide-react';
+import { Check, Copy, Lock, Pin, SlidersHorizontal, X } from 'lucide-react';
 import { Button } from '../ui/button';
 import { IconSwap } from '../ui/icon-swap';
 import { Tabs, TabsList, TabsTrigger } from '../ui/tabs';
@@ -16,9 +16,17 @@ import {
   getContrast,
   getSurfaceColor,
   getWCAGRating,
+  isOverridableStep,
 } from '../../lib/color-utils';
 import { copyToClipboard } from '../../lib/clipboard';
-import { CONTRAST_USAGE, GeneratedPalette, STEP_GROUPS, STEP_USAGE, SURFACE_USAGE } from '../../lib/export-utils';
+import {
+  CONTRAST_USAGE,
+  GeneratedPalette,
+  STEP_GROUPS,
+  STEP_USAGE,
+  SURFACE_USAGE,
+  generatePaletteScale,
+} from '../../lib/export-utils';
 
 type View = 'scale' | 'alpha' | 'contrast';
 type AlphaFormat = 'rgba' | 'hsla' | 'hex8';
@@ -86,12 +94,15 @@ export function PaletteDisplay({
   colorFormat = 'hex',
   onSelect,
   onEdit,
+  onPinStep,
 }: {
   palette: GeneratedPalette;
   colorFormat?: ColorFormat;
   active?: boolean;
   onSelect?: () => void;
   onEdit?: () => void;
+  /** Sets a step by hand (or opens the one already set), starting from its current color. */
+  onPinStep?: (step: number, color: string) => void;
 }) {
   const [view, setView] = useState<View>('scale');
   const [alphaFormat, setAlphaFormat] = useState<AlphaFormat>('rgba');
@@ -141,7 +152,7 @@ export function PaletteDisplay({
         </div>
       </header>
 
-      {view === 'scale' && <SolidScale palette={palette} colorFormat={colorFormat} />}
+      {view === 'scale' && <SolidScale palette={palette} colorFormat={colorFormat} onPinStep={onPinStep} />}
       {view === 'alpha' && (
         <AlphaScaleView
           alphaScale={alphaScale}
@@ -157,8 +168,35 @@ export function PaletteDisplay({
 
 // ---------- SolidScale ----------
 
-function SolidScale({ palette, colorFormat }: { palette: GeneratedPalette; colorFormat: ColorFormat }) {
+function SolidScale({
+  palette,
+  colorFormat,
+  onPinStep,
+}: {
+  palette: GeneratedPalette;
+  colorFormat: ColorFormat;
+  onPinStep?: (step: number, color: string) => void;
+}) {
   const [copied, flash] = useCopyFlash();
+  /** The generated color a hand-set step replaced, by 0-based index. */
+  const generatedAt = (i: number) => palette.scale.overridden?.[i + 1];
+  // The other mode's resolved scale, for what a custom step becomes there (shown in the pin's tooltip)
+  const otherScale = useMemo(
+    () => (palette.scale.overridden ? generatePaletteScale(palette, !palette.isDark, palette.context) : null),
+    [palette],
+  );
+  const otherMode = palette.isDark ? 'light' : 'dark';
+  const otherLabel = palette.isDark ? 'Light' : 'Dark';
+
+  /** What a pinned step is, and what the same step does in the other mode. */
+  const pinStatus = (step: number): [string, string] => {
+    const o = palette.stepOverrides;
+    const there = otherScale?.colors[step - 1] ?? '';
+    if (palette.scale.synced?.includes(step)) return [`Synced from ${otherMode} ${there}`, 'Click to edit'];
+    if (o?.[otherMode]?.[step]) return ['Custom color', `${otherLabel} mode has its own: ${there}`];
+    if (o?.unsync?.includes(step)) return ['Custom color', `${otherLabel} mode stays generated`];
+    return ['Custom color', `${otherLabel} mode synced to ${there}`];
+  };
 
   return (
     <div className="px-5 pb-5 md:px-8">
@@ -166,19 +204,24 @@ function SolidScale({ palette, colorFormat }: { palette: GeneratedPalette; color
         {palette.scale.colors.map((color, i) => {
           const fg = i === 8 ? palette.scale.contrast : readableOn(color);
           const value = formatScaleColor(palette.scale, i, colorFormat);
+          const step = i + 1;
+          const pinned = !!generatedAt(i);
+          const canPin = !!onPinStep && isOverridableStep(step);
           return (
-            <Tooltip key={i}>
+            <div key={i} className="group/swatch relative">
+            <Tooltip>
               <TooltipTrigger asChild>
                 <button
                   type="button"
                   onClick={() => flash(i, value)}
-                  aria-label={`Copy step ${i + 1}: ${value}`}
-                  className="group/swatch relative flex h-14 flex-col justify-between p-2 text-left transition-[filter] hover:brightness-[1.06] focus-visible:z-10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground max-md:rounded-md md:h-28 md:rounded-none"
+                  aria-label={`Copy step ${step}: ${value}`}
+                  className="relative flex h-14 w-full flex-col justify-between p-2 text-left transition-[filter] hover:brightness-[1.06] focus-visible:z-10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground max-md:rounded-md md:h-28 md:rounded-none"
                   style={{ backgroundColor: color, color: fg }}
                 >
-                  <span className="flex items-center justify-between font-mono text-[0.6875rem] font-medium opacity-70">
-                    {i + 1}
+                  <span className="flex items-center justify-between font-mono text-[0.6875rem] leading-4 font-medium opacity-70">
+                    {step}
                     {i === 8 && palette.lockStep9 && palette.role !== 'gray' && <Lock className="size-3" aria-label="Locked to base color" />}
+                    {pinned && !canPin && <Pin className="size-3" aria-label="Set by hand" />}
                   </span>
                   <span className="font-mono text-[0.625rem] leading-tight tracking-tight tabular md:text-[0.6875rem]">
                     {copied === i ? (
@@ -188,15 +231,56 @@ function SolidScale({ palette, colorFormat }: { palette: GeneratedPalette; color
                     ) : (
                       shortValue(value, colorFormat)
                     )}
-                  </span>
-                  <Copy className="absolute top-2 right-2 size-3 opacity-0 transition-opacity group-hover/swatch:opacity-60" />
-                </button>
+                  </span>                </button>
               </TooltipTrigger>
               <TooltipContent side="bottom" className="max-w-[14rem]">
                 <div className="font-medium">Step {i + 1}</div>
                 <div className="opacity-80">{STEP_USAGE[i]}</div>
+                {generatedAt(i) && (
+                  <div className="mt-1 opacity-80">
+                    {palette.scale.synced?.includes(step) ? `Synced from ${palette.isDark ? 'light' : 'dark'}` : 'Set by hand'} · generated{' '}
+                    <span className="font-mono">{generatedAt(i)}</span>
+                  </div>
+                )}
               </TooltipContent>
             </Tooltip>
+            {canPin && (
+              // A sibling of the copy button, not inside it: one button can't hold another
+              <Tooltip>
+              <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onPinStep?.(step, color);
+                }}
+                aria-label={pinned ? `Edit custom step ${step}` : `Set step ${step} by hand`}
+                className={cn(
+                  // Centered on the step number's row: 8px padding + half its 16px line = 16px = 4px + half of 24px
+                  'absolute top-1 right-0.5 z-20 grid size-6 place-items-center rounded transition-opacity hover:bg-black/10 focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-foreground',
+                  pinned
+                    ? 'opacity-70 hover:opacity-100'
+                    : 'opacity-0 group-hover/swatch:opacity-70 hover:!opacity-100 [@media(hover:none)]:opacity-40',
+                )}
+                style={{ color: fg }}
+              >
+                {/* Outline in both states: being visible without hover is what marks a custom step */}
+                <Pin className="size-3" />
+              </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="max-w-[14rem]">
+                {pinned ? (
+                  <>
+                    <div className="font-medium">{pinStatus(step)[0]}</div>
+                    <div className="opacity-80">{pinStatus(step)[1]}</div>
+                  </>
+                ) : (
+                  'Set a custom color'
+                )}
+              </TooltipContent>
+              </Tooltip>
+            )}
+            </div>
           );
         })}
       </div>

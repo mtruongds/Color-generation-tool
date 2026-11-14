@@ -20,6 +20,24 @@ export interface PaletteConfig {
   tokenRole?: ColorRole | 'none';
   /** Role this palette fills in each extra product, by product id. Roles a product leaves out come from the first product. */
   productRoles?: Record<string, ColorRole>;
+  /**
+   * Hand-set colors that replace generated steps, per mode, e.g. legacy colors a team already ships.
+   * Every other step stays generated. Step 9 is never here: the base color drives it.
+   */
+  stepOverrides?: StepOverrides;
+}
+
+/** Step number (1–12) to #RRGGBB. */
+export type StepMap = Partial<Record<number, string>>;
+
+export interface StepOverrides {
+  light?: StepMap;
+  dark?: StepMap;
+  /**
+   * A step set by hand in one mode only also sets the other mode, derived with the same tint. Steps
+   * listed here opt out: their other mode stays generated. A step set in both modes keeps both colors.
+   */
+  unsync?: number[];
 }
 
 export interface SavedPreset {

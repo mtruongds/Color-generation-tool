@@ -39,6 +39,8 @@ import {
   downloadFile,
   generatePaletteScale,
   getScaleContext,
+  pinStepOverride,
+  sanitizeStepOverrides,
 } from '../../lib/export-utils';
 import { PaletteDisplay } from './PaletteDisplay';
 import { PaletteDocumentation } from './PaletteDocumentation';
@@ -150,13 +152,15 @@ const newId = () => Math.random().toString(36).slice(2, 11);
  * "Primary" becomes Brand, and renamed roles are migrated.
  */
 function normalizePalettes(list: (PaletteConfig & { locked?: boolean })[]): PaletteConfig[] {
-  return list.map(({ locked, ...p }) => {
+  return list.map(({ locked, stepOverrides, ...p }) => {
     const isGray = p.role === 'gray';
     const legacyRole = p.tokenRole as string | undefined;
     const tokenRole =
       legacyRole === 'primary' ? 'brand' : legacyRole === 'secondary' ? 'brand-secondary' : p.tokenRole;
+    const overrides = sanitizeStepOverrides(stepOverrides);
     return {
       ...p,
+      ...(overrides && { stepOverrides: overrides }),
       lockStep9: p.lockStep9 ?? false,
       tokenRole: tokenRole ?? (locked ? (isGray ? 'neutral' : 'brand') : undefined),
       ...(locked && !isGray && /^primary$/i.test(p.name.trim()) && { name: 'Brand' }),
@@ -772,6 +776,25 @@ export function PaletteGenerator({
     setInspectorOpen(true);
   }, []);
 
+  /** Which custom step row the inspector should focus; the nonce re-focuses the same step on a second click. */
+  const [focusStep, setFocusStep] = useState<{ paletteId: string; step: number; nonce: number } | null>(null);
+
+  /**
+   * Pins a step of the shown mode from the canvas, starting at its generated color, then opens its row
+   * in the inspector. An already pinned step keeps its color and just gets focused.
+   */
+  const pinStep = useCallback(
+    (id: string, step: number, color: string) => {
+      const mode = isDarkMode ? 'dark' : 'light';
+      setPalettes((prev) =>
+        prev.map((p) => (p.id === id ? { ...p, stepOverrides: pinStepOverride(p.stepOverrides, mode, step, color.toLowerCase()) } : p)),
+      );
+      editPalette(id);
+      setFocusStep((f) => ({ paletteId: id, step, nonce: (f?.nonce ?? 0) + 1 }));
+    },
+    [isDarkMode, editPalette],
+  );
+
   const resetFoundation = useCallback(() => {
     if (foundation === 'color') {
       // Back to Brand and Neutral, dropping every palette, so it can be undone. Products stay, they hold the fonts too.
@@ -980,6 +1003,7 @@ export function PaletteGenerator({
         tokens={activeRoles.get(activePalette.id)}
         onChange={(updates) => updatePalette(activePalette.id, updates)}
         onSetRole={(role) => setActiveRole(activePalette.id, role)}
+        focusStep={focusStep?.paletteId === activePalette.id ? focusStep : undefined}
         product={
           inheritance && {
             name: activeProduct.name,
@@ -1549,6 +1573,7 @@ export function PaletteGenerator({
                         active={palette.id === activePalette?.id}
                         onSelect={() => setActivePaletteId(palette.id)}
                         onEdit={() => editPalette(palette.id)}
+                        onPinStep={(step, color) => pinStep(palette.id, step, color)}
                       />
                     ))}
                   </div>

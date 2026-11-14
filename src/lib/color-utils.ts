@@ -15,6 +15,10 @@ export interface ColorScale {
   surfaceWideGamut: string;
   background: string;        // Page background the scale was fitted to
   mixedFrom: [string, string, number]; // Reference scales and mix ratio
+  /** Steps (1–12) set by hand instead of generated, with the color the generator gave them. */
+  overridden?: Partial<Record<number, string>>;
+  /** Overridden steps derived from the other mode's hand-set color rather than set in this mode. */
+  synced?: number[];
 }
 
 export interface AlphaColor {
@@ -395,6 +399,96 @@ export function generateScale(
       mixedFrom: ['gray', 'gray', 0],
     };
   }
+}
+
+/** Step 9 follows the base color (and step 10 its hover), so it can't be set by hand. */
+export const isOverridableStep = (step: number) => Number.isInteger(step) && step >= 1 && step <= 12 && step !== 9;
+
+/**
+ * Replaces steps of a generated scale with hand-set colors, keeping every other step as generated.
+ * Derived values that read a replaced step (wide gamut, alpha, and the surface from step 2) follow it.
+ */
+export function applyStepOverrides(
+  scale: ColorScale,
+  overrides: Partial<Record<number, string>> | undefined,
+  isDark: boolean,
+  role: PaletteRole = 'accent',
+): ColorScale {
+  const entries = Object.entries(overrides ?? {})
+    .map(([step, hex]) => [Number(step), hex ? normalizeHex(hex)?.toUpperCase() ?? null : null] as const)
+    .filter((e): e is readonly [number, string] => isOverridableStep(e[0]) && !!e[1]);
+  if (!entries.length) return scale;
+
+  const colors = [...scale.colors];
+  const wideGamut = [...scale.wideGamut];
+  const alphaWideGamut = [...scale.alphaWideGamut];
+  const overridden: Partial<Record<number, string>> = {};
+  let { surface, surfaceWideGamut } = scale;
+
+  try {
+    for (const [step, hex] of entries) {
+      const i = step - 1;
+      overridden[step] = colors[i];
+      colors[i] = hex;
+      wideGamut[i] = toOklchString(new Color(hex).to('oklch'));
+      alphaWideGamut[i] = getAlphaColorP3(hex, scale.background);
+    }
+    // Gray surfaces are fixed tints, accent surfaces are a translucent step 2
+    if (overridden[2] && role !== 'gray') {
+      surface = getAlphaColorSrgb(colors[1], scale.background, isDark ? 0.5 : 0.8);
+      surfaceWideGamut = getAlphaColorP3(wideGamut[1], scale.background, isDark ? 0.5 : 0.8);
+    }
+  } catch (e) {
+    console.error('Error applying step overrides', e);
+    return scale;
+  }
+
+  return { ...scale, colors, wideGamut, alphaWideGamut, surface, surfaceWideGamut, overridden };
+}
+
+/**
+ * Carries a hand-set step into the other mode: the same tint as the edit, applied to that mode's
+ * generated step. Hue moves by the same angle, chroma by the same ratio, and lightness by the same
+ * amount mirrored, since light steps darken away from the background while dark steps lighten.
+ */
+export function deriveCounterpartStep(custom: string, generatedHere: string, generatedThere: string): string {
+  try {
+    const [Lc, Cc, Hc] = new Color(custom).to('oklch').coords;
+    const [Lg, Cg, Hg] = new Color(generatedHere).to('oklch').coords;
+    const [Lt, Ct, Ht] = new Color(generatedThere).to('oklch').coords;
+    const gray = 0.005;
+
+    const L = Math.min(1, Math.max(0, Lt - (Lc - Lg)));
+    const C = Math.max(0, Cg > 0.01 ? Ct * (Cc / Cg) : Ct + (Cc - Cg));
+    // A near-gray color has no meaningful hue: keep the target's, or take the edit's when it adds the tint
+    let H = Number.isFinite(Ht) ? Ht : 0;
+    if (Cc >= gray && Number.isFinite(Hc)) {
+      H = Cg < gray || !Number.isFinite(Hg) || !Number.isFinite(Ht) ? Hc : (((Ht + Hc - Hg) % 360) + 360) % 360;
+    }
+    return toHex(new Color('oklch', [L, C, H]).toGamut({ space: 'srgb' }));
+  } catch (e) {
+    console.error('Error deriving counterpart step', e);
+    return generatedThere;
+  }
+}
+
+/**
+ * Steps 1–8 run from the background toward the solid color: lighter to darker in light mode, darker
+ * to lighter in dark mode. A hand-set step that breaks that order makes hover and active states, or
+ * borders, read backwards. Returns each pair of neighbors out of order where a set step is involved.
+ */
+export function stepOrderIssues(scale: ColorScale, isDark: boolean): { step: number; next: number }[] {
+  const set = scale.overridden ?? {};
+  if (!Object.keys(set).length) return [];
+  const L = scale.colors.map((c) => new Color(c).to('oklch').coords[0]);
+  const issues: { step: number; next: number }[] = [];
+  for (let step = 1; step < 8; step++) {
+    if (!(step in set) && !(step + 1 in set)) continue;
+    const a = L[step - 1];
+    const b = L[step];
+    if (isDark ? a > b : a < b) issues.push({ step, next: step + 1 });
+  }
+  return issues;
 }
 
 // ===== CONTRAST UTILITIES =====
