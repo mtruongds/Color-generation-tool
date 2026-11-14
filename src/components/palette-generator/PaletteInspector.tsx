@@ -209,7 +209,7 @@ export function PaletteInspector({
             {tokens && (
               <div className="flex flex-wrap items-center gap-1.5 font-mono text-[0.6875rem] text-muted-foreground">
                 <span className="rounded bg-muted px-1.5 py-0.5">{tokens.primitive}-*</span>
-                <span aria-hidden>→</span>
+                <ArrowRight className="size-3 shrink-0" aria-hidden />
                 {tokens.role ? (
                   <span className="rounded bg-muted px-1.5 py-0.5 text-foreground">{tokens.role}-*</span>
                 ) : (

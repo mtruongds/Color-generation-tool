@@ -1,7 +1,7 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type React from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown, RotateCcw } from 'lucide-react';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '../ui/select';
 import { cn } from '../ui/utils';
 import { resolveColorRoles } from '../../lib/tokens';
@@ -393,10 +393,10 @@ export function StepTokenLayer({
                       <button
                         type="button"
                         onClick={() => resetRow(pinned.path, row.label)}
-                        className="cursor-pointer rounded px-1 font-mono text-[0.625rem] text-muted-foreground hover:bg-muted hover:text-foreground"
+                        className="inline-flex cursor-pointer items-center gap-1 rounded px-1 font-mono text-[0.625rem] text-muted-foreground hover:bg-muted hover:text-foreground"
                         title={`Back to ${was}`}
                       >
-                        was {was} ↺
+                        was {was} <RotateCcw className="size-2.5" aria-hidden />
                       </button>
                     ) : (
                       !editor && row.value && <span className="font-mono text-[0.625rem] text-muted-foreground">{row.value}</span>
