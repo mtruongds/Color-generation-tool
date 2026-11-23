@@ -67,7 +67,7 @@ const GUIDELINES: Record<DocKey, { intro: string; dos: string[]; donts: string[]
     intro: 'A short opacity scale, a few roles on it, and the purposes components use: disabled controls and the backdrop behind dialogs.',
     dos: [
       'Fade a disabled control as a whole layer with opacity-disabled, so its label, icon and border fade together.',
-      'Put scrims over a solid color: bg-scrim is a solid neutral under opacity-scrim.',
+      'Put scrims over a solid color: a solid neutral (step 12 in light, step 1 in dark) under opacity-scrim.',
       'Use the alpha color steps (a1–a12) for translucent fills that must match a solid step.',
     ],
     donts: [

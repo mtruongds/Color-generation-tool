@@ -408,7 +408,7 @@ function colorCollectionVariables(palettes: GeneratedPalette[], f: Foundations, 
     } else {
       const opacity = t.opacity ? { name: t.opacity, value: opacityValue(f, t.opacity) ?? 1 } : undefined;
       const to = (isDark: boolean): ColorValue => {
-        // A purpose usually takes the dark side of the same role; bg-scrim switches to another step
+        // A purpose usually takes the dark side of the same role; a composed color may switch to another step
         const ref = isDark ? (t.darkRef ?? t.ref!) : t.ref!;
         return { primitive: resolveToken(t, byName, isDark)!, alias: { tier: 'base', path: (isDark && darkPaths.get(ref)) || lightPaths.get(ref)! }, opacity };
       };

@@ -73,7 +73,7 @@ const INVOICES = [
 export function ComponentGallery({ kit }: { kit: PreviewKit }) {
   const { tokens, mobile, isDark, columns, gutter, container, Text, btn, badge, steps, mark, pad, mergeStyle, MUTED, HAIRLINE } = kit;
   const { type: t, space, radius, shadow, mono, opacity } = tokens;
-  // bg-scrim: a solid neutral under opacity-scrim, step 12 in light and step 1 in dark
+  // Scrim: a solid neutral under opacity-scrim, step 12 in light and step 1 in dark
   const scrimStep = isDark ? 'g1' : 'g12';
   const typeOf = kit.typeCss;
 
@@ -639,7 +639,7 @@ export function ComponentGallery({ kit }: { kit: PreviewKit }) {
         </Showcase>
 
         <Showcase name="Dialog">
-          <div className="relative overflow-hidden" style={{ borderRadius: radius.md, background: `color-mix(in oklab, var(--${scrimStep}) ${Math.round(opacity.scrim * 100)}%, transparent)`, padding: space(mobile ? 3 : 5) }} {...steps(`bg-scrim: ${scrimStep} · opacity-scrim ${Math.round(opacity.scrim * 100)}%`)}>
+          <div className="relative overflow-hidden" style={{ borderRadius: radius.md, background: `color-mix(in oklab, var(--${scrimStep}) ${Math.round(opacity.scrim * 100)}%, transparent)`, padding: space(mobile ? 3 : 5) }} {...steps(`scrim: ${scrimStep} · opacity-scrim ${Math.round(opacity.scrim * 100)}%`)}>
             <div style={{ background: 'var(--bg)', borderRadius: radius.lg, boxShadow: shadow.xl, padding: space(5) }} {...steps('dialog: background')} {...mark('shadow', 'shadow-xl')}>
               <div className="flex items-start justify-between" style={{ gap: space(3) }}>
                 <Text s="h5" as="h3" tagged={false}>

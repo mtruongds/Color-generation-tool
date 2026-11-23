@@ -89,7 +89,7 @@ export interface Token {
   /** The text style this token is one property of. */
   partOf?: string;
   /**
-   * On a color: the opacity token laid over the color it aliases, making a composed color (bg-scrim is
+   * On a color: the opacity token laid over the color it aliases, making a composed color (e.g.
    * neutral 12 at opacity-scrim). Figma keeps both links; CSS applies it with relative color syntax.
    */
   opacity?: string;
@@ -432,22 +432,6 @@ function colorTokens(palettes: GeneratedPalette[], modes: TokenModes, format: Co
       type: 'color',
       ref: `${s.role}-${s.step}`,
       description: s.usage,
-    });
-  }
-  // The backdrop behind dialogs: a solid neutral under opacity-scrim, so the opacity stays its own token.
-  // Light darkens with step 12; dark with step 1, since dark step 12 is near white. Solid steps only:
-  // Figma ignores the extra opacity on a color that already has alpha.
-  if (present.has('neutral')) {
-    tokens.push({
-      tier: 'semantic',
-      group: 'color',
-      name: 'bg-scrim',
-      path: ['color', 'bg-scrim'],
-      type: 'color',
-      ref: modes === 'dark' ? 'neutral-1' : 'neutral-12',
-      darkRef: modes === 'both' ? 'neutral-1' : undefined,
-      opacity: SCRIM_OPACITY,
-      description: 'Backdrop behind dialogs and drawers',
     });
   }
   return tokens;

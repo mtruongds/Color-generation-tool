@@ -539,12 +539,12 @@ export function PaletteGenerator({
   );
   const resolved = useMemo(() => resolveFoundations(productFoundations, isDarkMode), [productFoundations, isDarkMode]);
 
-  /** bg-scrim in the mode shown, for the Opacity page: its solid neutral, and that neutral under opacity-scrim. */
+  /** The scrim in the mode shown, for the Opacity page: its solid neutral, and that neutral under opacity-scrim. */
   const scrim = useMemo(() => {
     if (foundation !== 'opacity') return { base: 'transparent', color: 'transparent' };
     const tokens = buildTokens(generatedPalettes, foundations, { groups: ['color'], modes: isDarkMode ? 'dark' : 'light', colorFormat: 'hex' });
     const byName = new Map(tokens.map((t) => [t.name, t]));
-    const token = byName.get('bg-scrim');
+    const token = byName.get(isDarkMode ? 'neutral-1' : 'neutral-12');
     const base = token ? String(resolveToken(token, byName)?.value) : isDarkMode ? '#000' : '#111';
     return { base, color: `color-mix(in oklab, ${base} ${opacityPercent(foundations, 'opacity-scrim') ?? 50}%, transparent)` };
   }, [foundation, generatedPalettes, foundations, isDarkMode]);

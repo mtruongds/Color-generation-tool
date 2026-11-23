@@ -26,7 +26,7 @@ export function OpacityCanvas({
 }: {
   foundations: Foundations;
   accent: Accent;
-  /** bg-scrim in the mode shown: the solid neutral it's built on, and its result under opacity-scrim. */
+  /** The scrim in the mode shown: the solid neutral it's built on, and its result under opacity-scrim. */
   scrim: { base: string; color: string };
 }) {
   const scale = generateOpacityScale(f.opacity);
@@ -93,7 +93,7 @@ export function OpacityCanvas({
             <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
               <span className="size-3 shrink-0 rounded-[3px] border" style={{ background: scrim.base }} />
               <span>
-                <span className="font-mono">bg-scrim</span> · solid neutral at {scrimPercent}%
+                solid neutral · <span className="font-mono">opacity-scrim</span> {scrimPercent}%
               </span>
             </div>
           </div>

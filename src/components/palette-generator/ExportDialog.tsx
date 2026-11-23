@@ -90,7 +90,7 @@ const COLOR_HINTS: Record<'css' | 'json', string> = {
 const COLLECTION_HINTS: Record<ColorCollection, string> = {
   primitive: 'Raw palette steps, light and -dark side by side, in one mode. _OKLCH is for reference; the plugin skips it.',
   base: 'Roles aliasing Color Palette, light and -dark side by side. Import Color Palette first.',
-  semantic: `Purposes aliasing Color, with Light and Dark modes. Import Color first, and ${SHEET_COLLECTIONS.opacity.semantic} before it for bg-scrim, a color + opacity.`,
+  semantic: `Purposes aliasing Color, with Light and Dark modes. Import Color first.`,
 };
 
 /** Sheets CSV for the foundations that split into collections like Color. */
