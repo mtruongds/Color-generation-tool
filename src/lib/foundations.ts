@@ -669,6 +669,81 @@ export function computeGridLayout(c: GridConfig, viewport: number): GridLayout {
 }
 
 // ============================================================
+// Opacity
+// ============================================================
+
+export interface OpacityConfig {
+  /** The scale in percent, ascending. Primitives are named by step, so editing a value keeps every name. */
+  steps: number[];
+}
+
+export const OPACITY_STEP_COUNT = 10;
+
+/** Each keeps the roles' steps in the same place, so switching presets moves every role together. */
+export const OPACITY_PRESETS: { label: string; steps: number[] }[] = [
+  { label: 'Airy', steps: [4, 8, 16, 24, 32, 40, 56, 64, 72, 88] },
+  { label: 'Even', steps: [5, 10, 20, 30, 40, 50, 60, 70, 80, 90] },
+  { label: 'Dense', steps: [8, 16, 24, 32, 48, 56, 64, 72, 88, 96] },
+];
+
+/** The base roles and the step each starts on, weakest first. On Even: 10, 20, 40, 50 and 80%. */
+export const OPACITY_ROLES = [
+  { name: 'faint', step: 2, usage: 'Hover and pressed overlays' },
+  { name: 'subtle', step: 3, usage: 'Tints, dividers on images' },
+  { name: 'medium', step: 5, usage: 'Disabled controls' },
+  { name: 'strong', step: 6, usage: 'Backdrops behind dialogs' },
+  { name: 'heavy', step: 9, usage: 'Overlays that hide what is behind' },
+] as const;
+
+export interface OpacityToken {
+  /** 1-based position in the scale. */
+  step: number;
+  /** Percent. */
+  value: number;
+}
+
+export const generateOpacityScale = (c: OpacityConfig): OpacityToken[] => c.steps.map((value, i) => ({ step: i + 1, value }));
+
+/** The purposes components use, and the role each starts on. */
+export const OPACITY_PURPOSES = [
+  { name: 'disabled', role: 'medium', usage: 'Disabled controls, applied to the whole layer' },
+  { name: 'scrim', role: 'strong', usage: 'Backdrop behind dialogs and drawers, over a solid neutral' },
+] as const;
+
+/** Each role's and purpose's generated alias, by token name. */
+const OPACITY_DEFAULT_REFS = new Map<string, string>([
+  ...OPACITY_ROLES.map((r) => [`opacity-${r.name}`, `opacity-scale-${r.step}`] as const),
+  ...OPACITY_PURPOSES.map((p) => [`opacity-${p.name}`, `opacity-${p.role}`] as const),
+]);
+
+/**
+ * An opacity token's percent, following the user's re-pointed aliases and their own tokens down to
+ * a step. Lives here rather than on the token model so previews can use it without building tokens.
+ */
+export function opacityPercent(f: Pick<Foundations, 'opacity' | 'aliases' | 'customTokens'>, name: string): number | undefined {
+  const custom = new Map((f.customTokens ?? []).filter((c) => c.group === 'opacity').map((c) => [c.name, c.ref]));
+  const stepOf = (n: string) => Number(n.match(/^opacity-scale-(\d+)$/)?.[1] ?? 0);
+  // Like the token model, an alias whose target is gone (a deleted custom role) falls back to the generator's
+  const exists = (n: string) => (stepOf(n) > 0 && stepOf(n) <= f.opacity.steps.length) || custom.has(n) || OPACITY_DEFAULT_REFS.has(n);
+  let cur: string | undefined = name;
+  for (let i = 0; cur && i < 5; i++) {
+    if (stepOf(cur)) return f.opacity.steps[stepOf(cur) - 1];
+    const alias: string | undefined = f.aliases?.[cur];
+    cur = (alias && exists(alias) ? alias : undefined) ?? custom.get(cur) ?? OPACITY_DEFAULT_REFS.get(cur);
+  }
+  return undefined;
+}
+
+/** Keeps exactly OPACITY_STEP_COUNT whole percents from 0 to 100, ascending, so step names stay in order. */
+function normalizeOpacity(raw: unknown): OpacityConfig {
+  const steps = (raw as Partial<OpacityConfig> | undefined)?.steps;
+  if (!Array.isArray(steps) || steps.length !== OPACITY_STEP_COUNT || !steps.every((v) => typeof v === 'number' && Number.isFinite(v))) {
+    return { steps: [...DEFAULT_FOUNDATIONS.opacity.steps] };
+  }
+  return { steps: steps.map((v) => Math.round(Math.min(100, Math.max(0, v)))).sort((a, b) => a - b) };
+}
+
+// ============================================================
 // All foundations
 // ============================================================
 
@@ -676,6 +751,7 @@ export interface Foundations {
   typography: TypographyConfig;
   spacing: SpacingConfig;
   radius: RadiusConfig;
+  opacity: OpacityConfig;
   shadow: ShadowConfig;
   grid: GridConfig;
   /** Base and semantic tokens re-pointed by the user: token name → the token it now aliases. */
@@ -703,6 +779,7 @@ export const DEFAULT_FOUNDATIONS: Foundations = {
   },
   spacing: { base: 4, progression: 'linear' },
   radius: { base: 8 },
+  opacity: { steps: OPACITY_PRESETS[1].steps },
   shadow: { style: 'soft', intensity: 1, tint: '#3e63dd', tintStrength: 0.15, lightAngle: 0 },
   grid: {
     breakpoints: GRID_PRESETS[0].breakpoints,
@@ -729,6 +806,7 @@ export function normalizeFoundations(raw: unknown): Foundations {
     typography: normalizeTypography(r.typography && typeof r.typography === 'object' ? r.typography : {}),
     spacing: merge('spacing'),
     radius: merge('radius'),
+    opacity: normalizeOpacity(r.opacity),
     shadow: merge('shadow'),
     grid,
     aliases: normalizeAliases(r.aliases),
@@ -836,6 +914,8 @@ export interface ResolvedFoundations {
   /** px for a spacing multiplier, e.g. space(4) = 16 with a 4px base. */
   space: (multiplier: number) => number;
   radius: Record<string, number>;
+  /** Fractions, for the pages' disabled controls and dialog backdrops. */
+  opacity: { disabled: number; scrim: number };
   shadow: Record<string, string>;
   /** Font stack for code. */
   mono: string;
@@ -854,6 +934,7 @@ export function resolveFoundations(f: Foundations, isDark: boolean): ResolvedFou
     type: resolveTypeStyles(generateTypeScale(f.typography)),
     space: (m) => m * f.spacing.base,
     radius: Object.fromEntries(generateRadiusScale(f.radius).map((r) => [r.name, r.value])),
+    opacity: { disabled: (opacityPercent(f, 'opacity-disabled') ?? 40) / 100, scrim: (opacityPercent(f, 'opacity-scrim') ?? 50) / 100 },
     shadow: Object.fromEntries(generateShadowScale(f.shadow, isDark).map((s) => [s.name, s.css])),
     mono: fontStack(f.typography.monoFamily, 'mono'),
   };

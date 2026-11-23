@@ -7,7 +7,9 @@ import {
   type Token,
   type TokenGroup,
   type TypographyParts,
+  SCRIM_OPACITY,
   buildTokens,
+  opacityValue,
   productSlug,
   productsOf,
   resolveShadowLayers,
@@ -21,7 +23,7 @@ export type LengthUnit = 'px' | 'rem';
 /** Which part of the system an export covers. */
 export type ExportScope = 'all' | TokenGroup;
 
-const ALL_GROUPS: TokenGroup[] = ['color', 'typography', 'spacing', 'radius', 'shadow', 'grid'];
+const ALL_GROUPS: TokenGroup[] = ['color', 'typography', 'spacing', 'radius', 'opacity', 'shadow', 'grid'];
 const groupsFor = (scope: ExportScope) => (scope === 'all' ? ALL_GROUPS : [scope]);
 
 const ROOT_FONT_SIZE = 16;
@@ -63,21 +65,32 @@ function cssValue(t: Token, unit: LengthUnit): string {
 /** Every CSS export switches to dark values under this, on <html>, next to `data-product`. */
 const DARK_SELECTOR = '[data-theme="dark"]';
 
+/**
+ * A composed color: the color variable under an opacity variable, via relative color syntax. The
+ * fallback keeps it working in a file exported without the opacity tokens.
+ */
+const composedCss = (colorVar: string, opacity: string, f: Foundations) =>
+  `rgb(from var(--${colorVar}) r g b / var(--${opacity}, ${trim(opacityValue(f, opacity) ?? 1, 3)}))`;
+
+/** The value a token aliases, as CSS: the variable, or a composed color when it carries an opacity. */
+const aliasCss = (t: Token, ref: string, f: Foundations) => (t.opacity ? composedCss(ref, t.opacity, f) : `var(--${ref})`);
+
 /** A text style that points at another is still built from its own properties, which may differ. */
-const decl = (t: Token, unit: LengthUnit, indent = '  ') =>
-  `${indent}--${t.name}: ${t.ref && t.type !== 'typography' ? `var(--${t.ref})` : cssValue(t, unit)};`;
+const decl = (t: Token, unit: LengthUnit, f: Foundations, indent = '  ') =>
+  `${indent}--${t.name}: ${t.ref && t.type !== 'typography' ? aliasCss(t, t.ref, f) : cssValue(t, unit)};`;
 
 const GROUP_LABEL: Record<TokenGroup, string> = {
   color: 'Color',
   typography: 'Typography',
   spacing: 'Spacing',
   radius: 'Radius',
+  opacity: 'Opacity',
   shadow: 'Shadow',
   grid: 'Layout grid',
 };
 
 /** The three tiers as custom properties, with dark and responsive overrides after each tier. */
-function variablesCss(tokens: Token[], unit: LengthUnit) {
+function variablesCss(tokens: Token[], unit: LengthUnit, f: Foundations) {
   const out: string[] = [];
   for (const tier of TIERS) {
     const inTier = tokens.filter((t) => t.tier === tier);
@@ -88,7 +101,7 @@ function variablesCss(tokens: Token[], unit: LengthUnit) {
       if (!inGroup.length) continue;
       if (lines.length) lines.push('');
       lines.push(`  /* ${GROUP_LABEL[group]} */`);
-      lines.push(...inGroup.map((t) => decl(t, unit)));
+      lines.push(...inGroup.map((t) => decl(t, unit, f)));
     }
     const dark = inTier.filter((t) => t.darkRef);
     const darkNote = dark.length || inTier.some((t) => t.products?.some((o) => o.darkRef)) ? DARK_NOTE : '';
@@ -103,7 +116,7 @@ function variablesCss(tokens: Token[], unit: LengthUnit) {
     }
 
     // Put data-theme="dark" on <html> so tokens that alias these resolve against the dark values
-    if (dark.length) css += `\n${DARK_SELECTOR} {\n${dark.map((t) => `  --${t.name}: var(--${t.darkRef});`).join('\n')}\n}\n`;
+    if (dark.length) css += `\n${DARK_SELECTOR} {\n${dark.map((t) => `  --${t.name}: ${aliasCss(t, t.darkRef!, f)};`).join('\n')}\n}\n`;
 
     // Put data-product on <html> to switch the roles an extra product fills itself
     css += productCss(inTier.flatMap((t) => t.products?.map((o) => ({ name: t.name, ...o })) ?? []));
@@ -174,7 +187,7 @@ interface ExportOptions {
 export function generateCss(palettes: GeneratedPalette[], f: Foundations, opts: ExportOptions) {
   const tokens = buildTokens(palettes, f, { groups: groupsFor(opts.scope), modes: 'both', colorFormat: opts.colorFormat });
   const utilities = utilitiesCss(tokens, f);
-  return `${variablesCss(tokens, opts.unit)}${utilities ? `\n${utilities}` : ''}`;
+  return `${variablesCss(tokens, opts.unit, f)}${utilities ? `\n${utilities}` : ''}`;
 }
 
 // ============================================================
@@ -264,6 +277,20 @@ export function generateJson(palettes: GeneratedPalette[], f: Foundations, opts:
       continue;
     }
     const extensions: Record<string, unknown> = {};
+    if (t.opacity) {
+      // The W3C format has no composed color: the value is the result, the parts go in an extension
+      const a = opacityValue(f, t.opacity) ?? 1;
+      const at = (isDark: boolean) => chroma(String(resolveToken(t, byName, isDark)?.value)).alpha(a).css();
+      if (t.darkRef) extensions.modes = { dark: at(true) };
+      extensions['monism.composed'] = { color: alias(t.ref!), ...(t.darkRef && { darkColor: alias(t.darkRef) }), opacity: alias(t.opacity) };
+      setPath(out, [t.tier, ...t.path], {
+        $type: 'color',
+        $value: at(false),
+        ...(t.description && { $description: t.description }),
+        $extensions: extensions,
+      });
+      continue;
+    }
     if (t.darkRef) extensions.modes = { dark: alias(t.darkRef) };
     if (t.products) {
       extensions['monism.products'] = Object.fromEntries(
@@ -328,6 +355,8 @@ interface ColorValue {
   primitive: Token;
   /** The variable it aliases in the collection below, if any. */
   alias?: { tier: ColorCollection; path: string[] };
+  /** A composed color's opacity token and its value as a fraction. */
+  opacity?: { name: string; value: number };
 }
 
 interface ColorVariable {
@@ -377,10 +406,12 @@ function colorCollectionVariables(palettes: GeneratedPalette[], f: Foundations, 
       out.push({ token: t, path, modes: modes(false) });
       if (t.darkRef) darkGroup.push({ token: t, path: darkPath(path), modes: modes(true) });
     } else {
-      const to = (isDark: boolean): ColorValue => ({
-        primitive: resolveToken(t, byName, isDark)!,
-        alias: { tier: 'base', path: (isDark && darkPaths.get(t.ref!)) || lightPaths.get(t.ref!)! },
-      });
+      const opacity = t.opacity ? { name: t.opacity, value: opacityValue(f, t.opacity) ?? 1 } : undefined;
+      const to = (isDark: boolean): ColorValue => {
+        // A purpose usually takes the dark side of the same role; bg-scrim switches to another step
+        const ref = isDark ? (t.darkRef ?? t.ref!) : t.ref!;
+        return { primitive: resolveToken(t, byName, isDark)!, alias: { tier: 'base', path: (isDark && darkPaths.get(ref)) || lightPaths.get(ref)! }, opacity };
+      };
       out.push({ token: t, path, modes: { Light: to(false), Dark: to(true) } });
     }
   }
@@ -400,7 +431,8 @@ const COLLECTION_ORDER: ColorCollection[] = ['primitive', 'base', 'semantic'];
 /** One color collection as custom properties. Variable names are the collection paths joined with `-`. */
 function generateColorCollectionCss(palettes: GeneratedPalette[], f: Foundations, tier: ColorCollection, colorFormat: ColorFormat) {
   const variables = colorCollectionVariables(palettes, f, tier, colorFormat);
-  const value = ({ primitive, alias }: ColorValue) => (alias ? `var(--${alias.path.join('-')})` : String(primitive.value));
+  const value = ({ primitive, alias, opacity }: ColorValue) =>
+    alias ? (opacity ? composedCss(alias.path.join('-'), opacity.name, f) : `var(--${alias.path.join('-')})`) : String(primitive.value);
   const [firstMode, ...otherModes] = Object.keys(variables[0]?.modes ?? { Default: null });
   let css = `/* ===== ${COLLECTION_TITLES[tier]} ===== */\n:root {\n`;
   css += variables.map((v) => `  --${v.path.join('-')}: ${value(v.modes[firstMode])};`).join('\n');
@@ -436,9 +468,13 @@ function generateColorCollectionCss(palettes: GeneratedPalette[], f: Foundations
  */
 function colorCollectionTokens(palettes: GeneratedPalette[], f: Foundations, tier: ColorCollection, colorFormat: ColorFormat) {
   const variables = colorCollectionVariables(palettes, f, tier, colorFormat);
-  const ref = (v: ColorValue) => (v.alias ? `{${[collectionSlug(v.alias.tier), ...v.alias.path].join('.')}}` : String(v.primitive.value));
+  const link = (v: ColorValue) => `{${[collectionSlug(v.alias!.tier), ...v.alias!.path].join('.')}}`;
+  // A composed color goes out as its result, like the full JSON export, with its parts in an extension
+  const ref = (v: ColorValue) =>
+    v.opacity ? chroma(String(v.primitive.value)).alpha(v.opacity.value).css() : v.alias ? link(v) : String(v.primitive.value);
   const out: Record<string, unknown> = {};
   for (const { token: t, path, modes } of variables) {
+    const composed = modes[Object.keys(modes)[0]].opacity;
     const [first, ...others] = Object.keys(modes);
     // Theme's dark alias, and each product's alias in Color where it differs from the first product's
     const extra = Object.fromEntries(
@@ -448,7 +484,12 @@ function colorCollectionTokens(palettes: GeneratedPalette[], f: Foundations, tie
       $type: 'color',
       $value: ref(modes[first]),
       ...(t.description && { $description: t.description }),
-      ...(Object.keys(extra).length && { $extensions: { modes: extra } }),
+      ...((Object.keys(extra).length || composed) && {
+        $extensions: {
+          ...(Object.keys(extra).length && { modes: extra }),
+          ...(composed && { 'monism.composed': { color: link(modes.Light), darkColor: link(modes.Dark), opacity: composed.name } }),
+        },
+      }),
     });
   }
   return out;
@@ -506,8 +547,11 @@ export function generateColorCollectionCsv(palettes: GeneratedPalette[], f: Foun
   for (const { token: t, path, modes } of variables) {
     const scopes = figmaScopes(t).map((s) => SCOPE_LABELS[s] ?? s);
     const cells = modeNames.map((m) => {
-      const { primitive, alias } = modes[m];
-      return alias ? `{${COLOR_COLLECTIONS[alias.tier]}:${alias.path.join('/')}}` : chroma(primitive.value as string).hex();
+      const { primitive, alias, opacity } = modes[m];
+      if (!alias) return chroma(primitive.value as string).hex();
+      const color = `{${COLOR_COLLECTIONS[alias.tier]}:${alias.path.join('/')}}`;
+      // Color + opacity: the plugin links both, so the result follows the neutral and the opacity token
+      return opacity ? `${color} {${SHEET_COLLECTIONS.opacity.semantic}:${opacity.name.replace(/^opacity-/, '')}}` : color;
     });
     lines.push([collection, path.join('/'), 'COLOR', t.description ?? '', scopes.length ? scopes.join(', ') : 'No scope', hidden, ...cells, ...(oklch ? [t.p3 ?? ''] : [])].map(csvCell).join(','));
   }
@@ -526,6 +570,7 @@ export const SHEET_COLLECTIONS: Record<SheetGroup, Record<Token['tier'], string>
   typography: { primitive: 'Type Scale', base: 'Typography', semantic: 'Text' },
   spacing: { primitive: 'Space Scale', base: 'Spacing', semantic: 'Layout Spacing' },
   radius: { primitive: 'Radius Scale', base: 'Radius', semantic: 'Shape' },
+  opacity: { primitive: 'Opacity Scale', base: 'Opacity', semantic: 'Transparency' },
   grid: { primitive: 'Breakpoints', base: 'Grid', semantic: 'Page Layout' },
 };
 
@@ -560,6 +605,9 @@ function sheetScopes(t: Token): string[] {
     }
     case 'grid':
       return t.type === 'number' ? [] : t.name === 'page-gutter' || t.name === 'page-margin' ? ['Gap'] : ['Width and height'];
+    case 'opacity':
+      // Scrim is laid over a color; disabled over a whole layer. A purpose of the user's could be either.
+      return t.name === SCRIM_OPACITY ? ['Color variable opacity'] : t.name === 'opacity-disabled' ? ['Layer opacity'] : ['Layer opacity', 'Color variable opacity'];
     default:
       return [];
   }
@@ -579,7 +627,8 @@ function sheetValue(t: Token): string {
     case 'letterSpacing':
       return trim((t.value as number) * 100, 2);
     default:
-      return String(t.value);
+      // Figma's opacity variables hold percent
+      return t.group === 'opacity' ? trim((t.value as number) * 100, 2) : String(t.value);
   }
 }
 
@@ -632,7 +681,8 @@ export function generateSheetVariablesCsv(palettes: GeneratedPalette[], f: Found
       const target = ref ? byName.get(ref) : undefined;
       return target ? `{${SHEET_COLLECTIONS[group][target.tier]}:${ownPath(target)}}` : sheetValue(t);
     });
-    const description = t.type === 'letterSpacing' ? [t.description, 'Percent of font size'].filter(Boolean).join('. ') : (t.description ?? '');
+    const unitNote = t.type === 'letterSpacing' ? 'Percent of font size' : t.group === 'opacity' && t.tier === 'primitive' ? 'Percent' : undefined;
+    const description = [t.description, unitNote].filter(Boolean).join('. ');
     const scopes = sheetScopes(t);
     lines.push([collection, ownPath(t), SHEET_TYPES[t.type] ?? 'FLOAT', description, scopes.length ? scopes.join(', ') : 'No scope', hidden, ...cells].map(csvCell).join(','));
   }

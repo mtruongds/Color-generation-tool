@@ -1,3 +1,4 @@
+import chroma from 'chroma-js';
 import { Fragment, useMemo, useState } from 'react';
 import { Check, ChevronRight, ChevronsUpDown, GripVertical, Pencil, Plus, RotateCcw, Search, Trash2 } from 'lucide-react';
 import { Button } from '../ui/button';
@@ -29,7 +30,7 @@ import {
   resolveTypography,
 } from '../../lib/tokens';
 
-const ALL_GROUPS: TokenGroup[] = ['color', 'typography', 'spacing', 'radius', 'shadow', 'grid'];
+const ALL_GROUPS: TokenGroup[] = ['color', 'typography', 'spacing', 'radius', 'opacity', 'shadow', 'grid'];
 
 const TIER_META: Record<Tier, { label: string; blurb: string; tone: string }> = {
   primitive: { label: 'Primitive', blurb: 'Raw values · locked', tone: 'bg-muted text-muted-foreground' },
@@ -43,6 +44,7 @@ const NAME_HINTS: Record<TokenGroup, Record<'base' | 'semantic', string>> = {
   typography: { base: 'font-size-hero', semantic: 'text-button' },
   spacing: { base: 'space-4xl', semantic: 'padding-section' },
   radius: { base: 'radius-3xl', semantic: 'radius-input' },
+  opacity: { base: 'opacity-ghost', semantic: 'opacity-hover-overlay' },
   shadow: { base: 'shadow-glow-color', semantic: 'shadow-toast' },
   grid: { base: 'container-narrow', semantic: 'page-narrow' },
 };
@@ -70,7 +72,7 @@ function formatValue(t: Token | undefined, byName?: Map<string, Token>): string 
       return `${n} ${n === 1 ? 'layer' : 'layers'}`;
     }
     default:
-      return String(t.value);
+      return t.group === 'opacity' ? `${Math.round((t.value as number) * 100)}%` : String(t.value);
   }
 }
 
@@ -84,7 +86,20 @@ function Preview({ t, byName }: { t: Token | undefined; byName: Map<string, Toke
       </span>
     );
   }
-  if (t.type === 'color') return <span className="size-4 shrink-0 rounded-[4px] border border-black/10" style={{ background: String(t.value) }} />;
+  if (t.type === 'color') {
+    return (
+      <span className="checkerboard size-4 shrink-0 overflow-hidden rounded-[4px] border border-black/10">
+        <span className="block size-full" style={{ background: String(t.value) }} />
+      </span>
+    );
+  }
+  if (t.group === 'opacity') {
+    return (
+      <span className="checkerboard size-4 shrink-0 overflow-hidden rounded-[4px] border border-black/10">
+        <span className="block size-full bg-foreground" style={{ opacity: t.value as number }} />
+      </span>
+    );
+  }
   if (t.type === 'shadow') {
     return <span className="h-4 w-6 shrink-0 rounded-[3px] bg-card" style={{ boxShadow: (t.value as ShadowLayer[]).map(layerToCss).join(', ') }} />;
   }
@@ -98,6 +113,9 @@ function Preview({ t, byName }: { t: Token | undefined; byName: Map<string, Toke
 function resolveShown(t: Token, byName: Map<string, Token>, isDark: boolean): Token | undefined {
   if (t.type === 'typography') return t;
   const landed = resolveToken(t, byName, isDark);
+  // A composed color shows its result: the color under its opacity
+  const opacity = t.opacity ? resolveToken(byName.get(t.opacity)!, byName)?.value : undefined;
+  if (landed && typeof opacity === 'number') return { ...landed, value: chroma(String(landed.value)).alpha(opacity).css() };
   return landed?.type === 'shadow' ? { ...landed, value: resolveShadowLayers(landed, byName, isDark) } : landed;
 }
 

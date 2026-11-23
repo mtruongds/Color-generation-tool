@@ -46,7 +46,8 @@ import type { ColorScale } from '../../lib/color-utils';
 import { type FoundationRow, type RowEditor, type TokenOption, StepTokenLayer, scaleVars } from '../palette-generator/PalettePreview';
 import { ComponentGallery } from './ComponentGallery';
 
-export type PreviewKey = Exclude<FoundationKey, 'color'>;
+/** Opacity has no highlight: the pages use it in two places, the disabled button and the dialog backdrop. */
+export type PreviewKey = Exclude<FoundationKey, 'color' | 'opacity'>;
 
 /** Pages drawn from the foundation tokens. */
 export type FoundationPage = 'dashboard' | 'components' | 'landing' | 'article';
@@ -151,6 +152,7 @@ type PadProps = { 'data-fx-spacing'?: string; 'data-fx-spacing-value'?: string; 
 export interface PreviewKit {
   tokens: ResolvedFoundations;
   mobile: boolean;
+  isDark: boolean;
   /** Masonry columns that fit the content width. */
   columns: number;
   gutter: number;
@@ -699,6 +701,7 @@ export function FoundationPreview({
               kit={{
                 tokens,
                 mobile,
+                isDark,
                 columns: contentWidth >= 1080 ? 3 : contentWidth >= 640 ? 2 : 1,
                 gutter: bp.gutter,
                 container,
@@ -1575,7 +1578,7 @@ export function FoundationPreview({
                   {...mark('radius', 'radius-xl')} {...mark('shadow', shadowName('lg'))}
                 >
                   {[
-                    { name: 'Personal', price: '$0', per: 'forever', items: ['All six foundations', 'CSS and JSON export', 'Light and dark themes'], primary: false },
+                    { name: 'Personal', price: '$0', per: 'forever', items: ['Every foundation', 'CSS and JSON export', 'Light and dark themes'], primary: false },
                     { name: 'Pro', price: '$24', per: 'per editor / month', items: ['Everything in Personal', 'Figma variables sync', 'Shared team presets', 'Version history'], primary: true },
                   ].map(({ name, price, per, items, primary }, i) => (
                     <div
