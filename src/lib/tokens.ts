@@ -13,7 +13,6 @@ import {
   type ShadowLayer,
   fontStack,
   generateOpacityScale,
-  opacityPercent,
   generateRadiusScale,
   generateShadowScale,
   generateSpacingScale,
@@ -88,11 +87,6 @@ export interface Token {
   custom?: boolean;
   /** The text style this token is one property of. */
   partOf?: string;
-  /**
-   * On a color: the opacity token laid over the color it aliases, making a composed color (e.g.
-   * neutral 12 at opacity-scrim). Figma keeps both links; CSS applies it with relative color syntax.
-   */
-  opacity?: string;
   /** The alias in each extra product that points somewhere else: base color roles, radius steps, text style families. */
   products?: { product: string; ref: string; darkRef?: string }[];
 }
@@ -463,12 +457,6 @@ function opacityTokens(f: Foundations): Token[] {
     tokens.push({ tier: 'semantic', group: 'opacity', name: `opacity-${p.name}`, path: ['opacity', p.name], type: 'number', ref: `opacity-${p.role}`, description: p.usage });
   }
   return tokens;
-}
-
-/** An opacity token's value as a fraction, following the user's re-pointed aliases. */
-export function opacityValue(f: Foundations, name: string): number | undefined {
-  const percent = opacityPercent(f, name);
-  return percent === undefined ? undefined : percent / 100;
 }
 
 // ============================================================

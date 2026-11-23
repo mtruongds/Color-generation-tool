@@ -1,4 +1,3 @@
-import chroma from 'chroma-js';
 import { Fragment, useMemo, useState } from 'react';
 import { Check, ChevronRight, ChevronsUpDown, GripVertical, Pencil, Plus, RotateCcw, Search, Trash2 } from 'lucide-react';
 import { Button } from '../ui/button';
@@ -113,9 +112,6 @@ function Preview({ t, byName }: { t: Token | undefined; byName: Map<string, Toke
 function resolveShown(t: Token, byName: Map<string, Token>, isDark: boolean): Token | undefined {
   if (t.type === 'typography') return t;
   const landed = resolveToken(t, byName, isDark);
-  // A composed color shows its result: the color under its opacity
-  const opacity = t.opacity ? resolveToken(byName.get(t.opacity)!, byName)?.value : undefined;
-  if (landed && typeof opacity === 'number') return { ...landed, value: chroma(String(landed.value)).alpha(opacity).css() };
   return landed?.type === 'shadow' ? { ...landed, value: resolveShadowLayers(landed, byName, isDark) } : landed;
 }
 
