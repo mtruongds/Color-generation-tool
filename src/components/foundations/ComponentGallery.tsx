@@ -136,10 +136,10 @@ export function ComponentGallery({ kit }: { kit: PreviewKit }) {
       onKeyDown={(e) => e.key === ' ' && (e.preventDefault(), onClick())}
       className="flex cursor-pointer items-center justify-between outline-none"
       style={{ gap: space(3) }}
-      {...steps(on ? 'switch: on a9 · thumb: white' : 'switch: off g6')}
+      {...steps(on ? 'switch: on a9 · thumb: white' : 'switch: off g5')}
     >
       {children}
-      <span className={cn('relative shrink-0 transition-colors', on ? 'bg-(--a9)' : 'bg-(--g6)')} style={{ width: 32, height: 18, borderRadius: radius.full }}>
+      <span className={cn('relative shrink-0 transition-colors', on ? 'bg-(--a9)' : 'bg-(--g5)')} style={{ width: 32, height: 18, borderRadius: radius.full }}>
         <span className="absolute bg-white transition-[left]" style={{ top: 2, left: on ? 16 : 2, width: 14, height: 14, borderRadius: radius.full, boxShadow: shadow.xs }} />
       </span>
     </span>
@@ -241,8 +241,8 @@ export function ComponentGallery({ kit }: { kit: PreviewKit }) {
           </div>
           <div
             className="border border-(--g6) bg-(--g3)"
-            style={{ ...typeOf(t['body-sm']), color: 'var(--g9)', marginTop: space(3), padding: fieldPad, borderRadius: radius.md, cursor: 'not-allowed' }}
-            {...steps('disabled: g3 · border: g6 · text: g9')}
+            style={{ ...typeOf(t['body-sm']), color: 'var(--g8)', marginTop: space(3), padding: fieldPad, borderRadius: radius.md, cursor: 'not-allowed' }}
+            {...steps('disabled: g3 · border: g6 · text: g8')}
           >
             Disabled
           </div>

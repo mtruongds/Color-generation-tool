@@ -215,7 +215,7 @@ function SolidScale({
                   type="button"
                   onClick={() => flash(i, value)}
                   aria-label={`Copy step ${step}: ${value}`}
-                  className="relative flex h-14 w-full flex-col justify-between p-2 text-left transition-[filter] hover:brightness-[1.06] focus-visible:z-10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground max-md:rounded-md md:h-28 md:rounded-none"
+                  className="relative flex h-14 w-full flex-col justify-between p-2 text-left focus-visible:z-10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground max-md:rounded-md md:h-28 md:rounded-none"
                   style={{ backgroundColor: color, color: fg }}
                 >
                   <span className="flex items-center justify-between font-mono text-[0.6875rem] leading-4 font-medium opacity-70">
@@ -413,7 +413,7 @@ function AlphaScaleView({
               type="button"
               title={value}
               onClick={() => flash(i, value)}
-              className="flex h-16 flex-col justify-between p-2 text-left transition-[filter] hover:brightness-[1.06] focus-visible:z-10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground max-md:rounded-md md:h-24"
+              className="flex h-16 flex-col justify-between p-2 text-left focus-visible:z-10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground max-md:rounded-md md:h-24"
               style={{ backgroundColor: alpha.rgba, color: readableOn(solidColors[i]) }}
             >
               <span className="font-mono text-[0.6875rem] font-medium opacity-70">{i + 1}A</span>

@@ -299,13 +299,27 @@ interface SemanticColor {
   usage: string;
 }
 
-const statusColors = (role: ColorRole): SemanticColor[] => [
-  { name: `bg-${role}`, role, step: '9', usage: `Solid ${role} backgrounds` },
-  { name: `bg-${role}-subtle`, role, step: '3', usage: `Subtle ${role} backgrounds, banners` },
-  { name: `fg-${role}`, role, step: '11', usage: `${role[0].toUpperCase() + role.slice(1)} text and icons` },
-  { name: `fg-on-${role}`, role, step: 'contrast', usage: `Text on bg-${role}` },
-  { name: `border-${role}`, role, step: '7', usage: `${role[0].toUpperCase() + role.slice(1)} borders` },
-];
+/**
+ * One semantic token per job an accent step does, the same set for every accent role so components
+ * never have to reach past the semantic layer to a base step.
+ */
+const accentColors = (role: ColorRole, label: string): SemanticColor[] => {
+  const Label = label[0].toUpperCase() + label.slice(1);
+  return [
+    { name: `bg-${role}`, role, step: '9', usage: `Solid ${label} backgrounds and buttons` },
+    { name: `bg-${role}-hover`, role, step: '10', usage: `Hovered solid ${label} backgrounds` },
+    { name: `bg-${role}-faint`, role, step: '2', usage: `Faint ${label} tints: surface badges, selected rows` },
+    { name: `bg-${role}-subtle`, role, step: '3', usage: `Subtle ${label} backgrounds, banners` },
+    { name: `bg-${role}-subtle-hover`, role, step: '4', usage: `Hovered subtle ${label} backgrounds` },
+    { name: `bg-${role}-subtle-active`, role, step: '5', usage: `Pressed or selected subtle ${label} backgrounds` },
+    { name: `fg-${role}`, role, step: '11', usage: `${Label} text, links and icons` },
+    { name: `fg-${role}-strong`, role, step: '12', usage: `High-contrast ${label} text, titles on subtle ${label} backgrounds` },
+    { name: `fg-on-${role}`, role, step: 'contrast', usage: `Text on bg-${role}` },
+    { name: `border-${role}-subtle`, role, step: '6', usage: `Subtle ${label} borders on tinted surfaces` },
+    { name: `border-${role}`, role, step: '7', usage: `${Label} borders` },
+    { name: `border-${role}-strong`, role, step: '8', usage: `Hovered or selected ${label} borders` },
+  ];
+};
 
 const SEMANTIC_COLORS: SemanticColor[] = [
   { name: 'bg', role: 'neutral', step: '1', usage: 'App background' },
@@ -313,28 +327,21 @@ const SEMANTIC_COLORS: SemanticColor[] = [
   { name: 'bg-surface', role: 'neutral', step: 'surface', usage: 'Cards and panels over the background' },
   { name: 'bg-muted', role: 'neutral', step: '3', usage: 'Neutral control backgrounds' },
   { name: 'bg-muted-hover', role: 'neutral', step: '4', usage: 'Hovered neutral controls' },
-  { name: 'bg-muted-active', role: 'neutral', step: '5', usage: 'Pressed or selected neutral controls' },
+  { name: 'bg-muted-active', role: 'neutral', step: '5', usage: 'Pressed or selected neutral controls, tracks' },
+  { name: 'bg-inverse', role: 'neutral', step: '12', usage: 'Tooltips and other inverted surfaces' },
   { name: 'border-subtle', role: 'neutral', step: '6', usage: 'Separators, card borders' },
   { name: 'border', role: 'neutral', step: '7', usage: 'Control borders' },
   { name: 'border-strong', role: 'neutral', step: '8', usage: 'Hovered control borders' },
+  { name: 'fg-disabled', role: 'neutral', step: '8', usage: 'Disabled text and icons' },
+  { name: 'fg-subtle', role: 'neutral', step: '10', usage: 'Placeholders and quiet icons' },
   { name: 'fg-muted', role: 'neutral', step: '11', usage: 'Secondary text and icons' },
   { name: 'fg', role: 'neutral', step: '12', usage: 'Primary text and icons' },
-  { name: 'bg-brand', role: 'brand', step: '9', usage: 'Primary buttons, selected states' },
-  { name: 'bg-brand-hover', role: 'brand', step: '10', usage: 'Hovered primary buttons' },
-  { name: 'bg-brand-subtle', role: 'brand', step: '3', usage: 'Subtle brand backgrounds' },
-  { name: 'bg-brand-subtle-hover', role: 'brand', step: '4', usage: 'Hovered subtle brand backgrounds' },
-  { name: 'fg-brand', role: 'brand', step: '11', usage: 'Links, brand text and icons' },
-  { name: 'fg-on-brand', role: 'brand', step: 'contrast', usage: 'Text on bg-brand' },
-  { name: 'border-brand', role: 'brand', step: '7', usage: 'Brand borders' },
+  { name: 'fg-inverse', role: 'neutral', step: '1', usage: 'Text on bg-inverse' },
+  ...accentColors('brand', 'brand'),
   { name: 'focus-ring', role: 'brand', step: '8', usage: 'Focus outlines' },
-  { name: 'bg-brand-secondary', role: 'brand-secondary', step: '9', usage: 'Secondary brand buttons and highlights' },
-  { name: 'bg-brand-secondary-hover', role: 'brand-secondary', step: '10', usage: 'Hovered secondary brand buttons' },
-  { name: 'bg-brand-secondary-subtle', role: 'brand-secondary', step: '3', usage: 'Subtle secondary brand backgrounds' },
-  { name: 'bg-brand-secondary-subtle-hover', role: 'brand-secondary', step: '4', usage: 'Hovered subtle secondary brand backgrounds' },
-  { name: 'fg-brand-secondary', role: 'brand-secondary', step: '11', usage: 'Secondary brand text and icons' },
-  { name: 'fg-on-brand-secondary', role: 'brand-secondary', step: 'contrast', usage: 'Text on bg-brand-secondary' },
-  { name: 'border-brand-secondary', role: 'brand-secondary', step: '7', usage: 'Secondary brand borders' },
-  ...(['info', 'success', 'warning', 'danger'] as const).flatMap(statusColors),
+  { name: 'focus-ring-soft', role: 'brand', step: '5', usage: 'Soft focus halo around fields and open triggers' },
+  ...accentColors('brand-secondary', 'secondary brand'),
+  ...(['info', 'success', 'warning', 'danger'] as const).flatMap((role) => accentColors(role, role)),
 ];
 
 const LEADING_ROLES: ColorRole[] = ['brand', 'brand-secondary'];

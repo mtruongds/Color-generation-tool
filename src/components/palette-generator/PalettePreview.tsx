@@ -531,8 +531,8 @@ const TOKEN_RE = /\b([ag]\d{1,2}|contrast|accent surface|gray surface|background
 type ColorUse = 'fg' | 'border' | 'bg';
 
 function useOf(words: string): ColorUse {
-  if (/\b(text|icon|link|initials|shortcut|label)\b/.test(words)) return 'fg';
-  if (/\b(border|rule|dividers?|ring|focus|gridline|outline)\b/.test(words)) return 'border';
+  if (/\b(text|icon|link|action|initials|shortcut|label)\b/.test(words)) return 'fg';
+  if (/\b(border|rules?|rows|rail|dividers?|ring|focus|gridline|outline|underline)\b/.test(words)) return 'border';
   return 'bg';
 }
 
@@ -540,11 +540,13 @@ function useOf(words: string): ColorUse {
 function semanticFor(base: string, use: ColorUse, words: string, tokens: Token[]): Token | undefined {
   const aliases = tokens.filter((t) => t.tier === 'semantic' && t.ref === base);
   const fits = (t: Token) =>
-    use === 'border' ? t.name.startsWith('border') || t.name === 'focus-ring' : t.name === use || t.name.startsWith(`${use}-`);
+    use === 'border' ? t.name.startsWith('border') || t.name.startsWith('focus-ring') : t.name === use || t.name.startsWith(`${use}-`);
   const matching = aliases.filter(fits);
   // A focus ring names the ring token over a border token on the same step
-  if (use === 'border' && /\b(ring|focus)\b/.test(words)) return matching.find((t) => t.name === 'focus-ring') ?? matching[0];
-  return matching.find((t) => !t.custom) ?? matching[0];
+  if (use === 'border' && /\b(ring|focus)\b/.test(words)) return matching.find((t) => t.name.startsWith('focus-ring')) ?? matching[0];
+  // A step painted outside its usual job (a chart mark, a solid-colored thumb ring) still names the semantic token that holds it
+  const pool = matching.length ? matching : aliases;
+  return pool.find((t) => !t.custom) ?? pool[0];
 }
 
 interface ShownColor {
