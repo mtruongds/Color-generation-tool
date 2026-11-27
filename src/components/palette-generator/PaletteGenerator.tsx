@@ -1574,6 +1574,7 @@ export function PaletteGenerator({
                     onUpdateToken={updateToken}
                     onRemoveToken={removeToken}
                     onMoveToken={moveToken}
+                    product={isExtraProduct ? { name: activeProduct.name, from: products[0].name } : undefined}
                   />
                 ) : activeView === 'docs' ? (
                   isColor ? (

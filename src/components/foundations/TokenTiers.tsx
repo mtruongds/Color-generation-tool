@@ -187,6 +187,7 @@ export function TokenTiers({
   onUpdateToken,
   onRemoveToken,
   onMoveToken,
+  product,
 }: {
   group: TokenGroup;
   palettes: GeneratedPalette[];
@@ -201,6 +202,8 @@ export function TokenTiers({
   onRemoveToken: (name: string) => void;
   /** Moves a custom token to where `to` sits. */
   onMoveToken: (name: string, to: string) => void;
+  /** An extra product to preview: its own aliases replace the first product's. Undefined shows the first product. */
+  product?: { name: string; from: string };
 }) {
   const [query, setQuery] = useState('');
   /** The custom token whose row is open as a form. */
@@ -224,10 +227,22 @@ export function TokenTiers({
     });
 
   // Every group, so new names can't clash with a custom property elsewhere
-  const allTokens = useMemo(
+  const builtTokens = useMemo(
     () => buildTokens(palettes, foundations, { groups: ALL_GROUPS, modes: 'both', colorFormat }),
     [palettes, foundations, colorFormat],
   );
+  /** Tokens the previewed product points somewhere else, with the product's aliases swapped in. */
+  const { allTokens, overridden } = useMemo(() => {
+    const overridden = new Set<string>();
+    if (!product) return { allTokens: builtTokens, overridden };
+    const allTokens = builtTokens.map((t) => {
+      const own = t.products?.find((o) => o.product === product.name);
+      if (!own) return t;
+      overridden.add(t.name);
+      return { ...t, ref: own.ref, darkRef: own.darkRef };
+    });
+    return { allTokens, overridden };
+  }, [builtTokens, product]);
   const tokens = useMemo(() => allTokens.filter((t) => t.group === group), [allTokens, group]);
   const byName = useMemo(() => new Map(allTokens.map((t) => [t.name, t])), [allTokens]);
   const edited = tokens.filter((t) => t.defaultRef);
@@ -276,8 +291,20 @@ export function TokenTiers({
   /** Searching or filtering opens every tier, so matches never hide in a folded one. */
   const narrowing = !!q || filter !== 'all';
 
+  const overriddenHere = tokens.filter((t) => overridden.has(t.name)).length;
+
   return (
     <div className="space-y-6 pb-16">
+      {product && (
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-xl border border-sky-500/30 bg-sky-500/5 px-4 py-2.5 text-xs text-muted-foreground">
+          <span className="rounded-md bg-sky-500/10 px-1.5 py-0.5 font-medium text-sky-700 dark:text-sky-300">{product.name}</span>
+          <span>
+            {overriddenHere > 0
+              ? `${overriddenHere} ${overriddenHere === 1 ? 'token points' : 'tokens point'} to ${product.name}'s own values; the rest inherit from ${product.from}.`
+              : `Every token here inherits from ${product.from}.`}
+          </span>
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative min-w-[12rem] flex-1">
           <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -456,6 +483,15 @@ export function TokenTiers({
                         </td>
                         {tier !== 'primitive' && (
                           <td className="px-4 py-0">
+                            {product && overridden.has(t.name) ? (
+                              <span
+                                className="flex min-w-0 items-center gap-1.5 px-1 text-xs"
+                                title={`${product.name} sets this alias. Change it in the ${product.name} editor; ${product.from} uses ${builtTokens.find((b) => b.name === t.name)?.ref ?? '—'}.`}
+                              >
+                                <span className="shrink-0 rounded bg-sky-500/10 px-1 text-[0.625rem] font-medium text-sky-700 dark:text-sky-300">{product.name}</span>
+                                <span className="min-w-0 truncate font-mono">{isDark && t.darkRef ? t.darkRef : t.ref}</span>
+                              </span>
+                            ) : (
                             <AliasCell
                               token={t}
                               tokens={tokens}
@@ -467,6 +503,7 @@ export function TokenTiers({
                               onEditToken={setEditing}
                               onRemoveToken={onRemoveToken}
                             />
+                            )}
                           </td>
                         )}
                         <td className="px-4 py-0">
