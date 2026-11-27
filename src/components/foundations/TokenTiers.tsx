@@ -1,5 +1,5 @@
 import { Fragment, useMemo, useState } from 'react';
-import { Check, ChevronRight, ChevronsUpDown, GripVertical, Pencil, Plus, RotateCcw, Search, Trash2 } from 'lucide-react';
+import { Check, ChevronRight, ChevronsUpDown, GripVertical, Pencil, Plus, RotateCcw, Search, Trash2, TriangleAlert } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Command, CommandEmpty, CommandInput, CommandItem, CommandList } from '../ui/command';
@@ -18,6 +18,7 @@ import {
   type TokenGroup,
   aliasLock,
   aliasOptions,
+  aliasProblem,
   aliasTargets,
   buildTokens,
   NAME_PREFIX,
@@ -131,6 +132,30 @@ function aliasChain(t: Token, byName: Map<string, Token>, isDark: boolean): stri
  * tokens also name the primitive they land on, so the whole chain reads without opening anything.
  */
 function Resolved({ t, byName, isDark }: { t: Token; byName: Map<string, Token>; isDark: boolean }) {
+  // A broken alias shows as an error, never as a fallback color that hides the broken link
+  const problem = t.tier === 'primitive' || t.type === 'typography' ? undefined : aliasProblem(t, byName, isDark);
+  if (problem) {
+    const chain = aliasChain(t, byName, isDark);
+    const message =
+      problem.kind === 'missing'
+        ? `Points to ${problem.name}, which doesn't exist${isDark ? ' (dark mode)' : ''}`
+        : 'Alias chain loops or is more than 4 levels deep';
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="flex min-w-0 cursor-default items-center gap-2 font-mono text-xs whitespace-nowrap text-destructive">
+            <TriangleAlert className="size-4 shrink-0" aria-hidden />
+            <span className="min-w-0 truncate">{problem.kind === 'missing' ? `missing ${problem.name}` : 'alias loop'}</span>
+          </span>
+        </TooltipTrigger>
+        <TooltipContent align="start" className="font-mono text-[0.6875rem]">
+          {[...chain, problem.kind === 'missing' ? `${problem.name} ✕` : '…'].join('  →  ')}
+          <br />
+          {message}
+        </TooltipContent>
+      </Tooltip>
+    );
+  }
   const resolved = resolveShown(t, byName, isDark);
   const last = t.responsive?.at(-1);
   const wide = last && byName.get(last.ref);

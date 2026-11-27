@@ -1231,6 +1231,26 @@ export function resolveToken(t: Token, byName: Map<string, Token>, isDark = fals
   return cur;
 }
 
+/**
+ * Why an alias never reaches a value, in light or dark mode: the name it points at that doesn't
+ * exist, or a chain that loops or runs too deep. Undefined when it resolves.
+ */
+export function aliasProblem(
+  t: Token,
+  byName: Map<string, Token>,
+  isDark = false,
+): { kind: 'missing'; name: string } | { kind: 'loop' } | undefined {
+  let cur: Token = t;
+  for (let i = 0; cur.ref; i++) {
+    if (i >= 4) return { kind: 'loop' };
+    const name = isDark && cur.darkRef ? cur.darkRef : cur.ref;
+    const next = byName.get(name);
+    if (!next) return { kind: 'missing', name };
+    cur = next;
+  }
+  return undefined;
+}
+
 /** A text style's values at the widest breakpoint, each property followed down to its primitive. */
 export function resolveTypography(t: Token, byName: Map<string, Token>) {
   const parts = t.value as TypographyParts;

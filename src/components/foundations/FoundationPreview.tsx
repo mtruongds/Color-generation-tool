@@ -43,7 +43,7 @@ import {
 } from '../../lib/foundations';
 import { typeCss } from './FoundationSample';
 import type { ColorScale } from '../../lib/color-utils';
-import { type FoundationRow, type RowEditor, type TokenOption, StepTokenLayer, scaleVars } from '../palette-generator/PalettePreview';
+import { type ColorNaming, type FoundationRow, type RowEditor, type TokenOption, StepTokenLayer, scaleVars } from '../palette-generator/PalettePreview';
 import { ComponentGallery } from './ComponentGallery';
 
 /** Opacity has no highlight: the pages use it in two places, the disabled button and the dialog backdrop. */
@@ -180,6 +180,7 @@ export function FoundationPreview({
   accent,
   accentScale,
   gray,
+  naming,
   showTokens,
   size,
   onSizeChange,
@@ -192,6 +193,8 @@ export function FoundationPreview({
   accent: Accent;
   accentScale: ColorScale;
   gray: ColorScale;
+  /** Names hovered colors by the semantic tokens that alias their steps. */
+  naming?: ColorNaming;
   /** Hovering a tagged element shows which accent and gray steps it uses. */
   showTokens: boolean;
   size: ViewportSize;
@@ -653,6 +656,7 @@ export function FoundationPreview({
       <StepTokenLayer
         accent={accentScale}
         gray={gray}
+        naming={naming}
         showTokens={showTokens && !dragging}
         inspect={inspect}
         edit={edit}

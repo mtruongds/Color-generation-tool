@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 import { ChevronDown, RotateCcw } from 'lucide-react';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '../ui/select';
 import { cn } from '../ui/utils';
-import { resolveColorRoles } from '../../lib/tokens';
+import { type ColorRole, type Token, resolveColorRoles } from '../../lib/tokens';
 import { type ColorScale, getSurfaceColor } from '../../lib/color-utils';
 import type { GeneratedPalette } from '../../lib/export-utils';
 
@@ -133,6 +133,17 @@ export interface RowEditor {
   apply: (values: string[]) => { css: Record<string, string>; attrs?: Record<string, string> };
 }
 
+/**
+ * How the preview's accent and gray steps are named as tokens: the roles the two palettes fill
+ * and the color tokens in the shown mode, so a step reads as the semantic token that aliases it.
+ */
+export interface ColorNaming {
+  accentRole?: ColorRole;
+  grayRole?: ColorRole;
+  /** Color tokens built for one mode, so every `ref` is that mode's. */
+  tokens: Token[];
+}
+
 /** Tokens tried on one element. Lives only in the preview: never saved, never exported. */
 interface Override {
   /** The element before the first change, to undo to. */
@@ -183,6 +194,7 @@ function unpaint(el: HTMLElement, o: Override) {
 export function StepTokenLayer({
   accent,
   gray,
+  naming,
   showTokens,
   inspect,
   edit,
@@ -193,6 +205,8 @@ export function StepTokenLayer({
 }: {
   accent: ColorScale;
   gray: ColorScale;
+  /** Names steps by the semantic tokens that alias them. Without it, steps show as "Accent 9". */
+  naming?: ColorNaming;
   showTokens: boolean;
   /** Reads foundation tokens off an element's own styles, for elements nobody tagged. */
   inspect?: (el: HTMLElement) => FoundationRow[];
@@ -352,7 +366,7 @@ export function StepTokenLayer({
     const o = overrides.current.get(pinned.path);
     popover = (
       <FloatingCard innerRef={popRef} x={pinned.x} y={pinned.y} interactive deps={[pinned, version]}>
-        <ColorRows tokens={pinnedEl.dataset.tokens ?? ''} accent={accent} gray={gray} />
+        <ColorRows tokens={pinnedEl.dataset.tokens ?? ''} accent={accent} gray={gray} naming={naming} />
         {rows.length > 0 && (
           <div className={cn('grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-1.5', pinnedEl.dataset.tokens && 'border-t pt-1.5')}>
             {rows.map((row) => {
@@ -431,7 +445,7 @@ export function StepTokenLayer({
       {children}
       {hover && !pinned && (
         <FloatingCard x={hover.x} y={hover.y} deps={[hover.tokens, hover.foundations]}>
-          <ColorRows tokens={hover.tokens} accent={accent} gray={gray} />
+          <ColorRows tokens={hover.tokens} accent={accent} gray={gray} naming={naming} />
           {hover.foundations.length > 0 && (
             <div className={cn('grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-1', hover.tokens && 'border-t pt-1.5')}>
               {hover.foundations.map((row) => (
@@ -513,44 +527,102 @@ function gridPlacement(el: HTMLElement, root: HTMLElement): { token: string; val
 // Step references inside a data-tokens description, e.g. "solid: a9 → a10 · text: contrast"
 const TOKEN_RE = /\b([ag]\d{1,2}|contrast|accent surface|gray surface|background)\b/g;
 
-function resolveToken(token: string, accent: ColorScale, gray: ColorScale) {
-  const step = token.match(/^([ag])(\d{1,2})$/);
-  if (step) {
-    const scale = step[1] === 'a' ? accent : gray;
-    return { label: `${step[1] === 'a' ? 'Accent' : 'Gray'} ${step[2]}`, color: scale.colors[Number(step[2]) - 1] };
-  }
-  if (token === 'contrast') return { label: 'Accent contrast', color: accent.contrast };
-  if (token === 'accent surface') return { label: 'Accent surface', color: getSurfaceColor(accent).hex8 };
-  if (token === 'gray surface') return { label: 'Gray surface', color: getSurfaceColor(gray).hex8 };
-  return { label: 'Background', color: accent.background };
+/** What a step is used for, from the words before it: "text: g12", "border a6", "focus: a8". */
+type ColorUse = 'fg' | 'border' | 'bg';
+
+function useOf(words: string): ColorUse {
+  if (/\b(text|icon|link|initials|shortcut|label)\b/.test(words)) return 'fg';
+  if (/\b(border|rule|dividers?|ring|focus|gridline|outline)\b/.test(words)) return 'border';
+  return 'bg';
 }
 
-/** The accent and gray steps a `data-tokens` description names, each with its swatch. */
-function ColorRows({ tokens, accent, gray }: { tokens: string; accent: ColorScale; gray: ColorScale }) {
+/** The semantic token for a base token and use, e.g. neutral-12 as text is `fg`. */
+function semanticFor(base: string, use: ColorUse, words: string, tokens: Token[]): Token | undefined {
+  const aliases = tokens.filter((t) => t.tier === 'semantic' && t.ref === base);
+  const fits = (t: Token) =>
+    use === 'border' ? t.name.startsWith('border') || t.name === 'focus-ring' : t.name === use || t.name.startsWith(`${use}-`);
+  const matching = aliases.filter(fits);
+  // A focus ring names the ring token over a border token on the same step
+  if (use === 'border' && /\b(ring|focus)\b/.test(words)) return matching.find((t) => t.name === 'focus-ring') ?? matching[0];
+  return matching.find((t) => !t.custom) ?? matching[0];
+}
+
+interface ShownColor {
+  /** Semantic token name, else the base token, else the scale step ("Accent 9"). */
+  label: string;
+  /** The base token the semantic one aliases, shown beside it. */
+  via?: string;
+  color: string;
+}
+
+function resolveStep(token: string, words: string, accent: ColorScale, gray: ColorScale, naming?: ColorNaming): ShownColor {
+  const step = token.match(/^([ag])(\d{1,2})$/);
+  const surface = token.match(/^(accent|gray) surface$/);
+  const isAccent = step ? step[1] === 'a' : surface ? surface[1] === 'accent' : token === 'contrast';
+  const scale = isAccent ? accent : gray;
+  const key = step ? step[2] : surface ? 'surface' : token === 'contrast' ? 'contrast' : undefined;
+  const color = step
+    ? scale.colors[Number(step[2]) - 1]
+    : surface
+      ? getSurfaceColor(scale).hex8
+      : token === 'contrast'
+        ? accent.contrast
+        : accent.background;
+  const fallback = step
+    ? `${isAccent ? 'Accent' : 'Gray'} ${step[2]}`
+    : surface
+      ? `${isAccent ? 'Accent' : 'Gray'} surface`
+      : token === 'contrast'
+        ? 'Accent contrast'
+        : 'Background';
+
+  const role = isAccent ? naming?.accentRole : naming?.grayRole;
+  if (!naming || !role || !key) return { label: fallback, color };
+  const base = `${role}-${key}`;
+  // Contrast is only ever text on the solid step
+  const semantic = semanticFor(base, key === 'contrast' ? 'fg' : useOf(words), words, naming.tokens);
+  return semantic ? { label: semantic.name, via: base, color } : { label: base, color };
+}
+
+/** The accent and gray steps a `data-tokens` description names, each as the token that holds it. */
+function ColorRows({ tokens, accent, gray, naming }: { tokens: string; accent: ColorScale; gray: ColorScale; naming?: ColorNaming }) {
   if (!tokens) return null;
   return (
     <>
-      {tokens.split(' · ').map((row, i) => (
-    <div key={i} className="flex items-center gap-1">
-      {row.split(TOKEN_RE).map((part, j) => {
-        if (j % 2 === 0) return part ? <span key={j} className="text-muted-foreground">{part}</span> : null;
-        const { label, color } = resolveToken(part, accent, gray);
+      {tokens.split(' · ').map((row, i) => {
+        const parts = row.split(TOKEN_RE);
         return (
-          <span key={j} className="inline-flex items-center gap-1 rounded bg-muted px-1 py-0.5">
-            {/* Color and checkerboard as layers of one box, so the checker can't fringe the rounded edge */}
-            <span
-              className="size-3 shrink-0 rounded-sm shadow-[inset_0_0_0_1px_rgb(0_0_0/0.1)]"
-              style={{
-                background: `linear-gradient(${color}, ${color}), repeating-conic-gradient(#e5e5e5 0% 25%, #ffffff 0% 50%) 0 0 / 0.375rem 0.375rem`,
-              }}
-            />
-            <span className="font-medium">{label}</span>
-            <span className="font-mono text-[0.625rem] text-muted-foreground uppercase">{color}</span>
-          </span>
+          <div key={i} className="flex items-center gap-1">
+            {parts.map((part, j) => {
+              if (j % 2 === 0) return part ? <span key={j} className="text-muted-foreground">{part}</span> : null;
+              // The words just before the step say what it paints; "→ g8" or "/ g11" borrow the row's
+              const before = parts[j - 1] ?? '';
+              const words = /[a-z]/i.test(before) ? before : parts[0];
+              const { label, via, color } = resolveStep(part, words, accent, gray, naming);
+              // Token names read as code; the plain "Accent 9" fallback stays as words
+              const named = /^[a-z0-9-]+$/.test(label);
+              return (
+                <span
+                  key={j}
+                  className="inline-flex items-center gap-1 rounded bg-muted px-1 py-0.5"
+                  title={via ? `${label} → ${via} → ${color}` : undefined}
+                >
+                  {/* Color and checkerboard as layers of one box, so the checker can't fringe the rounded edge */}
+                  <span
+                    className="size-3 shrink-0 rounded-sm shadow-[inset_0_0_0_1px_rgb(0_0_0/0.1)]"
+                    style={{
+                      background: `linear-gradient(${color}, ${color}), repeating-conic-gradient(#e5e5e5 0% 25%, #ffffff 0% 50%) 0 0 / 0.375rem 0.375rem`,
+                    }}
+                  />
+                  <span className={cn('font-medium', named && 'font-mono text-[0.6875rem]')}>{label}</span>
+                  {via && <span className="font-mono text-[0.625rem] text-muted-foreground">→ {via}</span>}
+                  <span className="font-mono text-[0.625rem] text-muted-foreground uppercase">{color}</span>
+                </span>
+              );
+            })}
+          </div>
         );
       })}
-    </div>
-      ))}
     </>
   );
 }
