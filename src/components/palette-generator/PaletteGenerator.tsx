@@ -81,8 +81,10 @@ import {
   DEFAULT_FOUNDATIONS,
   type FoundationKey,
   type Foundations,
+  generateOpacityScale,
   generateRadiusScale,
   generateShadowScale,
+  opacityPercent,
   generateSpacingScale,
   generateTypeScale,
   allFontFamilies,
@@ -100,6 +102,8 @@ import {
   DEFAULT_PRODUCT,
   TYPOGRAPHY_PARTS,
   brandSolid,
+  buildTokens,
+  resolveToken,
   colorTokenInfo,
   productShadowTints,
   productsOf,
@@ -112,6 +116,7 @@ import { TokenTiers } from '../foundations/TokenTiers';
 import { TypographyCanvas, TypographyInspector } from '../foundations/TypographyFoundation';
 import { SpacingCanvas, SpacingInspector } from '../foundations/SpacingFoundation';
 import { RadiusCanvas, RadiusInspector } from '../foundations/RadiusFoundation';
+import { OpacityCanvas, OpacityInspector } from '../foundations/OpacityFoundation';
 import { ShadowCanvas, ShadowInspector } from '../foundations/ShadowFoundation';
 import { GridCanvas, GridInspector } from '../foundations/GridFoundation';
 
@@ -534,12 +539,23 @@ export function PaletteGenerator({
   );
   const resolved = useMemo(() => resolveFoundations(productFoundations, isDarkMode), [productFoundations, isDarkMode]);
 
+  /** The scrim in the mode shown, for the Opacity page: its solid neutral, and that neutral under opacity-scrim. */
+  const scrim = useMemo(() => {
+    if (foundation !== 'opacity') return { base: 'transparent', color: 'transparent' };
+    const tokens = buildTokens(generatedPalettes, foundations, { groups: ['color'], modes: isDarkMode ? 'dark' : 'light', colorFormat: 'hex' });
+    const byName = new Map(tokens.map((t) => [t.name, t]));
+    const token = byName.get(isDarkMode ? 'neutral-1' : 'neutral-12');
+    const base = token ? String(resolveToken(token, byName)?.value) : isDarkMode ? '#000' : '#111';
+    return { base, color: `color-mix(in oklab, ${base} ${opacityPercent(foundations, 'opacity-scrim') ?? 50}%, transparent)` };
+  }, [foundation, generatedPalettes, foundations, isDarkMode]);
+
   const summaries: Record<NavKey, string> = useMemo(
     () => ({
       color: String(palettes.length),
       typography: String(generateTypeScale(foundations.typography).length),
       spacing: String(generateSpacingScale(foundations.spacing).length),
       radius: String(generateRadiusScale(foundations.radius).length),
+      opacity: String(generateOpacityScale(foundations.opacity).length),
       shadow: String(generateShadowScale(foundations.shadow, false).length),
       grid: `${foundations.grid.breakpoints.length} bp`,
       preview: '3',
@@ -1037,6 +1053,8 @@ export function PaletteGenerator({
           : undefined
       }
     />
+  ) : foundation === 'opacity' ? (
+    <OpacityInspector config={foundations.opacity} onChange={(u) => updateFoundation('opacity', u)} />
   ) : foundation === 'shadow' ? (
     <ShadowInspector
       config={foundations.shadow}
@@ -1217,7 +1235,7 @@ export function PaletteGenerator({
         keys.current.toggleEditMode();
         return;
       }
-      if (!e.shiftKey && /^[1-7]$/.test(e.key)) {
+      if (!e.shiftKey && /^[1-8]$/.test(e.key)) {
         e.preventDefault();
         keys.current.selectFoundation(NAV_ORDER[Number(e.key) - 1]);
       }
@@ -1556,6 +1574,7 @@ export function PaletteGenerator({
                     onUpdateToken={updateToken}
                     onRemoveToken={removeToken}
                     onMoveToken={moveToken}
+                    product={isExtraProduct ? { name: activeProduct.name, from: products[0].name } : undefined}
                   />
                 ) : activeView === 'docs' ? (
                   isColor ? (
@@ -1583,6 +1602,8 @@ export function PaletteGenerator({
                   <SpacingCanvas config={foundations.spacing} accent={accent} />
                 ) : foundation === 'radius' ? (
                   <RadiusCanvas config={productFoundations.radius} accent={accent} />
+                ) : foundation === 'opacity' ? (
+                  <OpacityCanvas foundations={foundations} accent={accent} scrim={scrim} />
                 ) : foundation === 'shadow' ? (
                   <ShadowCanvas config={productFoundations.shadow} isDark={isDarkMode} radius={resolved.radius.lg} />
                 ) : (

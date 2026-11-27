@@ -63,6 +63,18 @@ const GUIDELINES: Record<DocKey, { intro: string; dos: string[]; donts: string[]
       'Don’t mix sharp and round styles in one surface.',
     ],
   },
+  opacity: {
+    intro: 'A short opacity scale, a few roles on it, and the purposes components use: disabled controls and the backdrop behind dialogs.',
+    dos: [
+      'Fade a disabled control as a whole layer with opacity-disabled, so its label, icon and border fade together.',
+      'Put scrims over a solid color: a solid neutral (step 12 in light, step 1 in dark) under opacity-scrim.',
+      'Use the alpha color steps (a1–a12) for translucent fills that must match a solid step.',
+    ],
+    donts: [
+      'Don’t lower the opacity of text to make it secondary — use fg-muted, which keeps its contrast.',
+      'Don’t stack an opacity on a color that already has alpha; Figma ignores it and the result is hard to predict.',
+    ],
+  },
   shadow: {
     intro: 'Higher elevation means the element floats further above the page. Shadows get bigger and softer as they rise.',
     dos: [
@@ -163,6 +175,27 @@ function rowsFor(key: DocKey, f: Foundations, isDark: boolean, accent: Accent): 
         cssVar: `--radius-${t.name}`,
         usage: t.usage,
       }));
+    case 'opacity': {
+      // Roles and purposes, like spacing, followed down to their step so re-pointed ones show their value
+      const tokens = buildTokens([], f, { groups: ['opacity'], modes: 'light', colorFormat: 'hex' });
+      const byName = new Map(tokens.map((t) => [t.name, t]));
+      return tokens
+        .filter((t) => t.tier !== 'primitive')
+        .map((t) => {
+          const value = Number(resolveToken(t, byName)?.value ?? 1);
+          return {
+            token: t.name,
+            preview: (
+              <span className="checkerboard block h-5 w-10 overflow-hidden rounded-sm border">
+                <span className="block size-full" style={{ background: accent.solid, opacity: value }} />
+              </span>
+            ),
+            value: `${Math.round(value * 100)}% · ${t.ref}`,
+            cssVar: `--${t.name}`,
+            usage: t.description ?? '',
+          };
+        });
+    }
     case 'shadow': {
       return generateShadowScale(f.shadow, isDark).map((s) => ({
         token: `shadow-${s.name}`,

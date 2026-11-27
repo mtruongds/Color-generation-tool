@@ -204,17 +204,22 @@
     outline-offset: -2px;
   }
 
+  /*
+   * Transparency backdrop. 4px squares (0.5rem tile) divide every swatch size we use (12/16/20/28/40px),
+   * and centering keeps any remainder symmetric, so edges never end on a stray sliver of grey that
+   * reads as a rendering bug. Low contrast keeps it a texture, not a pattern competing with the color.
+   */
   .checkerboard {
-    background: repeating-conic-gradient(var(--checker-a, #e5e5e5) 0% 25%, var(--checker-b, #ffffff) 0% 50%) 0 0 / 0.75rem 0.75rem;
+    background: repeating-conic-gradient(var(--checker-a, #ededed) 0% 25%, var(--checker-b, #ffffff) 0% 50%) 50% 50% / 0.5rem 0.5rem;
   }
 
   .dark .checkerboard {
-    --checker-a: #1c1c1f;
-    --checker-b: #2a2a2e;
+    --checker-a: #222225;
+    --checker-b: #2c2c30;
   }
 
   .dark .light .checkerboard {
-    --checker-a: #e5e5e5;
+    --checker-a: #ededed;
     --checker-b: #ffffff;
   }
 

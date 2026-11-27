@@ -71,8 +71,10 @@ const INVOICES = [
  * change to type, spacing, radius, shadow or color shows up on every component at once.
  */
 export function ComponentGallery({ kit }: { kit: PreviewKit }) {
-  const { tokens, mobile, columns, gutter, container, Text, btn, badge, steps, mark, pad, mergeStyle, MUTED, HAIRLINE } = kit;
-  const { type: t, space, radius, shadow, mono } = tokens;
+  const { tokens, mobile, isDark, columns, gutter, container, Text, btn, badge, steps, mark, pad, mergeStyle, MUTED, HAIRLINE } = kit;
+  const { type: t, space, radius, shadow, mono, opacity } = tokens;
+  // Scrim: a solid neutral under opacity-scrim, step 12 in light and step 1 in dark
+  const scrimStep = isDark ? 'g1' : 'g12';
   const typeOf = kit.typeCss;
 
   const [agree, setAgree] = useState(true);
@@ -134,10 +136,10 @@ export function ComponentGallery({ kit }: { kit: PreviewKit }) {
       onKeyDown={(e) => e.key === ' ' && (e.preventDefault(), onClick())}
       className="flex cursor-pointer items-center justify-between outline-none"
       style={{ gap: space(3) }}
-      {...steps(on ? 'switch: on a9 · thumb: white' : 'switch: off g6')}
+      {...steps(on ? 'switch: on a9 · thumb: white' : 'switch: off g5')}
     >
       {children}
-      <span className={cn('relative shrink-0 transition-colors', on ? 'bg-(--a9)' : 'bg-(--g6)')} style={{ width: 32, height: 18, borderRadius: radius.full }}>
+      <span className={cn('relative shrink-0 transition-colors', on ? 'bg-(--a9)' : 'bg-(--g5)')} style={{ width: 32, height: 18, borderRadius: radius.full }}>
         <span className="absolute bg-white transition-[left]" style={{ top: 2, left: on ? 16 : 2, width: 14, height: 14, borderRadius: radius.full, boxShadow: shadow.xs }} />
       </span>
     </span>
@@ -239,8 +241,8 @@ export function ComponentGallery({ kit }: { kit: PreviewKit }) {
           </div>
           <div
             className="border border-(--g6) bg-(--g3)"
-            style={{ ...typeOf(t['body-sm']), color: 'var(--g9)', marginTop: space(3), padding: fieldPad, borderRadius: radius.md, cursor: 'not-allowed' }}
-            {...steps('disabled: g3 · border: g6 · text: g9')}
+            style={{ ...typeOf(t['body-sm']), color: 'var(--g8)', marginTop: space(3), padding: fieldPad, borderRadius: radius.md, cursor: 'not-allowed' }}
+            {...steps('disabled: g3 · border: g6 · text: g8')}
           >
             Disabled
           </div>
@@ -275,7 +277,7 @@ export function ComponentGallery({ kit }: { kit: PreviewKit }) {
                 </Text>
               </span>
             </Check16>
-            <span className="flex items-center opacity-50" style={{ gap: space(2.5), cursor: 'not-allowed' }} {...steps('disabled: border g7 at 50%')}>
+            <span className="flex items-center" style={{ gap: space(2.5), cursor: 'not-allowed', opacity: opacity.disabled }} {...steps(`disabled: border g7 · opacity-disabled ${Math.round(opacity.disabled * 100)}%`)}>
               <span className="shrink-0 shadow-[inset_0_0_0_1px_var(--g7)]" style={{ width: 16, height: 16, borderRadius: Math.min(radius.xs, 4) }} />
               <Text s="body-sm" tagged={false}>
                 Disabled option
@@ -637,7 +639,7 @@ export function ComponentGallery({ kit }: { kit: PreviewKit }) {
         </Showcase>
 
         <Showcase name="Dialog">
-          <div className="relative overflow-hidden" style={{ borderRadius: radius.md, background: 'color-mix(in oklab, var(--g12) 40%, transparent)', padding: space(mobile ? 3 : 5) }} {...steps('overlay: g12 at 40%')}>
+          <div className="relative overflow-hidden" style={{ borderRadius: radius.md, background: `color-mix(in oklab, var(--${scrimStep}) ${Math.round(opacity.scrim * 100)}%, transparent)`, padding: space(mobile ? 3 : 5) }} {...steps(`scrim: ${scrimStep} · opacity-scrim ${Math.round(opacity.scrim * 100)}%`)}>
             <div style={{ background: 'var(--bg)', borderRadius: radius.lg, boxShadow: shadow.xl, padding: space(5) }} {...steps('dialog: background')} {...mark('shadow', 'shadow-xl')}>
               <div className="flex items-start justify-between" style={{ gap: space(3) }}>
                 <Text s="h5" as="h3" tagged={false}>

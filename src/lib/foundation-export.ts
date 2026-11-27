@@ -7,6 +7,7 @@ import {
   type Token,
   type TokenGroup,
   type TypographyParts,
+  SCRIM_OPACITY,
   buildTokens,
   productSlug,
   productsOf,
@@ -21,7 +22,7 @@ export type LengthUnit = 'px' | 'rem';
 /** Which part of the system an export covers. */
 export type ExportScope = 'all' | TokenGroup;
 
-const ALL_GROUPS: TokenGroup[] = ['color', 'typography', 'spacing', 'radius', 'shadow', 'grid'];
+const ALL_GROUPS: TokenGroup[] = ['color', 'typography', 'spacing', 'radius', 'opacity', 'shadow', 'grid'];
 const groupsFor = (scope: ExportScope) => (scope === 'all' ? ALL_GROUPS : [scope]);
 
 const ROOT_FONT_SIZE = 16;
@@ -72,12 +73,13 @@ const GROUP_LABEL: Record<TokenGroup, string> = {
   typography: 'Typography',
   spacing: 'Spacing',
   radius: 'Radius',
+  opacity: 'Opacity',
   shadow: 'Shadow',
   grid: 'Layout grid',
 };
 
 /** The three tiers as custom properties, with dark and responsive overrides after each tier. */
-function variablesCss(tokens: Token[], unit: LengthUnit) {
+function variablesCss(tokens: Token[], unit: LengthUnit, f: Foundations) {
   const out: string[] = [];
   for (const tier of TIERS) {
     const inTier = tokens.filter((t) => t.tier === tier);
@@ -103,7 +105,7 @@ function variablesCss(tokens: Token[], unit: LengthUnit) {
     }
 
     // Put data-theme="dark" on <html> so tokens that alias these resolve against the dark values
-    if (dark.length) css += `\n${DARK_SELECTOR} {\n${dark.map((t) => `  --${t.name}: var(--${t.darkRef});`).join('\n')}\n}\n`;
+    if (dark.length) css += `\n${DARK_SELECTOR} {\n${dark.map((t) => `  --${t.name}: var(--${t.darkRef!});`).join('\n')}\n}\n`;
 
     // Put data-product on <html> to switch the roles an extra product fills itself
     css += productCss(inTier.flatMap((t) => t.products?.map((o) => ({ name: t.name, ...o })) ?? []));
@@ -174,7 +176,7 @@ interface ExportOptions {
 export function generateCss(palettes: GeneratedPalette[], f: Foundations, opts: ExportOptions) {
   const tokens = buildTokens(palettes, f, { groups: groupsFor(opts.scope), modes: 'both', colorFormat: opts.colorFormat });
   const utilities = utilitiesCss(tokens, f);
-  return `${variablesCss(tokens, opts.unit)}${utilities ? `\n${utilities}` : ''}`;
+  return `${variablesCss(tokens, opts.unit, f)}${utilities ? `\n${utilities}` : ''}`;
 }
 
 // ============================================================
@@ -377,10 +379,11 @@ function colorCollectionVariables(palettes: GeneratedPalette[], f: Foundations, 
       out.push({ token: t, path, modes: modes(false) });
       if (t.darkRef) darkGroup.push({ token: t, path: darkPath(path), modes: modes(true) });
     } else {
-      const to = (isDark: boolean): ColorValue => ({
-        primitive: resolveToken(t, byName, isDark)!,
-        alias: { tier: 'base', path: (isDark && darkPaths.get(t.ref!)) || lightPaths.get(t.ref!)! },
-      });
+      const to = (isDark: boolean): ColorValue => {
+        // A purpose usually takes the dark side of the same role, unless it names its own dark step
+        const ref = isDark ? (t.darkRef ?? t.ref!) : t.ref!;
+        return { primitive: resolveToken(t, byName, isDark)!, alias: { tier: 'base', path: (isDark && darkPaths.get(ref)) || lightPaths.get(ref)! } };
+      };
       out.push({ token: t, path, modes: { Light: to(false), Dark: to(true) } });
     }
   }
@@ -436,7 +439,8 @@ function generateColorCollectionCss(palettes: GeneratedPalette[], f: Foundations
  */
 function colorCollectionTokens(palettes: GeneratedPalette[], f: Foundations, tier: ColorCollection, colorFormat: ColorFormat) {
   const variables = colorCollectionVariables(palettes, f, tier, colorFormat);
-  const ref = (v: ColorValue) => (v.alias ? `{${[collectionSlug(v.alias.tier), ...v.alias.path].join('.')}}` : String(v.primitive.value));
+  const link = (v: ColorValue) => `{${[collectionSlug(v.alias!.tier), ...v.alias!.path].join('.')}}`;
+  const ref = (v: ColorValue) => (v.alias ? link(v) : String(v.primitive.value));
   const out: Record<string, unknown> = {};
   for (const { token: t, path, modes } of variables) {
     const [first, ...others] = Object.keys(modes);
@@ -481,6 +485,16 @@ const SCOPE_LABELS: Record<string, string> = {
 
 const csvCell = (field: string) => (/[",\n]/.test(field) ? `"${field.replace(/"/g, '""')}"` : field);
 
+/** Leading columns of every variable CSV. The plugin finds them by name; modes follow. */
+const VARIABLE_HEADERS = ['Collection Name', 'Name', 'Type', 'Description', 'Scope', 'Hide from Publishing'];
+
+/**
+ * Figma's "Hide from publishing" checkbox, always written so re-imports are deterministic. Primitive and
+ * base collections stay out of the published library, like they stay out of the pickers. A collection with
+ * more than one mode (products, breakpoints) stays published, so frames using the library can still switch it.
+ */
+const hiddenCell = (tier: Token['tier'], modeCount: number) => (tier !== 'semantic' && modeCount === 1 ? 'TRUE' : 'FALSE');
+
 /**
  * One collection as a Sheet Variable Importer CSV. The plugin links aliases into other collections
  * (`{Color Palette:indigo/9}`), so import Color Palette, then Color, then Theme. Theme carries Light and Dark in one file. Color Palette adds an `_OKLCH` column for
@@ -491,14 +505,16 @@ export function generateColorCollectionCsv(palettes: GeneratedPalette[], f: Foun
   const modeNames = Object.keys(variables[0]?.modes ?? { Default: null });
   const collection = COLOR_COLLECTIONS[tier];
   const oklch = tier === 'primitive';
-  const lines = [['Collection Name', 'Name', 'Type', 'Description', 'Scope', ...modeNames.map((m) => `Mode: ${m}`), ...(oklch ? ['_OKLCH'] : [])].join(',')];
+  const hidden = hiddenCell(tier, modeNames.length);
+  const lines = [[...VARIABLE_HEADERS, ...modeNames.map((m) => `Mode: ${m}`), ...(oklch ? ['_OKLCH'] : [])].join(',')];
   for (const { token: t, path, modes } of variables) {
     const scopes = figmaScopes(t).map((s) => SCOPE_LABELS[s] ?? s);
     const cells = modeNames.map((m) => {
       const { primitive, alias } = modes[m];
-      return alias ? `{${COLOR_COLLECTIONS[alias.tier]}:${alias.path.join('/')}}` : chroma(primitive.value as string).hex();
+      if (!alias) return chroma(primitive.value as string).hex();
+      return `{${COLOR_COLLECTIONS[alias.tier]}:${alias.path.join('/')}}`;
     });
-    lines.push([collection, path.join('/'), 'COLOR', t.description ?? '', scopes.length ? scopes.join(', ') : 'No scope', ...cells, ...(oklch ? [t.p3 ?? ''] : [])].map(csvCell).join(','));
+    lines.push([collection, path.join('/'), 'COLOR', t.description ?? '', scopes.length ? scopes.join(', ') : 'No scope', hidden, ...cells, ...(oklch ? [t.p3 ?? ''] : [])].map(csvCell).join(','));
   }
   return `${lines.join('\n')}\n`;
 }
@@ -515,6 +531,7 @@ export const SHEET_COLLECTIONS: Record<SheetGroup, Record<Token['tier'], string>
   typography: { primitive: 'Type Scale', base: 'Typography', semantic: 'Text' },
   spacing: { primitive: 'Space Scale', base: 'Spacing', semantic: 'Layout Spacing' },
   radius: { primitive: 'Radius Scale', base: 'Radius', semantic: 'Shape' },
+  opacity: { primitive: 'Opacity Scale', base: 'Opacity', semantic: 'Transparency' },
   grid: { primitive: 'Breakpoints', base: 'Grid', semantic: 'Page Layout' },
 };
 
@@ -549,6 +566,9 @@ function sheetScopes(t: Token): string[] {
     }
     case 'grid':
       return t.type === 'number' ? [] : t.name === 'page-gutter' || t.name === 'page-margin' ? ['Gap'] : ['Width and height'];
+    case 'opacity':
+      // Scrim is laid over a color; disabled over a whole layer. A purpose of the user's could be either.
+      return t.name === SCRIM_OPACITY ? ['Color variable opacity'] : t.name === 'opacity-disabled' ? ['Layer opacity'] : ['Layer opacity', 'Color variable opacity'];
     default:
       return [];
   }
@@ -568,7 +588,8 @@ function sheetValue(t: Token): string {
     case 'letterSpacing':
       return trim((t.value as number) * 100, 2);
     default:
-      return String(t.value);
+      // Figma's opacity variables hold percent
+      return t.group === 'opacity' ? trim((t.value as number) * 100, 2) : String(t.value);
   }
 }
 
@@ -613,16 +634,18 @@ export function generateSheetVariablesCsv(palettes: GeneratedPalette[], f: Found
     t.ref;
 
   const collection = SHEET_COLLECTIONS[group][tier];
-  const lines = [['Collection Name', 'Name', 'Type', 'Description', 'Scope', ...modes.map((m) => `Mode: ${m.name}`)].join(',')];
+  const hidden = hiddenCell(tier, modes.length);
+  const lines = [[...VARIABLE_HEADERS, ...modes.map((m) => `Mode: ${m.name}`)].join(',')];
   for (const t of tokens) {
     const cells = modes.map((m) => {
       const ref = refIn(t, m);
       const target = ref ? byName.get(ref) : undefined;
       return target ? `{${SHEET_COLLECTIONS[group][target.tier]}:${ownPath(target)}}` : sheetValue(t);
     });
-    const description = t.type === 'letterSpacing' ? [t.description, 'Percent of font size'].filter(Boolean).join('. ') : (t.description ?? '');
+    const unitNote = t.type === 'letterSpacing' ? 'Percent of font size' : t.group === 'opacity' && t.tier === 'primitive' ? 'Percent' : undefined;
+    const description = [t.description, unitNote].filter(Boolean).join('. ');
     const scopes = sheetScopes(t);
-    lines.push([collection, ownPath(t), SHEET_TYPES[t.type] ?? 'FLOAT', description, scopes.length ? scopes.join(', ') : 'No scope', ...cells].map(csvCell).join(','));
+    lines.push([collection, ownPath(t), SHEET_TYPES[t.type] ?? 'FLOAT', description, scopes.length ? scopes.join(', ') : 'No scope', hidden, ...cells].map(csvCell).join(','));
   }
   return `${lines.join('\n')}\n`;
 }
@@ -742,10 +765,10 @@ const slotPath = (slot: Token) => slot.path.join('/');
  */
 export function generateShadowVariablesCsv(palettes: GeneratedPalette[], f: Foundations) {
   const { byName, slots, modes } = shadowModel(palettes, f);
-  const lines = [['Collection Name', 'Name', 'Type', 'Description', 'Scope', ...modes.map((m) => `Mode: ${m.name}`)].join(',')];
+  const lines = [[...VARIABLE_HEADERS, ...modes.map((m) => `Mode: ${m.name}`)].join(',')];
   for (const slot of slots) {
     const cells = modes.map((m) => slotColor(slot, byName, m));
-    lines.push([SHADOW_COLLECTION, slotPath(slot), 'COLOR', slot.description ?? '', SCOPE_LABELS.EFFECT_COLOR, ...cells].map(csvCell).join(','));
+    lines.push([SHADOW_COLLECTION, slotPath(slot), 'COLOR', slot.description ?? '', SCOPE_LABELS.EFFECT_COLOR, 'FALSE', ...cells].map(csvCell).join(','));
   }
   return `${lines.join('\n')}\n`;
 }

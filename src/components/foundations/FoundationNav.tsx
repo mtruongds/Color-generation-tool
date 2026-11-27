@@ -1,4 +1,4 @@
-import { Columns3, Eye, Palette, Ruler, SquareRoundCorner, SquareStack, Type, type LucideIcon } from 'lucide-react';
+import { Blend, Columns3, Eye, Palette, Ruler, SquareRoundCorner, SquareStack, Type, type LucideIcon } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
 import { cn } from '../ui/utils';
 import type { FoundationKey } from '../../lib/foundations';
@@ -8,11 +8,12 @@ export const FOUNDATION_META: Record<FoundationKey, { label: string; icon: Lucid
   typography: { label: 'Typography', icon: Type, title: 'Typography', blurb: 'A responsive type scale from a base size and a ratio' },
   spacing: { label: 'Spacing', icon: Ruler, title: 'Spacing', blurb: 'One base unit, every gap and padding' },
   radius: { label: 'Radius', icon: SquareRoundCorner, title: 'Radius', blurb: 'Corner radii scaled from one base value' },
+  opacity: { label: 'Opacity', icon: Blend, title: 'Opacity', blurb: 'A short scale for disabled states and backdrops' },
   shadow: { label: 'Shadow', icon: SquareStack, title: 'Shadow & elevation', blurb: 'Layered, tintable shadows for light and dark' },
   grid: { label: 'Layout grid', icon: Columns3, title: 'Layout grid', blurb: 'Breakpoints, columns, gutters and a content cap' },
 };
 
-export const FOUNDATION_ORDER: FoundationKey[] = ['color', 'typography', 'spacing', 'radius', 'shadow', 'grid'];
+export const FOUNDATION_ORDER: FoundationKey[] = ['color', 'typography', 'spacing', 'radius', 'opacity', 'shadow', 'grid'];
 
 /** A rail destination: one of the foundations, or the Preview section that shows them all together. */
 export type NavKey = FoundationKey | 'preview';

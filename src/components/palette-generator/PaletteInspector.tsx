@@ -97,6 +97,32 @@ export function PaletteInspector({
 
   return (
     <div className="flex flex-col">
+      <Section title="Details">
+        <div className="space-y-1.5">
+          <Label htmlFor="palette-name" className="text-sm font-normal">
+            Name
+          </Label>
+          <Input
+            id="palette-name"
+            value={palette.name}
+            onChange={(e) => onChange({ name: e.target.value })}
+            placeholder="e.g. Brand"
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="palette-description" className="text-sm font-normal">
+            Description <span className="text-muted-foreground">(optional)</span>
+          </Label>
+          <Textarea
+            id="palette-description"
+            className="min-h-[4.5rem] resize-none text-sm"
+            placeholder="Used for primary actions and links."
+            value={palette.description || ''}
+            onChange={(e) => onChange({ description: e.target.value })}
+          />
+        </div>
+      </Section>
+
       <Section title="Base color">
         <div className="flex gap-2">
           <label
@@ -224,32 +250,6 @@ export function PaletteInspector({
             </p>
           </>
         )}
-      </Section>
-
-      <Section title="Details">
-        <div className="space-y-1.5">
-          <Label htmlFor="palette-name" className="text-sm font-normal">
-            Name
-          </Label>
-          <Input
-            id="palette-name"
-            value={palette.name}
-            onChange={(e) => onChange({ name: e.target.value })}
-            placeholder="e.g. Brand"
-          />
-        </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="palette-description" className="text-sm font-normal">
-            Description <span className="text-muted-foreground">(optional)</span>
-          </Label>
-          <Textarea
-            id="palette-description"
-            className="min-h-[4.5rem] resize-none text-sm"
-            placeholder="Used for primary actions and links."
-            value={palette.description || ''}
-            onChange={(e) => onChange({ description: e.target.value })}
-          />
-        </div>
       </Section>
 
       <Section title="Adjustments">

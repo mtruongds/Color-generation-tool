@@ -90,11 +90,11 @@ const COLOR_HINTS: Record<'css' | 'json', string> = {
 const COLLECTION_HINTS: Record<ColorCollection, string> = {
   primitive: 'Raw palette steps, light and -dark side by side, in one mode. _OKLCH is for reference; the plugin skips it.',
   base: 'Roles aliasing Color Palette, light and -dark side by side. Import Color Palette first.',
-  semantic: 'Purposes aliasing Color, with Light and Dark modes. Import Color first.',
+  semantic: `Purposes aliasing Color, with Light and Dark modes. Import Color first.`,
 };
 
 /** Sheets CSV for the foundations that split into collections like Color. */
-const SHEET_GROUPS: ExportScope[] = ['typography', 'spacing', 'radius', 'grid'];
+const SHEET_GROUPS: ExportScope[] = ['typography', 'spacing', 'radius', 'opacity', 'grid'];
 const isSheetGroup = (scope: ExportScope): scope is SheetGroup => SHEET_GROUPS.includes(scope);
 
 /** A tier's collection, or the styles built on one: Typography's text styles, Shadow's effect styles. */
@@ -183,7 +183,7 @@ export function ExportDialog({
   const filename = filenameFor(activeKind, scope, colorTier, sheetPart);
   const usesColorFormat = (scope === 'all' || scope === 'color') && ['css', 'json'].includes(activeKind);
   // Shadow styles are always px, like Figma's effects
-  const usesUnit = scope !== 'color' && scope !== 'shadow' && ['css', 'json'].includes(activeKind);
+  const usesUnit = scope !== 'color' && scope !== 'shadow' && scope !== 'opacity' && ['css', 'json'].includes(activeKind);
 
   const content = useMemo(() => {
     if (!open) return '';

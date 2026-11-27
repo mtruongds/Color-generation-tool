@@ -22,7 +22,7 @@ import { cn } from '../ui/utils';
 import type { Accent, Foundations } from '../../lib/foundations';
 import type { GeneratedPalette } from '../../lib/export-utils';
 import { openPreviewWindow } from '../../lib/preview-window';
-import { productShadowTints, productsOf, resolveProductRoles } from '../../lib/tokens';
+import { type ColorRole, buildTokens, productShadowTints, productsOf, resolveProductRoles } from '../../lib/tokens';
 import { foundationsForProduct } from '../../lib/foundations';
 import {
   PreviewPaletteControls,
@@ -169,6 +169,19 @@ export function PreviewSection({
   const shownGrayId = productRoles?.get('neutral')?.paletteId ?? grayId;
   const accentPalette = palettes.find((p) => p.id === shownAccentId) ?? palettes[0];
   const grayPalette = palettes.find((p) => p.id === shownGrayId) ?? palettes.find((p) => p.role === 'gray') ?? accentPalette;
+
+  // Hovered colors read as the semantic tokens that alias them, in the shown product and mode
+  const colorTokens = useMemo(
+    () => buildTokens(palettes, shownFoundations, { groups: ['color'], modes: isDark ? 'dark' : 'light', colorFormat: 'hex' }),
+    [palettes, shownFoundations, isDark],
+  );
+  const naming = useMemo(() => {
+    const roles = rolesByProduct.get((product ?? products[0]).id);
+    /** The role a palette fills, preferring the one it paints in the preview. */
+    const roleOf = (id: string, prefer: ColorRole) =>
+      roles?.get(prefer)?.paletteId === id ? prefer : [...(roles ?? [])].find(([, h]) => h.paletteId === id)?.[0];
+    return { accentRole: roleOf(accentPalette.id, 'brand'), grayRole: roleOf(grayPalette.id, 'neutral'), tokens: colorTokens };
+  }, [rolesByProduct, product, products, accentPalette.id, grayPalette.id, colorTokens]);
 
   /** Picking a palette by hand leaves the product, keeping the other palette where it was. */
   const pickByHand = (accent: string, gray: string) => {
@@ -325,6 +338,7 @@ export function PreviewSection({
         accent={accent}
         accentScale={accentPalette.scale}
         gray={grayPalette.scale}
+        naming={naming}
         showTokens={tooltipsOn}
         size={view.size}
         onSizeChange={(size) => updateView({ size })}

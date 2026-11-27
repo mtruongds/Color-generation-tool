@@ -1,5 +1,5 @@
 import { Fragment, useMemo, useState } from 'react';
-import { Check, ChevronRight, ChevronsUpDown, GripVertical, Pencil, Plus, RotateCcw, Search, Trash2 } from 'lucide-react';
+import { Check, ChevronRight, ChevronsUpDown, GripVertical, Pencil, Plus, RotateCcw, Search, Trash2, TriangleAlert } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Command, CommandEmpty, CommandInput, CommandItem, CommandList } from '../ui/command';
@@ -18,6 +18,7 @@ import {
   type TokenGroup,
   aliasLock,
   aliasOptions,
+  aliasProblem,
   aliasTargets,
   buildTokens,
   NAME_PREFIX,
@@ -29,7 +30,7 @@ import {
   resolveTypography,
 } from '../../lib/tokens';
 
-const ALL_GROUPS: TokenGroup[] = ['color', 'typography', 'spacing', 'radius', 'shadow', 'grid'];
+const ALL_GROUPS: TokenGroup[] = ['color', 'typography', 'spacing', 'radius', 'opacity', 'shadow', 'grid'];
 
 const TIER_META: Record<Tier, { label: string; blurb: string; tone: string }> = {
   primitive: { label: 'Primitive', blurb: 'Raw values · locked', tone: 'bg-muted text-muted-foreground' },
@@ -43,6 +44,7 @@ const NAME_HINTS: Record<TokenGroup, Record<'base' | 'semantic', string>> = {
   typography: { base: 'font-size-hero', semantic: 'text-button' },
   spacing: { base: 'space-4xl', semantic: 'padding-section' },
   radius: { base: 'radius-3xl', semantic: 'radius-input' },
+  opacity: { base: 'opacity-ghost', semantic: 'opacity-hover-overlay' },
   shadow: { base: 'shadow-glow-color', semantic: 'shadow-toast' },
   grid: { base: 'container-narrow', semantic: 'page-narrow' },
 };
@@ -70,7 +72,7 @@ function formatValue(t: Token | undefined, byName?: Map<string, Token>): string 
       return `${n} ${n === 1 ? 'layer' : 'layers'}`;
     }
     default:
-      return String(t.value);
+      return t.group === 'opacity' ? `${Math.round((t.value as number) * 100)}%` : String(t.value);
   }
 }
 
@@ -84,7 +86,20 @@ function Preview({ t, byName }: { t: Token | undefined; byName: Map<string, Toke
       </span>
     );
   }
-  if (t.type === 'color') return <span className="size-4 shrink-0 rounded-[4px] border border-black/10" style={{ background: String(t.value) }} />;
+  if (t.type === 'color') {
+    return (
+      <span className="checkerboard size-4 shrink-0 overflow-hidden rounded-[4px] border border-black/10">
+        <span className="block size-full" style={{ background: String(t.value) }} />
+      </span>
+    );
+  }
+  if (t.group === 'opacity') {
+    return (
+      <span className="checkerboard size-4 shrink-0 overflow-hidden rounded-[4px] border border-black/10">
+        <span className="block size-full bg-foreground" style={{ opacity: t.value as number }} />
+      </span>
+    );
+  }
   if (t.type === 'shadow') {
     return <span className="h-4 w-6 shrink-0 rounded-[3px] bg-card" style={{ boxShadow: (t.value as ShadowLayer[]).map(layerToCss).join(', ') }} />;
   }
@@ -117,6 +132,30 @@ function aliasChain(t: Token, byName: Map<string, Token>, isDark: boolean): stri
  * tokens also name the primitive they land on, so the whole chain reads without opening anything.
  */
 function Resolved({ t, byName, isDark }: { t: Token; byName: Map<string, Token>; isDark: boolean }) {
+  // A broken alias shows as an error, never as a fallback color that hides the broken link
+  const problem = t.tier === 'primitive' || t.type === 'typography' ? undefined : aliasProblem(t, byName, isDark);
+  if (problem) {
+    const chain = aliasChain(t, byName, isDark);
+    const message =
+      problem.kind === 'missing'
+        ? `Points to ${problem.name}, which doesn't exist${isDark ? ' (dark mode)' : ''}`
+        : 'Alias chain loops or is more than 4 levels deep';
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="flex min-w-0 cursor-default items-center gap-2 font-mono text-xs whitespace-nowrap text-destructive">
+            <TriangleAlert className="size-4 shrink-0" aria-hidden />
+            <span className="min-w-0 truncate">{problem.kind === 'missing' ? `missing ${problem.name}` : 'alias loop'}</span>
+          </span>
+        </TooltipTrigger>
+        <TooltipContent align="start" className="font-mono text-[0.6875rem]">
+          {[...chain, problem.kind === 'missing' ? `${problem.name} ✕` : '…'].join('  →  ')}
+          <br />
+          {message}
+        </TooltipContent>
+      </Tooltip>
+    );
+  }
   const resolved = resolveShown(t, byName, isDark);
   const last = t.responsive?.at(-1);
   const wide = last && byName.get(last.ref);
@@ -173,6 +212,7 @@ export function TokenTiers({
   onUpdateToken,
   onRemoveToken,
   onMoveToken,
+  product,
 }: {
   group: TokenGroup;
   palettes: GeneratedPalette[];
@@ -187,6 +227,8 @@ export function TokenTiers({
   onRemoveToken: (name: string) => void;
   /** Moves a custom token to where `to` sits. */
   onMoveToken: (name: string, to: string) => void;
+  /** An extra product to preview: its own aliases replace the first product's. Undefined shows the first product. */
+  product?: { name: string; from: string };
 }) {
   const [query, setQuery] = useState('');
   /** The custom token whose row is open as a form. */
@@ -210,10 +252,22 @@ export function TokenTiers({
     });
 
   // Every group, so new names can't clash with a custom property elsewhere
-  const allTokens = useMemo(
+  const builtTokens = useMemo(
     () => buildTokens(palettes, foundations, { groups: ALL_GROUPS, modes: 'both', colorFormat }),
     [palettes, foundations, colorFormat],
   );
+  /** Tokens the previewed product points somewhere else, with the product's aliases swapped in. */
+  const { allTokens, overridden } = useMemo(() => {
+    const overridden = new Set<string>();
+    if (!product) return { allTokens: builtTokens, overridden };
+    const allTokens = builtTokens.map((t) => {
+      const own = t.products?.find((o) => o.product === product.name);
+      if (!own) return t;
+      overridden.add(t.name);
+      return { ...t, ref: own.ref, darkRef: own.darkRef };
+    });
+    return { allTokens, overridden };
+  }, [builtTokens, product]);
   const tokens = useMemo(() => allTokens.filter((t) => t.group === group), [allTokens, group]);
   const byName = useMemo(() => new Map(allTokens.map((t) => [t.name, t])), [allTokens]);
   const edited = tokens.filter((t) => t.defaultRef);
@@ -262,8 +316,20 @@ export function TokenTiers({
   /** Searching or filtering opens every tier, so matches never hide in a folded one. */
   const narrowing = !!q || filter !== 'all';
 
+  const overriddenHere = tokens.filter((t) => overridden.has(t.name)).length;
+
   return (
     <div className="space-y-6 pb-16">
+      {product && (
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-xl border border-sky-500/30 bg-sky-500/5 px-4 py-2.5 text-xs text-muted-foreground">
+          <span className="rounded-md bg-sky-500/10 px-1.5 py-0.5 font-medium text-sky-700 dark:text-sky-300">{product.name}</span>
+          <span>
+            {overriddenHere > 0
+              ? `${overriddenHere} ${overriddenHere === 1 ? 'token points' : 'tokens point'} to ${product.name}'s own values; the rest inherit from ${product.from}.`
+              : `Every token here inherits from ${product.from}.`}
+          </span>
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative min-w-[12rem] flex-1">
           <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -442,6 +508,15 @@ export function TokenTiers({
                         </td>
                         {tier !== 'primitive' && (
                           <td className="px-4 py-0">
+                            {product && overridden.has(t.name) ? (
+                              <span
+                                className="flex min-w-0 items-center gap-1.5 px-1 text-xs"
+                                title={`${product.name} sets this alias. Change it in the ${product.name} editor; ${product.from} uses ${builtTokens.find((b) => b.name === t.name)?.ref ?? '—'}.`}
+                              >
+                                <span className="shrink-0 rounded bg-sky-500/10 px-1 text-[0.625rem] font-medium text-sky-700 dark:text-sky-300">{product.name}</span>
+                                <span className="min-w-0 truncate font-mono">{isDark && t.darkRef ? t.darkRef : t.ref}</span>
+                              </span>
+                            ) : (
                             <AliasCell
                               token={t}
                               tokens={tokens}
@@ -453,6 +528,7 @@ export function TokenTiers({
                               onEditToken={setEditing}
                               onRemoveToken={onRemoveToken}
                             />
+                            )}
                           </td>
                         )}
                         <td className="px-4 py-0">

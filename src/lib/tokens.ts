@@ -5,11 +5,14 @@ import {
   FONT_WEIGHTS,
   type FontWeightName,
   type Foundations,
+  OPACITY_PURPOSES,
+  OPACITY_ROLES,
   RADIUS_FULL,
   type TypeStyle,
   type ShadowConfig,
   type ShadowLayer,
   fontStack,
+  generateOpacityScale,
   generateRadiusScale,
   generateShadowScale,
   generateSpacingScale,
@@ -30,7 +33,7 @@ import type { PaletteConfig } from '../components/palette-generator/types';
 export type Tier = 'primitive' | 'base' | 'semantic';
 export const TIERS: Tier[] = ['primitive', 'base', 'semantic'];
 
-export type TokenGroup = 'color' | 'typography' | 'spacing' | 'radius' | 'shadow' | 'grid';
+export type TokenGroup = 'color' | 'typography' | 'spacing' | 'radius' | 'opacity' | 'shadow' | 'grid';
 
 export type TokenType = 'color' | 'dimension' | 'number' | 'fontFamily' | 'fontWeight' | 'letterSpacing' | 'shadow' | 'typography';
 
@@ -296,13 +299,27 @@ interface SemanticColor {
   usage: string;
 }
 
-const statusColors = (role: ColorRole): SemanticColor[] => [
-  { name: `bg-${role}`, role, step: '9', usage: `Solid ${role} backgrounds` },
-  { name: `bg-${role}-subtle`, role, step: '3', usage: `Subtle ${role} backgrounds, banners` },
-  { name: `fg-${role}`, role, step: '11', usage: `${role[0].toUpperCase() + role.slice(1)} text and icons` },
-  { name: `fg-on-${role}`, role, step: 'contrast', usage: `Text on bg-${role}` },
-  { name: `border-${role}`, role, step: '7', usage: `${role[0].toUpperCase() + role.slice(1)} borders` },
-];
+/**
+ * One semantic token per job an accent step does, the same set for every accent role so components
+ * never have to reach past the semantic layer to a base step.
+ */
+const accentColors = (role: ColorRole, label: string): SemanticColor[] => {
+  const Label = label[0].toUpperCase() + label.slice(1);
+  return [
+    { name: `bg-${role}`, role, step: '9', usage: `Solid ${label} backgrounds and buttons` },
+    { name: `bg-${role}-hover`, role, step: '10', usage: `Hovered solid ${label} backgrounds` },
+    { name: `bg-${role}-faint`, role, step: '2', usage: `Faint ${label} tints: surface badges, selected rows` },
+    { name: `bg-${role}-subtle`, role, step: '3', usage: `Subtle ${label} backgrounds, banners` },
+    { name: `bg-${role}-subtle-hover`, role, step: '4', usage: `Hovered subtle ${label} backgrounds` },
+    { name: `bg-${role}-subtle-active`, role, step: '5', usage: `Pressed or selected subtle ${label} backgrounds` },
+    { name: `fg-${role}`, role, step: '11', usage: `${Label} text, links and icons` },
+    { name: `fg-${role}-strong`, role, step: '12', usage: `High-contrast ${label} text, titles on subtle ${label} backgrounds` },
+    { name: `fg-on-${role}`, role, step: 'contrast', usage: `Text on bg-${role}` },
+    { name: `border-${role}-subtle`, role, step: '6', usage: `Subtle ${label} borders on tinted surfaces` },
+    { name: `border-${role}`, role, step: '7', usage: `${Label} borders` },
+    { name: `border-${role}-strong`, role, step: '8', usage: `Hovered or selected ${label} borders` },
+  ];
+};
 
 const SEMANTIC_COLORS: SemanticColor[] = [
   { name: 'bg', role: 'neutral', step: '1', usage: 'App background' },
@@ -310,28 +327,21 @@ const SEMANTIC_COLORS: SemanticColor[] = [
   { name: 'bg-surface', role: 'neutral', step: 'surface', usage: 'Cards and panels over the background' },
   { name: 'bg-muted', role: 'neutral', step: '3', usage: 'Neutral control backgrounds' },
   { name: 'bg-muted-hover', role: 'neutral', step: '4', usage: 'Hovered neutral controls' },
-  { name: 'bg-muted-active', role: 'neutral', step: '5', usage: 'Pressed or selected neutral controls' },
+  { name: 'bg-muted-active', role: 'neutral', step: '5', usage: 'Pressed or selected neutral controls, tracks' },
+  { name: 'bg-inverse', role: 'neutral', step: '12', usage: 'Tooltips and other inverted surfaces' },
   { name: 'border-subtle', role: 'neutral', step: '6', usage: 'Separators, card borders' },
   { name: 'border', role: 'neutral', step: '7', usage: 'Control borders' },
   { name: 'border-strong', role: 'neutral', step: '8', usage: 'Hovered control borders' },
+  { name: 'fg-disabled', role: 'neutral', step: '8', usage: 'Disabled text and icons' },
+  { name: 'fg-subtle', role: 'neutral', step: '10', usage: 'Placeholders and quiet icons' },
   { name: 'fg-muted', role: 'neutral', step: '11', usage: 'Secondary text and icons' },
   { name: 'fg', role: 'neutral', step: '12', usage: 'Primary text and icons' },
-  { name: 'bg-brand', role: 'brand', step: '9', usage: 'Primary buttons, selected states' },
-  { name: 'bg-brand-hover', role: 'brand', step: '10', usage: 'Hovered primary buttons' },
-  { name: 'bg-brand-subtle', role: 'brand', step: '3', usage: 'Subtle brand backgrounds' },
-  { name: 'bg-brand-subtle-hover', role: 'brand', step: '4', usage: 'Hovered subtle brand backgrounds' },
-  { name: 'fg-brand', role: 'brand', step: '11', usage: 'Links, brand text and icons' },
-  { name: 'fg-on-brand', role: 'brand', step: 'contrast', usage: 'Text on bg-brand' },
-  { name: 'border-brand', role: 'brand', step: '7', usage: 'Brand borders' },
+  { name: 'fg-inverse', role: 'neutral', step: '1', usage: 'Text on bg-inverse' },
+  ...accentColors('brand', 'brand'),
   { name: 'focus-ring', role: 'brand', step: '8', usage: 'Focus outlines' },
-  { name: 'bg-brand-secondary', role: 'brand-secondary', step: '9', usage: 'Secondary brand buttons and highlights' },
-  { name: 'bg-brand-secondary-hover', role: 'brand-secondary', step: '10', usage: 'Hovered secondary brand buttons' },
-  { name: 'bg-brand-secondary-subtle', role: 'brand-secondary', step: '3', usage: 'Subtle secondary brand backgrounds' },
-  { name: 'bg-brand-secondary-subtle-hover', role: 'brand-secondary', step: '4', usage: 'Hovered subtle secondary brand backgrounds' },
-  { name: 'fg-brand-secondary', role: 'brand-secondary', step: '11', usage: 'Secondary brand text and icons' },
-  { name: 'fg-on-brand-secondary', role: 'brand-secondary', step: 'contrast', usage: 'Text on bg-brand-secondary' },
-  { name: 'border-brand-secondary', role: 'brand-secondary', step: '7', usage: 'Secondary brand borders' },
-  ...(['info', 'success', 'warning', 'danger'] as const).flatMap(statusColors),
+  { name: 'focus-ring-soft', role: 'brand', step: '5', usage: 'Soft focus halo around fields and open triggers' },
+  ...accentColors('brand-secondary', 'secondary brand'),
+  ...(['info', 'success', 'warning', 'danger'] as const).flatMap((role) => accentColors(role, role)),
 ];
 
 const LEADING_ROLES: ColorRole[] = ['brand', 'brand-secondary'];
@@ -424,6 +434,34 @@ function colorTokens(palettes: GeneratedPalette[], modes: TokenModes, format: Co
       ref: `${s.role}-${s.step}`,
       description: s.usage,
     });
+  }
+  return tokens;
+}
+
+// ============================================================
+// Opacity
+// ============================================================
+
+export const SCRIM_OPACITY = 'opacity-scrim';
+
+/**
+ * Primitives are named by step (opacity-scale-7), so editing a value keeps every name. Values are
+ * fractions (0.4), as CSS and the W3C format take them; Figma's percent comes from the export.
+ */
+function opacityTokens(f: Foundations): Token[] {
+  const tokens: Token[] = generateOpacityScale(f.opacity).map(({ step, value }) => ({
+    tier: 'primitive',
+    group: 'opacity',
+    name: `opacity-scale-${step}`,
+    path: ['opacity', String(step)],
+    type: 'number',
+    value: value / 100,
+  }));
+  for (const r of OPACITY_ROLES) {
+    tokens.push({ tier: 'base', group: 'opacity', name: `opacity-${r.name}`, path: ['opacity', r.name], type: 'number', ref: `opacity-scale-${r.step}`, description: r.usage });
+  }
+  for (const p of OPACITY_PURPOSES) {
+    tokens.push({ tier: 'semantic', group: 'opacity', name: `opacity-${p.name}`, path: ['opacity', p.name], type: 'number', ref: `opacity-${p.role}`, description: p.usage });
   }
   return tokens;
 }
@@ -1037,7 +1075,7 @@ function applyAliases(tokens: Token[], aliases: Record<string, string> | undefin
   });
 }
 
-const CUSTOM_ROOT: Record<TokenGroup, string> = { color: 'color', typography: 'font', spacing: 'space', radius: 'radius', shadow: 'shadow', grid: 'page' };
+const CUSTOM_ROOT: Record<TokenGroup, string> = { color: 'color', typography: 'font', spacing: 'space', radius: 'radius', opacity: 'opacity', shadow: 'shadow', grid: 'page' };
 
 /**
  * The prefix every generated name in a tier starts with, which the user's own tokens there take too
@@ -1048,6 +1086,7 @@ export const NAME_PREFIX: Record<TokenGroup, Partial<Record<'base' | 'semantic',
   typography: { semantic: 'text' },
   spacing: { base: 'space' },
   radius: { base: 'radius', semantic: 'radius' },
+  opacity: { base: 'opacity', semantic: 'opacity' },
   shadow: { base: 'shadow', semantic: 'shadow' },
   grid: { semantic: 'page' },
 };
@@ -1184,6 +1223,7 @@ export function buildTokens(
     ...(has('typography') ? typographyTokens(f) : []),
     ...(has('spacing') ? spacingTokens(f) : []),
     ...(has('radius') ? radiusTokens(f) : []),
+    ...(has('opacity') ? opacityTokens(f) : []),
     ...(has('shadow') ? shadowTokens(palettes, f, opts.modes) : []),
     ...(has('grid') ? gridTokens(f) : []),
   ], f.aliases);
@@ -1196,6 +1236,26 @@ export function resolveToken(t: Token, byName: Map<string, Token>, isDark = fals
   let cur: Token | undefined = t;
   for (let i = 0; cur?.ref && i < 4; i++) cur = byName.get(isDark && cur.darkRef ? cur.darkRef : cur.ref);
   return cur;
+}
+
+/**
+ * Why an alias never reaches a value, in light or dark mode: the name it points at that doesn't
+ * exist, or a chain that loops or runs too deep. Undefined when it resolves.
+ */
+export function aliasProblem(
+  t: Token,
+  byName: Map<string, Token>,
+  isDark = false,
+): { kind: 'missing'; name: string } | { kind: 'loop' } | undefined {
+  let cur: Token = t;
+  for (let i = 0; cur.ref; i++) {
+    if (i >= 4) return { kind: 'loop' };
+    const name = isDark && cur.darkRef ? cur.darkRef : cur.ref;
+    const next = byName.get(name);
+    if (!next) return { kind: 'missing', name };
+    cur = next;
+  }
+  return undefined;
 }
 
 /** A text style's values at the widest breakpoint, each property followed down to its primitive. */

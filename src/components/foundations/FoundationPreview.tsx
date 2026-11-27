@@ -43,10 +43,11 @@ import {
 } from '../../lib/foundations';
 import { typeCss } from './FoundationSample';
 import type { ColorScale } from '../../lib/color-utils';
-import { type FoundationRow, type RowEditor, type TokenOption, StepTokenLayer, scaleVars } from '../palette-generator/PalettePreview';
+import { type ColorNaming, type FoundationRow, type RowEditor, type TokenOption, StepTokenLayer, scaleVars } from '../palette-generator/PalettePreview';
 import { ComponentGallery } from './ComponentGallery';
 
-export type PreviewKey = Exclude<FoundationKey, 'color'>;
+/** Opacity has no highlight: the pages use it in two places, the disabled button and the dialog backdrop. */
+export type PreviewKey = Exclude<FoundationKey, 'color' | 'opacity'>;
 
 /** Pages drawn from the foundation tokens. */
 export type FoundationPage = 'dashboard' | 'components' | 'landing' | 'article';
@@ -151,6 +152,7 @@ type PadProps = { 'data-fx-spacing'?: string; 'data-fx-spacing-value'?: string; 
 export interface PreviewKit {
   tokens: ResolvedFoundations;
   mobile: boolean;
+  isDark: boolean;
   /** Masonry columns that fit the content width. */
   columns: number;
   gutter: number;
@@ -178,6 +180,7 @@ export function FoundationPreview({
   accent,
   accentScale,
   gray,
+  naming,
   showTokens,
   size,
   onSizeChange,
@@ -190,6 +193,8 @@ export function FoundationPreview({
   accent: Accent;
   accentScale: ColorScale;
   gray: ColorScale;
+  /** Names hovered colors by the semantic tokens that alias their steps. */
+  naming?: ColorNaming;
   /** Hovering a tagged element shows which accent and gray steps it uses. */
   showTokens: boolean;
   size: ViewportSize;
@@ -651,6 +656,7 @@ export function FoundationPreview({
       <StepTokenLayer
         accent={accentScale}
         gray={gray}
+        naming={naming}
         showTokens={showTokens && !dragging}
         inspect={inspect}
         edit={edit}
@@ -699,6 +705,7 @@ export function FoundationPreview({
               kit={{
                 tokens,
                 mobile,
+                isDark,
                 columns: contentWidth >= 1080 ? 3 : contentWidth >= 640 ? 2 : 1,
                 gutter: bp.gutter,
                 container,
@@ -976,7 +983,7 @@ export function FoundationPreview({
                       </div>
                       <div className="relative flex-1" style={{ minHeight: space(52), margin: `${space(6)}px ${space(5)}px ${space(2)}px ${space(5) + 28}px` }}>
                         {[100, 50, 0].map((v) => (
-                          <div key={v} className="absolute inset-x-0" style={{ bottom: `${v}%`, borderTop: `1px ${v === 0 ? 'solid' : 'dashed'} var(--g5)` }} {...(v === 100 ? steps('gridline: g5') : {})}>
+                          <div key={v} className="absolute inset-x-0" style={{ bottom: `${v}%`, borderTop: `1px ${v === 0 ? 'solid' : 'dashed'} var(--g6)` }} {...(v === 100 ? steps('gridline: g6') : {})}>
                             <span className="absolute -translate-y-1/2 tabular-nums" style={{ right: '100%', marginRight: space(2), ...typeCss(t.caption, mobile), color: 'var(--g10)' }}>
                               {v * 1.2}
                             </span>
@@ -1202,11 +1209,11 @@ export function FoundationPreview({
                                 className={cn(
                                   'flex items-center transition-[border-color,box-shadow]',
                                   disabled
-                                    ? 'border border-(--g6) bg-(--g3) text-(--g9)'
+                                    ? 'border border-(--g6) bg-(--g3) text-(--g8)'
                                     : 'border border-(--g7) bg-(--bg) focus-within:border-(--a8) focus-within:shadow-[0_0_0_3px_var(--a5)] hover:border-(--g8)',
                                 )}
                                 style={{ ...typeCss(t['body-sm'], mobile), marginTop: space(1.5), padding: `${space(2)}px ${space(3)}px`, borderRadius: radius.md }}
-                                {...steps(disabled ? 'disabled: g3 · border: g6 · text: g9' : 'field: background · border: g7 → g8 · focus: a8 + ring a5')}
+                                {...steps(disabled ? 'disabled: g3 · border: g6 · text: g8' : 'field: background · border: g7 → g8 · focus: a8 + ring a5')}
                                 {...(i === 0 ? mark('radius', 'radius-md') : {})}
                               >
                                 {node}
@@ -1226,8 +1233,8 @@ export function FoundationPreview({
                               Email me when a build fails
                             </Text>
                           </span>
-                          <span role="switch" aria-checked={alerts} onClick={() => setAlerts((v) => !v)} className="flex cursor-pointer items-center" style={{ gap: space(2.5) }} {...steps(alerts ? 'switch: on a9 · thumb: white' : 'switch: off g6')}>
-                            <span className={cn('relative shrink-0 transition-colors', alerts ? 'bg-(--a9)' : 'bg-(--g6)')} style={{ width: 32, height: 18, borderRadius: radius.full }}>
+                          <span role="switch" aria-checked={alerts} onClick={() => setAlerts((v) => !v)} className="flex cursor-pointer items-center" style={{ gap: space(2.5) }} {...steps(alerts ? 'switch: on a9 · thumb: white' : 'switch: off g5')}>
+                            <span className={cn('relative shrink-0 transition-colors', alerts ? 'bg-(--a9)' : 'bg-(--g5)')} style={{ width: 32, height: 18, borderRadius: radius.full }}>
                               <span className="absolute bg-white transition-[left]" style={{ top: 2, left: alerts ? 16 : 2, width: 14, height: 14, borderRadius: radius.full, boxShadow: shadow.xs }} />
                             </span>
                             <Text s="body-sm" tagged={false}>
@@ -1575,7 +1582,7 @@ export function FoundationPreview({
                   {...mark('radius', 'radius-xl')} {...mark('shadow', shadowName('lg'))}
                 >
                   {[
-                    { name: 'Personal', price: '$0', per: 'forever', items: ['All six foundations', 'CSS and JSON export', 'Light and dark themes'], primary: false },
+                    { name: 'Personal', price: '$0', per: 'forever', items: ['Every foundation', 'CSS and JSON export', 'Light and dark themes'], primary: false },
                     { name: 'Pro', price: '$24', per: 'per editor / month', items: ['Everything in Personal', 'Figma variables sync', 'Shared team presets', 'Version history'], primary: true },
                   ].map(({ name, price, per, items, primary }, i) => (
                     <div
@@ -1851,7 +1858,7 @@ export function FoundationPreview({
                     whole scale predictable.
                   </Text>
                   <div className="overflow-x-auto" style={{ marginTop: space(6) }}>
-                    <table className="w-full border-collapse text-left" {...steps('header: g11 · rows: g6')}>
+                    <table className="w-full border-collapse text-left" {...steps('header: text g11 · rows: g6')}>
                       <thead>
                         <tr style={{ borderBottom: '1px solid var(--g7)' }}>
                           {['Steps', 'Job', 'Token'].map((h) => (
